@@ -1,0 +1,5 @@
+{
+  "name": "3D Scene",
+  "description": "A basic 3D scene with a camera, directional light, skybox, and floor plane. Start here for 3D projects.",
+  "category": "3D"
+}

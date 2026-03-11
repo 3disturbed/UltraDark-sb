@@ -1,0 +1,22 @@
+{
+  "platform": "windows_x64",
+  "configuration": "debug",
+  "appName": "MyGame",
+  "version": "1.0.0",
+  "bundleId": "com.studio.mygame",
+  "outputDirectory": "dist\\Windows_x64",
+  "startScene": "Scenes/Main.scene",
+  "scenes": [
+    "Scenes/Main.scene"
+  ],
+  "steamAppId": 0,
+  "steamDepotId": 0,
+  "steamBranch": "default",
+  "androidKeystorePath": "",
+  "androidKeystorePassword": "",
+  "iosTeamId": "",
+  "iosProvisioningProfile": "",
+  "includeDebugOverlay": true,
+  "minifyScripts": false,
+  "cookAssets": true
+}

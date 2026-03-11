@@ -1,0 +1,77 @@
+{
+  "name": "Arena",
+  "layers": [
+    {
+      "name": "Default",
+      "actors": [
+        {
+          "name": "Main Camera",
+          "tag": "MainCamera",
+          "components": [
+            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+          ],
+          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "Player",
+          "tag": "Player",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 50, "G": 150, "B": 255, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "Mass": 1.0, "GravityScale": 0, "FreezeRotation": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 28, "Height": 28 } },
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/PlayerShooter.js" } }
+          ],
+          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "GameManager",
+          "tag": "Manager",
+          "components": [
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/GameManager.js" } }
+          ],
+          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "WallTop",
+          "tag": "Wall",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 40, "G": 40, "B": 40, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 1280, "Height": 20 } }
+          ],
+          "transform": { "x": 640, "y": 10, "rotation": 0, "scaleX": 40, "scaleY": 1 }
+        },
+        {
+          "name": "WallBottom",
+          "tag": "Wall",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 40, "G": 40, "B": 40, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 1280, "Height": 20 } }
+          ],
+          "transform": { "x": 640, "y": 710, "rotation": 0, "scaleX": 40, "scaleY": 1 }
+        },
+        {
+          "name": "WallLeft",
+          "tag": "Wall",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 40, "G": 40, "B": 40, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 20, "Height": 720 } }
+          ],
+          "transform": { "x": 10, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 22 }
+        },
+        {
+          "name": "WallRight",
+          "tag": "Wall",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 40, "G": 40, "B": 40, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 20, "Height": 720 } }
+          ],
+          "transform": { "x": 1270, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 22 }
+        }
+      ]
+    }
+  ]
+}

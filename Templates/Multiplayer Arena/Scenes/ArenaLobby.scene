@@ -1,0 +1,26 @@
+{
+  "name": "ArenaLobby",
+  "layers": [
+    {
+      "name": "Default",
+      "actors": [
+        {
+          "name": "Main Camera",
+          "tag": "MainCamera",
+          "components": [
+            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+          ],
+          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "LobbyManager",
+          "tag": "Manager",
+          "components": [
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ArenaLobby.js" } }
+          ],
+          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        }
+      ]
+    }
+  ]
+}

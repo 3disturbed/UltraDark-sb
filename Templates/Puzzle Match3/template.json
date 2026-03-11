@@ -1,0 +1,5 @@
+{
+  "name": "Puzzle Match3",
+  "description": "A grid-based match-3 puzzle game with tile swapping, match detection, cascade fills, and combo scoring. Click two adjacent tiles to swap them.",
+  "category": "Puzzle"
+}

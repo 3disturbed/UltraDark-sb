@@ -1,0 +1,9 @@
+{
+  "WindowTitle": "Hello World — SexyBiscuit Tutorial",
+  "WindowWidth": 1280,
+  "WindowHeight": 720,
+  "Fullscreen": false,
+  "VSync": true,
+  "ShowCursor": true,
+  "StartScene": "Scenes/Tutorial"
+}

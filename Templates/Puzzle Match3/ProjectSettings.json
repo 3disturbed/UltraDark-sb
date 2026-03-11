@@ -1,0 +1,9 @@
+{
+  "WindowTitle": "Puzzle Match-3",
+  "WindowWidth": 720,
+  "WindowHeight": 960,
+  "Fullscreen": false,
+  "VSync": true,
+  "ShowCursor": true,
+  "StartScene": "Scenes/PuzzleBoard"
+}

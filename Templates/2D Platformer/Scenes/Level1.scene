@@ -1,0 +1,59 @@
+{
+  "name": "Level1",
+  "layers": [
+    {
+      "name": "Default",
+      "actors": [
+        {
+          "name": "Main Camera",
+          "tag": "MainCamera",
+          "components": [
+            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+          ],
+          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "Player",
+          "tag": "Player",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 50, "G": 150, "B": 255, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "Mass": 1.0, "GravityScale": 1.0, "FreezeRotation": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 32, "Height": 48 } },
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/PlayerController.js" } }
+          ],
+          "transform": { "x": 100, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "Ground",
+          "tag": "Ground",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 80, "G": 120, "B": 60, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 1920, "Height": 64 } }
+          ],
+          "transform": { "x": 960, "y": 550, "rotation": 0, "scaleX": 60, "scaleY": 2 }
+        },
+        {
+          "name": "Platform1",
+          "tag": "Ground",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 100, "G": 140, "B": 80, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 200, "Height": 32 } }
+          ],
+          "transform": { "x": 400, "y": 400, "rotation": 0, "scaleX": 6, "scaleY": 1 }
+        },
+        {
+          "name": "Platform2",
+          "tag": "Ground",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 100, "G": 140, "B": 80, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 200, "Height": 32 } }
+          ],
+          "transform": { "x": 700, "y": 300, "rotation": 0, "scaleX": 6, "scaleY": 1 }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Tower Defense",
+  "description": "A classic tower defense with path-following enemies, three tower types, wave management, and an economy system. Press 1/2/3 to select tower type, click to place. Press Enter to start next wave.",
+  "category": "Strategy"
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Survival Crafting",
+  "description": "A top-down survival game with resource gathering, inventory management, crafting, day/night cycle, and enemy waves at night. WASD to move, E to gather, I for inventory, C to craft.",
+  "category": "Survival"
+}

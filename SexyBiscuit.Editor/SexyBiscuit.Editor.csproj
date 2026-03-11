@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>SexyBiscuit.Editor</RootNamespace>
+    <AssemblyName>SexyBiscuit.Editor</AssemblyName>
+    <!-- <ApplicationIcon>Assets\editor_icon.ico</ApplicationIcon> -->
+    <Configurations>Debug;Release;Development</Configurations>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SexyBiscuit.Engine\SexyBiscuit.Engine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ImGui.NET for dockable panel layout -->
+    <PackageReference Include="ImGui.NET" Version="1.90.0" />
+  </ItemGroup>
+
+</Project>

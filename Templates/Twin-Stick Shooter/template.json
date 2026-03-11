@@ -1,0 +1,5 @@
+{
+  "name": "Twin-Stick Shooter",
+  "description": "A top-down twin-stick shooter with WASD movement, mouse aiming, bullet spawning, enemy waves, and score tracking. Includes commented multiplayer co-op sections.",
+  "category": "Action"
+}

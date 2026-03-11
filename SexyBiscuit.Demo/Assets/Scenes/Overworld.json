@@ -1,0 +1,10 @@
+{
+  "name": "Overworld",
+  "version": 1,
+  "layers": [
+    { "name": "background", "order": -100, "actors": [] },
+    { "name": "default", "order": 0, "actors": [] },
+    { "name": "foreground", "order": 100, "actors": [] },
+    { "name": "ui", "order": 200, "actors": [] }
+  ]
+}

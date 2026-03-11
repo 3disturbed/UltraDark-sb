@@ -1,0 +1,9 @@
+{
+  "WindowTitle": "3D Scene",
+  "WindowWidth": 1920,
+  "WindowHeight": 1080,
+  "Fullscreen": false,
+  "VSync": true,
+  "ShowCursor": true,
+  "StartScene": "Scenes/Main3D"
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Racing",
+  "description": "A top-down racing game with simulated vehicle physics, acceleration, steering, drift mechanics, lap tracking, and checkpoints. Supports 2-player on one keyboard.",
+  "category": "Racing"
+}

@@ -1,0 +1,34 @@
+{
+  "name": "PuzzleBoard",
+  "layers": [
+    {
+      "name": "Default",
+      "actors": [
+        {
+          "name": "Main Camera",
+          "tag": "MainCamera",
+          "components": [
+            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+          ],
+          "transform": { "x": 360, "y": 480, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "BoardManager",
+          "tag": "Manager",
+          "components": [
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/BoardManager.js" } }
+          ],
+          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "ScoreDisplay",
+          "tag": "ScoreDisplay",
+          "components": [
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ScoreDisplay.js" } }
+          ],
+          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        }
+      ]
+    }
+  ]
+}

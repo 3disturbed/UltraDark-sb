@@ -1,0 +1,5 @@
+{
+  "name": "Fighting Game",
+  "description": "A 1v1 side-view fighting game with attacks, blocking, jumping, and health bars. Two players on one keyboard — P1: WASD + F (attack) + G (block), P2: Arrows + K (attack) + L (block).",
+  "category": "Action"
+}

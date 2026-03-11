@@ -1,0 +1,5 @@
+{
+  "name": "Endless Runner",
+  "description": "An auto-scrolling endless runner with jump and duck controls, obstacle spawning, increasing speed, and distance-based scoring. Press R to restart after game over.",
+  "category": "Arcade"
+}

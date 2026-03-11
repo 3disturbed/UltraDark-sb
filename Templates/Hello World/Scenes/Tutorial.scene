@@ -1,0 +1,96 @@
+{
+  "name": "Tutorial",
+  "layers": [
+    {
+      "name": "Default",
+      "actors": [
+        {
+          "name": "Main Camera",
+          "tag": "MainCamera",
+          "components": [
+            {
+              "type": "Camera2D",
+              "properties": {
+                "Zoom": 1.0
+              }
+            }
+          ],
+          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "TutorialManager",
+          "tag": "Manager",
+          "components": [
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/TutorialManager.js"
+              }
+            }
+          ],
+          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "ExampleBox",
+          "tag": "ExampleBox",
+          "components": [
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Color": { "R": 50, "G": 150, "B": 255, "A": 255 }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {
+                "GravityScale": 0,
+                "IsStatic": false
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Width": 32,
+                "Height": 32
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ExampleBox.js"
+              }
+            }
+          ],
+          "transform": { "x": 400, "y": 300, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "ClickTarget",
+          "tag": "ClickTarget",
+          "components": [
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Color": { "R": 50, "G": 255, "B": 100, "A": 255 }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Width": 48,
+                "Height": 48,
+                "IsTrigger": true
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ClickTarget.js"
+              }
+            }
+          ],
+          "transform": { "x": 700, "y": 350, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        }
+      ]
+    }
+  ]
+}

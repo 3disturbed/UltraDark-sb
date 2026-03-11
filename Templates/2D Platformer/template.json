@@ -1,0 +1,5 @@
+{
+  "name": "2D Platformer",
+  "description": "A side-scrolling platformer with player movement, jumping, and platform collision. Includes camera follow and basic level layout.",
+  "category": "2D"
+}

@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>SexyBiscuit.Engine</RootNamespace>
+    <AssemblyName>SexyBiscuit.Engine</AssemblyName>
+    <Configurations>Debug;Release;Development</Configurations>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DefineConstants>DEBUG;SEXY_DEBUG;STEAMWORKS</DefineConstants>
+    <Optimize>false</Optimize>
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Development'">
+    <DefineConstants>DEVELOPMENT;SEXY_DEV;STEAMWORKS</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DefineConstants>RELEASE;STEAMWORKS</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Engine foundation -->
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.1.303" />
+
+    <!-- JavaScript scripting -->
+    <PackageReference Include="Jint" Version="3.1.1" />
+
+    <!-- 2D Physics -->
+    <PackageReference Include="Aether.Physics2D" Version="2.1.0" />
+
+    <!-- 3D Physics -->
+    <PackageReference Include="BepuPhysics" Version="2.4.0" />
+    <PackageReference Include="BepuUtilities" Version="2.4.0" />
+
+    <!-- 3D model import -->
+    <PackageReference Include="AssimpNet" Version="4.1.0" />
+
+    <!-- Networking -->
+    <PackageReference Include="LiteNetLib" Version="1.1.0" />
+
+    <!-- Steam -->
+    <PackageReference Include="Steamworks.NET" Version="20.1.0" />
+
+    <!-- Font loading (runtime TTF/OTF, no pre-baking) -->
+    <PackageReference Include="FontStashSharp.MonoGame" Version="1.3.3" />
+
+    <!-- Audio streaming -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+
+    <!-- JSON -->
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+</Project>

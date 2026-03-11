@@ -1,0 +1,25 @@
+## .NET / C#
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+*.cache
+
+## Build outputs
+[Dd]ebug/
+[Rr]elease/
+
+## IDE
+.vs/
+*.user
+*.suo
+
+## OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+## Editor dist
+SexyBiscuit.Editor/dist/
+SexyBiscuit.Editor/imgui.ini

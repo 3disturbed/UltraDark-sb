@@ -1,0 +1,8 @@
+{
+  "appName": "Biscuit Chronicles",
+  "version": "0.1.0",
+  "startScene": "Scenes/MainMenu",
+  "windowWidth": 1920,
+  "windowHeight": 1080,
+  "steamAppId": 480
+}

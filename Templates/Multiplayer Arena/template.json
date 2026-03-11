@@ -1,0 +1,5 @@
+{
+  "name": "Multiplayer Arena",
+  "description": "A networked PvP arena with host/join lobby, WASD+mouse combat, health pickups, speed/damage boosts, respawning, and a live scoreboard. H to host, J to join, Enter to start.",
+  "category": "Multiplayer"
+}

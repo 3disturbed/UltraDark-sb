@@ -1,0 +1,58 @@
+{
+  "name": "FightArena",
+  "layers": [
+    {
+      "name": "Default",
+      "actors": [
+        {
+          "name": "Main Camera",
+          "tag": "MainCamera",
+          "components": [
+            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+          ],
+          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "Player1",
+          "tag": "Player1",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 50, "G": 120, "B": 255, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "Mass": 1.0, "GravityScale": 1.0, "FreezeRotation": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 40, "Height": 64 } },
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/Fighter.js" } }
+          ],
+          "transform": { "x": 300, "y": 420, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "Player2",
+          "tag": "Player2",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 255, "G": 60, "B": 60, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "Mass": 1.0, "GravityScale": 1.0, "FreezeRotation": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 40, "Height": 64 } },
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/Fighter.js" } }
+          ],
+          "transform": { "x": 980, "y": 420, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        },
+        {
+          "name": "Ground",
+          "tag": "Ground",
+          "components": [
+            { "type": "SpriteRenderer", "properties": { "Color": { "R": 60, "G": 60, "B": 60, "A": 255 } } },
+            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
+            { "type": "BoxCollider2D", "properties": { "Width": 1280, "Height": 40 } }
+          ],
+          "transform": { "x": 640, "y": 540, "rotation": 0, "scaleX": 40, "scaleY": 1 }
+        },
+        {
+          "name": "FightManager",
+          "tag": "Manager",
+          "components": [
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/FightManager.js" } }
+          ],
+          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        }
+      ]
+    }
+  ]
+}

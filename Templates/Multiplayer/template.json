@@ -1,0 +1,5 @@
+{
+  "name": "Multiplayer",
+  "description": "A multiplayer game template with lobby UI, host/join flow, and networked player spawning. Uses LiteNetLib for UDP networking.",
+  "category": "Multiplayer"
+}
