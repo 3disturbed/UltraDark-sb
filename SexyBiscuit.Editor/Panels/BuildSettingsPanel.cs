@@ -183,16 +183,11 @@ public sealed class BuildSettingsPanel
         ImGui.SameLine();
         if (ImGui.Button("Browse"))
         {
-            var dialog = new System.Windows.Forms.FolderBrowserDialog
+            FileDialog.PickFolder("Select Output Directory", _config.OutputDirectory, chosen =>
             {
-                Description  = "Select Output Directory",
-                SelectedPath = _config.OutputDirectory,
-            };
-            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                _config.OutputDirectory = dialog.SelectedPath;
+                _config.OutputDirectory = chosen;
                 EncodeToBuffer(_config.OutputDirectory, _outputDirBuf);
-            }
+            });
         }
 
         ImGui.Separator();

@@ -357,27 +357,20 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     // -------------------------------------------------------------------------
     private void OpenSceneDialog()
     {
-        var dialog = new System.Windows.Forms.OpenFileDialog
-        {
-            Title  = "Open Scene",
-            Filter = "Scene files (*.scene)|*.scene|All files (*.*)|*.*",
-            InitialDirectory = EditorState.ProjectPath,
-        };
-
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+        FileDialog.OpenFile("Open Scene", EditorState.ProjectPath, new[] { ".scene", ".json" }, path =>
         {
             try
             {
-                var scene = SceneSerializer.LoadFromFile(dialog.FileName);
-                _engine?.SceneManager.CreateScene(scene.Name);
+                var loaded = SceneSerializer.LoadFromFile(path);
+                _engine?.SceneManager.AdoptScene(loaded);
                 EditorState.SelectActor(null);
-                ConsoleLog.Add($"Opened: {dialog.FileName}", LogLevel.Info);
+                ConsoleLog.Add($"Opened: {path}", LogLevel.Info);
             }
             catch (Exception ex)
             {
                 ConsoleLog.Add($"Failed to open scene: {ex.Message}", LogLevel.Error);
             }
-        }
+        });
     }
 
     private void SaveCurrentScene()
@@ -389,26 +382,19 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             return;
         }
 
-        var dialog = new System.Windows.Forms.SaveFileDialog
-        {
-            Title  = "Save Scene",
-            Filter = "Scene files (*.scene)|*.scene|All files (*.*)|*.*",
-            FileName = scene.Name + ".scene",
-            InitialDirectory = EditorState.ProjectPath,
-        };
-
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+        FileDialog.SaveFile("Save Scene", EditorState.ProjectPath, new[] { ".scene", ".json" },
+            scene.Name + ".scene", path =>
         {
             try
             {
-                SceneSerializer.SaveToFile(scene, dialog.FileName);
-                ConsoleLog.Add($"Scene saved: {dialog.FileName}", LogLevel.Info);
+                SceneSerializer.SaveToFile(scene, path);
+                ConsoleLog.Add($"Scene saved: {path}", LogLevel.Info);
             }
             catch (Exception ex)
             {
                 ConsoleLog.Add($"Failed to save scene: {ex.Message}", LogLevel.Error);
             }
-        }
+        });
     }
 
     // -------------------------------------------------------------------------

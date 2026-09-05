@@ -212,13 +212,12 @@ public sealed class AssetBrowserPanel
         if (ImGui.MenuItem("Open"))
             OpenFile(filePath);
 
-        if (ImGui.MenuItem("Reveal in Explorer"))
-            RevealInExplorer(filePath);
+        if (ImGui.MenuItem("Reveal in File Manager"))
+            DesktopShell.RevealInFileManager(filePath);
 
         if (ImGui.MenuItem("Copy Path"))
         {
-            // Use WinForms clipboard
-            System.Windows.Forms.Clipboard.SetText(filePath);
+            DesktopShell.SetClipboardText(filePath);
             ConsoleLog.Add($"Copied path: {filePath}", LogLevel.Info);
         }
 
@@ -312,16 +311,4 @@ public sealed class AssetBrowserPanel
         }
     }
 
-    private static void RevealInExplorer(string path)
-    {
-        try
-        {
-            string dir = File.Exists(path) ? Path.GetDirectoryName(path)! : path;
-            System.Diagnostics.Process.Start("explorer.exe", $"\"{dir}\"");
-        }
-        catch (Exception ex)
-        {
-            ConsoleLog.Add($"Reveal in Explorer failed: {ex.Message}", LogLevel.Error);
-        }
-    }
 }

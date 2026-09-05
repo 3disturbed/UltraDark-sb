@@ -1,6 +1,5 @@
 using System.Numerics;
 using System.Text;
-using System.Windows.Forms;
 using ImGuiNET;
 
 namespace SexyBiscuit.Editor.Panels;
@@ -266,16 +265,8 @@ public sealed class ProjectManagerPanel
         ImGui.SameLine();
         if (ImGui.Button("Browse...##Dir"))
         {
-            using var dialog = new FolderBrowserDialog
-            {
-                Description = "Select project location",
-                UseDescriptionForTitle = true,
-                SelectedPath = _newProjectDir,
-            };
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                _newProjectDir = dialog.SelectedPath;
-            }
+            FileDialog.PickFolder("Select project location", _newProjectDir,
+                chosen => _newProjectDir = chosen);
         }
 
         ImGui.Spacing();
@@ -367,16 +358,8 @@ public sealed class ProjectManagerPanel
 
         if (ImGui.Button("Browse for .sbproject file...", new Vector2(buttonWidth, 40)))
         {
-            using var dialog = new OpenFileDialog
-            {
-                Title = "Open SexyBiscuit Project",
-                Filter = "SexyBiscuit Project (*.sbproject)|*.sbproject",
-                RestoreDirectory = true,
-            };
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                EditorState.OpenProject(dialog.FileName);
-            }
+            FileDialog.OpenFile("Open SexyBiscuit Project", EditorState.ProjectPath,
+                new[] { ".sbproject" }, EditorState.OpenProject);
         }
 
         ImGui.Spacing();

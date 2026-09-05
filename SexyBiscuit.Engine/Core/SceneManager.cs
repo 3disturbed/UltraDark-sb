@@ -107,6 +107,34 @@ public class SceneManager
         return scene;
     }
 
+    /// <summary>
+    /// Makes an already-built <see cref="Scene"/> the active one, destroying whatever was
+    /// active before.
+    /// </summary>
+    /// <remarks>
+    /// The path for a scene you constructed yourself — deserialised from a file, generated
+    /// procedurally, or assembled by a tool. <see cref="CreateScene"/> only makes an empty
+    /// one, so loading a file previously meant deserialising it and then throwing the
+    /// result away.
+    /// </remarks>
+    public Scene AdoptScene(Scene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+
+        if (_activeScene != null && !ReferenceEquals(_activeScene, scene))
+        {
+            OnSceneUnloaded?.Invoke(_activeScene);
+            _activeScene.Destroy();
+        }
+
+        foreach (var actor in _dontDestroyActors)
+            scene.AddActor(actor);
+
+        _activeScene = scene;
+        OnSceneLoaded?.Invoke(scene);
+        return scene;
+    }
+
     // -------------------------------------------------------------------------
     // Lifecycle — called by SBEngine
     // -------------------------------------------------------------------------

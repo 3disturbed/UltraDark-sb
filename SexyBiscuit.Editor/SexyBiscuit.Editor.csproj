@@ -2,13 +2,12 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- Plain net8.0, not net8.0-windows: the editor is MonoGame + ImGui, both of which
+         run everywhere. WinForms was only ever used for file dialogs and the clipboard,
+         and those now go through FileDialog and DesktopShell. -->
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UseWindowsForms>true</UseWindowsForms>
-    <!-- Lets `dotnet build` resolve the Windows targeting pack when restoring on
-         macOS or Linux. The editor still only RUNS on Windows. -->
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>SexyBiscuit.Editor</RootNamespace>
     <AssemblyName>SexyBiscuit.Editor</AssemblyName>
@@ -23,6 +22,9 @@
   <ItemGroup>
     <!-- ImGui.NET for dockable panel layout -->
     <PackageReference Include="ImGui.NET" Version="1.90.0" />
+
+    <!-- The editor hosts the engine, so it needs a windowing backend of its own. -->
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.1.303" />
   </ItemGroup>
 
 </Project>
