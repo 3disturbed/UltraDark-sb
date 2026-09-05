@@ -158,6 +158,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         // Open on a lit, navigable level rather than an empty void: the first thing a
         // new user needs is proof the viewport works.
+        // Edit mode: actors start so they render, but gameplay (a GameMode spawning players)
+        // waits for Play. Set before the first scene exists.
+        PlayMode.IsActive = false;
+
         _engine.SceneManager.AdoptScene(SceneTemplates.CreateDefault3D("Untitled"));
         _engineInitialized = true;
 
@@ -1148,6 +1152,26 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             _sceneSnapshot = null;
         }
 
+        // Play runs a fresh copy of the scene, the way a standalone game loads a level: every
+        // actor's Start runs now, with gameplay active, so a GameMode spawns its players here
+        // and never in the edit-time scene. Stop throws this copy away and restores the snapshot.
+        PlayMode.IsActive = true;
+        if (_sceneSnapshot != null && _engine != null)
+        {
+            try
+            {
+                string? selectedName = EditorState.SelectedActor?.Name;
+                var playScene = SceneSerializer.Deserialize(_sceneSnapshot);
+                _engine.SceneManager.AdoptScene(playScene);
+                playScene.FlushPendingActors();
+                EditorState.SelectActor(selectedName != null ? playScene.FindByName(selectedName) : null);
+            }
+            catch (Exception ex)
+            {
+                ConsoleLog.Add($"Could not load a play copy of the scene; playing the edit scene directly: {ex.Message}", LogLevel.Warning);
+            }
+        }
+
         EditorState.IsPlaying    = true;
         EditorState.IsPlayPaused = false;
         ConsoleLog.Add("Play mode started (F7 to stop).", LogLevel.Info);
@@ -1185,6 +1209,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         // Play mode is free to change global state, and none of it belongs to the scene,
         // so restoring the snapshot alone would leave the editor in whatever state the
         // game left behind: a paused TimeScale being the one you notice immediately.
+        // Back to edit mode before the restored scene starts its actors, or its GameMode
+        // would spawn a player into the edit scene.
+        PlayMode.IsActive = false;
+
         Time.TimeScale = 1f;
         _engine?.Timers.ClearAll();
         _engine?.Coroutines.StopAll();

@@ -319,9 +319,13 @@ camera transform**, so `Camera2D` has no effect there. The 3D viewport renders
 through the scene's `MainCamera3D` when **Game Cam** is on, otherwise through the
 editor camera.
 
-Stop restores the snapshot with `SceneManager.AdoptScene`, resets
-`Time.TimeScale`, and clears timers and coroutines. Tool calls made during play
-mode warn that they are discarded on Stop, and skip the undo snapshot.
+Play loads a fresh copy of the snapshot (`PlayMode.IsActive` is switched on first),
+so every actor's Start runs at play start the way it does when a standalone game
+loads the level: a `GameMode` spawns its players then, and never in the edit-time
+scene. Stop switches `PlayMode.IsActive` off, restores the snapshot with
+`SceneManager.AdoptScene`, resets `Time.TimeScale`, and clears timers and
+coroutines. Tool calls made during play mode warn that they are discarded on Stop,
+and skip the undo snapshot.
 
 ---
 

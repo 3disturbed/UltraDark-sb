@@ -430,3 +430,49 @@ public class SubsystemTests
         Assert.Null(instance.GetSubsystem<Declined>());
     }
 }
+
+public class PlayModeGateTests
+{
+    [Fact]
+    public void AGameModeDoesNothingWhilePlayModeIsInactive()
+    {
+        // Why: the editor starts actors at edit time so they render. A GameMode that spawned its
+        // game state and players then put them into every loaded, undone or hot-reloaded scene,
+        // and the junk was saved with the level.
+        PlayMode.IsActive = false;
+        var scene = new Scene("EditTime");
+        try
+        {
+            var mode = new GameMode();
+            scene.AddActor(mode);
+            scene.FlushPendingActors();
+
+            Assert.Empty(mode.Controllers);
+            Assert.Single(scene.Layers.SelectMany(l => l.Actors));   // the mode itself, nothing spawned
+        }
+        finally
+        {
+            PlayMode.IsActive = true;
+            scene.Destroy();
+        }
+    }
+
+    [Fact]
+    public void AGameModeStartsTheMatchWhenPlayModeIsActive()
+    {
+        var scene = new Scene("Playing");
+        try
+        {
+            var mode = new GameMode();
+            scene.AddActor(mode);
+            scene.FlushPendingActors();
+
+            Assert.Single(mode.Controllers);
+            Assert.NotNull(mode.GameState);
+        }
+        finally
+        {
+            scene.Destroy();
+        }
+    }
+}

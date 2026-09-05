@@ -108,7 +108,12 @@ public class GameMode : Actor
 
     protected override void OnStart()
     {
-        Current   = this;
+        Current = this;
+
+        // In an editor's edit-time scene nothing is played: no game state, no players. The
+        // match starts when Play loads the scene afresh with PlayMode.IsActive set.
+        if (!PlayMode.IsActive) return;
+
         GameState = GameStateFactory();
         Scene?.AddActor(GameState, SpawnLayer);
 

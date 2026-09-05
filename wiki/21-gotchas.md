@@ -370,6 +370,19 @@ name comes back with the candidates.
 
 **Check** — `grep -n 'ids change' SexyBiscuit.Engine/Mcp/Tools/SceneResources.cs`
 
+### Actors Start in edit mode too — gate gameplay on `PlayMode.IsActive`
+
+The editor flushes pending actors every frame so the outliner and the renderer
+see them, which runs `OnStart` / `Start` at edit time. Caching a component there
+is fine; changing the world is not: `GameMode` used to spawn its game state and
+players into every loaded, undone or hot-reloaded scene, and they were saved
+with the level. `GameMode.OnStart` now returns early unless
+`PlayMode.IsActive`, which the editor turns on only while Play runs a fresh copy
+of the scene. Do the same in your own Start-time spawners; standalone games never
+touch the flag (it defaults to true).
+
+**Check** — `grep -n 'PlayMode.IsActive' SexyBiscuit.Engine/Gameplay/GameMode.cs SexyBiscuit.Editor/EditorApp.cs`
+
 ### Tool calls during play mode are discarded on Stop
 
 Every mutating tool still runs while the scene is playing, but Stop restores the
