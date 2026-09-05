@@ -25,7 +25,7 @@ public sealed class AssetBrowserPanel
 
     public void Draw()
     {
-        if (!ImGui.Begin("Asset Browser"))
+        if (!ImGui.Begin("Content Browser"))
         {
             ImGui.End();
             return;

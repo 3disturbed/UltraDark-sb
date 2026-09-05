@@ -58,6 +58,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private CodeEditorPanel    _codeEditor    = null!;
     private GitPanel           _git           = null!;
     private ProjectManagerPanel _projectManager = null!;
+    private PlaceActorsPanel   _placeActors   = null!;
 
     // The editor's own 3D camera. Lives outside the scene so it is not saved with it
     // and is not destroyed when the scene is replaced.
@@ -142,6 +143,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         _codeEditor    = new CodeEditorPanel();
         _git           = new GitPanel();
         _projectManager = new ProjectManagerPanel();
+        _placeActors    = new PlaceActorsPanel();
 
         EditorState.LoadRecentProjects();
         CreateEditorCamera();
@@ -149,6 +151,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         // Route Debug output to editor console
         System.Diagnostics.Trace.Listeners.Add(new EditorTraceListener());
         ConsoleLog.Add("SexyBiscuit Editor initialized.", LogLevel.Info);
+
     }
 
     protected override void LoadContent()
@@ -311,6 +314,11 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
             if (ImGui.MenuItem("Project Manager"))
                 EditorState.ShowProjectManager = true;
+
+            ImGui.Separator();
+
+            if (ImGui.MenuItem("Reset Layout"))
+                _resetLayoutRequested = true;
 
             ImGui.EndMenu();
         }
@@ -593,8 +601,160 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         ImGui.Begin("##DockspaceHost", flags);
         ImGui.PopStyleVar(3);
-        ImGui.DockSpace(ImGui.GetID("MainDockspace"), System.Numerics.Vector2.Zero, ImGuiDockNodeFlags.PassthruCentralNode);
+
+        DrawToolbar();
+
+        uint dockspaceId = ImGui.GetID("MainDockspace");
+        ImGui.DockSpace(dockspaceId, System.Numerics.Vector2.Zero, ImGuiDockNodeFlags.PassthruCentralNode);
+
+        // Build the default arrangement once. After that ImGui restores whatever the user
+        // last had from imgui.ini, so rearranging panels sticks.
+        if (!_layoutBuilt)
+        {
+            _layoutBuilt = true;
+            if (_resetLayoutRequested || !File.Exists("imgui.ini"))
+                BuildDefaultLayout(dockspaceId, viewport.WorkSize);
+        }
+
+        if (_resetLayoutRequested)
+        {
+            _resetLayoutRequested = false;
+            BuildDefaultLayout(dockspaceId, viewport.WorkSize);
+        }
+
         ImGui.End();
+    }
+
+    private bool _layoutBuilt;
+    private bool _resetLayoutRequested;
+
+    /// <summary>
+    /// Arranges the panels the way Unreal arranges its editor: a palette on the left, the
+    /// viewport filling the centre, browsers along the bottom, and outliner over details
+    /// on the right.
+    /// </summary>
+    /// <remarks>
+    /// Splitting is order-dependent. Each split returns two node ids and the parent id
+    /// stops being valid for docking, so every subsequent split works on one of the
+    /// returned halves — reusing the parent silently docks windows into the wrong pane.
+    /// </remarks>
+    private void BuildDefaultLayout(uint dockspaceId, System.Numerics.Vector2 size)
+    {
+        ImGuiDock.RemoveNode(dockspaceId);
+        ImGuiDock.AddNode(dockspaceId, ImGuiDockNodeFlags.PassthruCentralNode);
+        ImGuiDock.SetNodeSize(dockspaceId, size);
+
+        // Left column: the actor palette.
+        uint left = ImGuiDock.Split(dockspaceId, ImGuiDir.Left, 0.15f, out uint afterLeft);
+
+        // Right column: outliner above details.
+        uint right = ImGuiDock.Split(afterLeft, ImGuiDir.Right, 0.24f, out uint centre);
+        uint rightBottom = ImGuiDock.Split(right, ImGuiDir.Down, 0.62f, out uint rightTop);
+
+        // Centre column: viewport above the browsers.
+        uint bottom = ImGuiDock.Split(centre, ImGuiDir.Down, 0.30f, out uint centreTop);
+        uint bottomRight = ImGuiDock.Split(bottom, ImGuiDir.Right, 0.42f, out uint bottomLeft);
+
+        ImGuiDock.DockWindow("Place Actors",   left);
+
+        ImGuiDock.DockWindow("Viewport",       centreTop);
+        ImGuiDock.DockWindow("Code Editor",    centreTop);
+        ImGuiDock.DockWindow("API Reference",  centreTop);
+
+        ImGuiDock.DockWindow("Content Browser", bottomLeft);
+        ImGuiDock.DockWindow("Output Log",      bottomRight);
+
+        ImGuiDock.DockWindow("World Outliner", rightTop);
+
+        ImGuiDock.DockWindow("Details",        rightBottom);
+        ImGuiDock.DockWindow("Build Settings", rightBottom);
+        ImGuiDock.DockWindow("Git",            rightBottom);
+        ImGuiDock.DockWindow("Render Stats",   rightBottom);
+
+        ImGuiDock.Finish(dockspaceId);
+        ConsoleLog.Add("Editor layout reset to default.", LogLevel.Info);
+    }
+
+    // -------------------------------------------------------------------------
+    // Toolbar
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// The strip under the menu bar: transport controls, gizmo mode and viewport options,
+    /// the things you reach for constantly and should not have to open a menu for.
+    /// </summary>
+    private void DrawToolbar()
+    {
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new System.Numerics.Vector2(10f, 5f));
+
+        bool playing = EditorState.IsPlaying;
+        bool paused  = EditorState.IsPlayPaused;
+
+        // Play turns green while running so the editor's state is obvious at a glance —
+        // in a docked layout the viewport border is easy to miss.
+        if (playing) ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.20f, 0.55f, 0.25f, 1f));
+        if (ImGui.Button(playing ? "Stop" : "Play"))
+        {
+            if (playing) ExitPlayMode();
+            else         EnterPlayMode();
+        }
+        if (playing) ImGui.PopStyleColor();
+        Tooltip(playing ? "Stop (F7)" : "Play (F5)");
+
+        ImGui.SameLine();
+        ImGui.BeginDisabled(!playing);
+        if (ImGui.Button(paused ? "Resume" : "Pause")) TogglePause();
+        ImGui.EndDisabled();
+        Tooltip("Pause (F6)");
+
+        ImGui.SameLine();
+        ImGui.TextDisabled("|");
+        ImGui.SameLine();
+
+        GizmoButton("Move",   GizmoMode.Translate, "Translate (G)");
+        ImGui.SameLine();
+        GizmoButton("Rotate", GizmoMode.Rotate,    "Rotate (R)");
+        ImGui.SameLine();
+        GizmoButton("Scale",  GizmoMode.Scale,     "Scale (S)");
+
+        ImGui.SameLine();
+        ImGui.TextDisabled("|");
+        ImGui.SameLine();
+
+        bool is3D = EditorState.Viewport3D;
+        if (is3D) ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.22f, 0.38f, 0.58f, 1f));
+        if (ImGui.Button(is3D ? "3D" : "2D")) EditorState.Viewport3D = !is3D;
+        if (is3D) ImGui.PopStyleColor();
+        Tooltip(is3D ? "Rendering through RenderSystem3D. Click for the 2D sprite pass."
+                     : "Rendering the 2D sprite pass. Click for RenderSystem3D.");
+
+        ImGui.SameLine();
+        bool stats = EditorState.ShowRenderStats;
+        if (ImGui.Button("Stats")) EditorState.ShowRenderStats = !stats;
+        Tooltip("Toggle the render statistics panel.");
+
+        // Frame timing on the right, where Unreal puts its performance readout.
+        var readout = $"{Time.Fps:F0} fps";
+        float textWidth = ImGui.CalcTextSize(readout).X;
+        ImGui.SameLine(ImGui.GetContentRegionAvail().X - textWidth);
+        ImGui.TextDisabled(readout);
+
+        ImGui.PopStyleVar();
+        ImGui.Separator();
+    }
+
+    private static void GizmoButton(string label, GizmoMode mode, string tooltip)
+    {
+        bool active = EditorState.GizmoMode == mode;
+        if (active) ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.30f, 0.45f, 0.65f, 1f));
+        if (ImGui.Button(label)) EditorState.GizmoMode = mode;
+        if (active) ImGui.PopStyleColor();
+        Tooltip(tooltip);
+    }
+
+    private static void Tooltip(string text)
+    {
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(text);
     }
 
     // -------------------------------------------------------------------------
@@ -613,6 +773,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         if (_engine?.SceneManager.ActiveScene != null)
         {
+            _placeActors.Draw(_engine.SceneManager.ActiveScene);
             _hierarchy.Draw(_engine.SceneManager.ActiveScene);
             _inspector.Draw();
             _assetBrowser.Draw();

@@ -36,7 +36,7 @@ public sealed class HierarchyPanel
 
     public void Draw(Scene scene)
     {
-        if (!ImGui.Begin("Hierarchy"))
+        if (!ImGui.Begin("World Outliner"))
         {
             ImGui.End();
             return;

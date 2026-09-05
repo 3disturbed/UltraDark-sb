@@ -32,7 +32,7 @@ public sealed class InspectorPanel
 
     public void Draw()
     {
-        if (!ImGui.Begin("Inspector"))
+        if (!ImGui.Begin("Details"))
         {
             ImGui.End();
             return;

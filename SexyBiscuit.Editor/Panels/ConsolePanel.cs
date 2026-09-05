@@ -36,7 +36,7 @@ public sealed class ConsolePanel
 
     public void Draw(Scene scene)
     {
-        if (!ImGui.Begin("Console"))
+        if (!ImGui.Begin("Output Log"))
         {
             ImGui.End();
             return;

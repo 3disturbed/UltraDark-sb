@@ -263,7 +263,13 @@ public sealed class ViewportPanel
 
         var mouse    = Mouse.GetState();
         var keyboard = Keyboard.GetState();
-        var mousePos = new Vector2(mouse.X, mouse.Y);
+
+        // Take the cursor from ImGui, not from Mouse.GetState(). _vpMin comes from
+        // ImGui.GetCursorScreenPos, so every comparison and subtraction below has to be
+        // in ImGui's space — mixing the two sources only happens to line up while the
+        // window is at the origin and the display is 1:1.
+        var io       = ImGui.GetIO();
+        var mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
 
         // Gizmo mode shortcuts (Blender-style)
         if (ImGui.IsKeyPressed(ImGuiKey.G)) EditorState.GizmoMode = GizmoMode.Translate;
@@ -279,8 +285,7 @@ public sealed class ViewportPanel
         _panning = rightDown;
 
         // Scroll = zoom
-        int scrollDelta = mouse.ScrollWheelValue;
-        float zoomDelta = ImGui.GetIO().MouseWheel;
+        float zoomDelta = io.MouseWheel;
         if (zoomDelta != 0f && !_panning)
         {
             float oldZoom = _cameraZoom;

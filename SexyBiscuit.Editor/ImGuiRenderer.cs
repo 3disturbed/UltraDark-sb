@@ -43,6 +43,7 @@ public sealed class ImGuiRenderer : IDisposable
 
     // Input
     private int _scrollWheelValue;
+    private int _hScrollWheelValue;
 
     // -------------------------------------------------------------------------
     // Public API
@@ -57,7 +58,12 @@ public sealed class ImGuiRenderer : IDisposable
 
         var io = ImGui.GetIO();
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
-        io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
+
+        // NOT ViewportsEnable. That flag makes Dear ImGui treat io.MousePos as absolute
+        // desktop coordinates and expects the backend to create real OS windows on demand
+        // (Platform_CreateWindow, Platform_GetWindowPos, and the rest). MonoGame has one
+        // GameWindow and no way to spawn more, so none of that exists here — the result
+        // was every click landing offset by the window's position on screen.
         io.BackendFlags |= ImGuiBackendFlags.HasMouseCursors;
 
         // Key mapping is handled automatically in ImGui.NET 1.90+
@@ -74,10 +80,19 @@ public sealed class ImGuiRenderer : IDisposable
     {
         var io = ImGui.GetIO();
 
-        io.DisplaySize = new System.Numerics.Vector2(
-            _gd.PresentationParameters.BackBufferWidth,
-            _gd.PresentationParameters.BackBufferHeight);
-        io.DisplayFramebufferScale = System.Numerics.Vector2.One;
+        // DisplaySize is in the same units as io.MousePos — window points. On a display
+        // where the framebuffer is larger than the window (a Retina panel with high-DPI
+        // enabled) the ratio goes in DisplayFramebufferScale, and the renderer multiplies
+        // by it to get pixels. They are equal on a 1:1 display, but deriving the scale
+        // rather than assuming One means the UI does not halve itself on a Retina Mac.
+        var clientBounds = _window.ClientBounds;
+        float pointsW = MathF.Max(1f, clientBounds.Width);
+        float pointsH = MathF.Max(1f, clientBounds.Height);
+
+        io.DisplaySize = new System.Numerics.Vector2(pointsW, pointsH);
+        io.DisplayFramebufferScale = new System.Numerics.Vector2(
+            _gd.PresentationParameters.BackBufferWidth  / pointsW,
+            _gd.PresentationParameters.BackBufferHeight / pointsH);
         io.DeltaTime = (float)gt.ElapsedGameTime.TotalSeconds;
         if (io.DeltaTime <= 0f) io.DeltaTime = 1f / 60f;
 
@@ -118,19 +133,66 @@ public sealed class ImGuiRenderer : IDisposable
         var mouse    = Mouse.GetState();
         var keyboard = Keyboard.GetState();
 
+        // Window-relative, which is the space ImGui wants with multi-viewport off.
         io.MousePos = new System.Numerics.Vector2(mouse.X, mouse.Y);
+
         io.MouseDown[0] = mouse.LeftButton   == XnaButtonState.Pressed;
         io.MouseDown[1] = mouse.RightButton  == XnaButtonState.Pressed;
         io.MouseDown[2] = mouse.MiddleButton == XnaButtonState.Pressed;
 
+        // One wheel notch is 120 units. Passing the real fraction rather than snapping to
+        // +/-1 is what makes trackpad scrolling feel continuous instead of jumping a line
+        // at a time.
         int scrollDelta = mouse.ScrollWheelValue - _scrollWheelValue;
-        io.MouseWheel   = scrollDelta > 0 ? 1f : scrollDelta < 0 ? -1f : 0f;
+        io.MouseWheel   = scrollDelta / 120f;
         _scrollWheelValue = mouse.ScrollWheelValue;
+
+        int hScrollDelta = mouse.HorizontalScrollWheelValue - _hScrollWheelValue;
+        io.MouseWheelH   = hScrollDelta / 120f;
+        _hScrollWheelValue = mouse.HorizontalScrollWheelValue;
 
         io.KeyCtrl  = keyboard.IsKeyDown(XnaKeys.LeftControl)  || keyboard.IsKeyDown(XnaKeys.RightControl);
         io.KeyShift = keyboard.IsKeyDown(XnaKeys.LeftShift)    || keyboard.IsKeyDown(XnaKeys.RightShift);
         io.KeyAlt   = keyboard.IsKeyDown(XnaKeys.LeftAlt)      || keyboard.IsKeyDown(XnaKeys.RightAlt);
         io.KeySuper = keyboard.IsKeyDown(XnaKeys.LeftWindows)  || keyboard.IsKeyDown(XnaKeys.RightWindows);
+
+        UpdateMouseCursor(io);
+    }
+
+    private MouseCursor? _appliedCursor;
+
+    /// <summary>
+    /// Applies the cursor shape ImGui asks for — a resize arrow on a window edge, a beam
+    /// over a text field, a hand over a link.
+    /// </summary>
+    /// <remarks>
+    /// The backend advertises <see cref="ImGuiBackendFlags.HasMouseCursors"/>, which is a
+    /// promise to do this. It was being advertised without being honoured, so the pointer
+    /// stayed an arrow everywhere and panel edges gave no hint they were draggable.
+    /// The shape is only pushed when it changes; MonoGame's SetCursor is a platform call.
+    /// </remarks>
+    private void UpdateMouseCursor(ImGuiIOPtr io)
+    {
+        if ((io.ConfigFlags & ImGuiConfigFlags.NoMouseCursorChange) != 0) return;
+
+        var desired = ImGui.GetMouseCursor();
+
+        var cursor = desired switch
+        {
+            ImGuiMouseCursor.TextInput  => MouseCursor.IBeam,
+            ImGuiMouseCursor.ResizeAll  => MouseCursor.SizeAll,
+            ImGuiMouseCursor.ResizeNS   => MouseCursor.SizeNS,
+            ImGuiMouseCursor.ResizeEW   => MouseCursor.SizeWE,
+            ImGuiMouseCursor.ResizeNESW => MouseCursor.SizeNESW,
+            ImGuiMouseCursor.ResizeNWSE => MouseCursor.SizeNWSE,
+            ImGuiMouseCursor.Hand       => MouseCursor.Hand,
+            ImGuiMouseCursor.NotAllowed => MouseCursor.No,
+            _                            => MouseCursor.Arrow,
+        };
+
+        if (ReferenceEquals(cursor, _appliedCursor)) return;
+        _appliedCursor = cursor;
+        Mouse.SetCursor(cursor);
     }
 
     private void UpdateKeyboard(ImGuiIOPtr io)
