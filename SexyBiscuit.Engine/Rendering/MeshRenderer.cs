@@ -24,10 +24,44 @@ public sealed class MeshRenderer : Component
     }
 
     // -------------------------------------------------------------------------
+    // Registry — RenderSystem3D iterates this instead of walking the scene graph
+    // -------------------------------------------------------------------------
+
+    /// <summary>Every live mesh renderer, in creation order. Maintained automatically.</summary>
+    public static readonly List<MeshRenderer> All = new();
+
+    // -------------------------------------------------------------------------
     // Properties
     // -------------------------------------------------------------------------
     public string?          ModelPath  { get; private set; }
     public List<Material3D> Materials  { get; set; } = new();
+
+    /// <summary>
+    /// Object-space bounds of the loaded geometry, used for frustum culling and LOD sizing.
+    /// Computed on load; defaults to a unit cube matching the fallback geometry.
+    /// </summary>
+    public Bounds LocalBounds { get; private set; } = new(Microsoft.Xna.Framework.Vector3.Zero, Microsoft.Xna.Framework.Vector3.One);
+
+    /// <summary>World-space bounds, recomputed from <see cref="LocalBounds"/> and the current transform.</summary>
+    public Bounds WorldBounds => LocalBounds.Transform(GetTransform3D().GetWorldMatrix());
+
+    /// <summary>Excludes this renderer from the frustum-culling test. Use for skyboxes and huge meshes.</summary>
+    public bool IgnoreCulling { get; set; }
+
+    /// <summary>
+    /// Draw order bucket. Renderers marked transparent are drawn after all opaque geometry,
+    /// sorted back-to-front, with depth writes disabled.
+    /// </summary>
+    public bool IsTransparent { get; set; }
+
+    /// <summary>Renderer is skipped entirely when false. Set by <see cref="LODGroup"/>.</summary>
+    public bool CastShadows { get; set; } = true;
+
+    /// <summary>Total triangles across every submesh. Zero until a model is loaded.</summary>
+    public int TriangleCount { get; private set; }
+
+    /// <summary>Submeshes uploaded to the GPU. Empty while the fallback cube is in use.</summary>
+    public IReadOnlyList<SubMesh> SubMeshes => _subMeshes;
 
     private List<SubMesh>  _subMeshes  = new();
     private BasicEffect?   _fallback;
@@ -36,12 +70,20 @@ public sealed class MeshRenderer : Component
     // Cached Transform3D
     // -------------------------------------------------------------------------
     private Transform3D? _t3d;
-    private Transform3D GetTransform3D()
+
+    /// <summary>The transform this renderer draws at, created on the actor if absent.</summary>
+    public Transform3D GetTransform3D()
     {
         if (_t3d != null) return _t3d;
         _t3d = Actor.GetComponent<Transform3D>() ?? Actor.AddComponent<Transform3D>();
         return _t3d;
     }
+
+    // -------------------------------------------------------------------------
+    // Registration
+    // -------------------------------------------------------------------------
+
+    public override void Awake() => All.Add(this);
 
     // -------------------------------------------------------------------------
     // Model loading
@@ -78,6 +120,11 @@ public sealed class MeshRenderer : Component
             return;
         }
 
+        var boundsMin = new Microsoft.Xna.Framework.Vector3(float.MaxValue);
+        var boundsMax = new Microsoft.Xna.Framework.Vector3(float.MinValue);
+        int totalTris = 0;
+        bool anyVertex = false;
+
         // Build one SubMesh per Assimp mesh
         foreach (var mesh in scene.Meshes)
         {
@@ -91,8 +138,13 @@ public sealed class MeshRenderer : Component
                     ? mesh.TextureCoordinateChannels[0][i]
                     : new Vector3D(0, 0, 0);
 
+                var xnaPos = new Microsoft.Xna.Framework.Vector3(pos.X, pos.Y, pos.Z);
+                boundsMin  = Microsoft.Xna.Framework.Vector3.Min(boundsMin, xnaPos);
+                boundsMax  = Microsoft.Xna.Framework.Vector3.Max(boundsMax, xnaPos);
+                anyVertex  = true;
+
                 vertices[i] = new VertexPositionNormalTexture(
-                    new Microsoft.Xna.Framework.Vector3(pos.X, pos.Y, pos.Z),
+                    xnaPos,
                     new Microsoft.Xna.Framework.Vector3(nor.X, nor.Y, nor.Z),
                     new Microsoft.Xna.Framework.Vector2(uv.X,  uv.Y));
             }
@@ -124,6 +176,8 @@ public sealed class MeshRenderer : Component
                 ib.SetData(idx32);
             }
 
+            totalTris += primCount;
+
             _subMeshes.Add(new SubMesh
             {
                 VertexBuffer   = vb,
@@ -136,6 +190,11 @@ public sealed class MeshRenderer : Component
             while (Materials.Count <= mesh.MaterialIndex)
                 Materials.Add(Material3D.Default);
         }
+
+        TriangleCount = totalTris;
+        LocalBounds   = anyVertex
+            ? Bounds.FromMinMax(boundsMin, boundsMax)
+            : new Bounds(Microsoft.Xna.Framework.Vector3.Zero, Microsoft.Xna.Framework.Vector3.One);
     }
 
     // -------------------------------------------------------------------------
@@ -320,7 +379,9 @@ public sealed class MeshRenderer : Component
 
     public override void OnDestroy()
     {
+        All.Remove(this);
         DisposeBuffers();
+        _subMeshes.Clear();
         _fallback?.Dispose();
         _fallback = null;
     }

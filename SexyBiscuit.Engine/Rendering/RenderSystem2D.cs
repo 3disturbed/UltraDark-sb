@@ -54,7 +54,6 @@ public class RenderSystem2D
     // Ping-pong targets for post-processing
     private RenderTarget2D? _pingTarget;
     private RenderTarget2D? _pongTarget;
-    private bool _targetsCreated;
 
     // Per-layer render targets keyed by layer name
     private readonly Dictionary<string, RenderTarget2D> _layerTargets = new();

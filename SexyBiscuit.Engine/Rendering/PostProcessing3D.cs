@@ -43,13 +43,7 @@ public sealed class PostProcessing3D : Component
     /// so they travel with the pass even before a real shader is attached.
     /// </summary>
     public static PostProcessPass3D Bloom(float threshold, float intensity)
-    {
-        var pass = new PostProcessPass3D { Name = "Bloom", Enabled = true };
-        // Parameters will be pushed to pass.Shader when it is set by the game code.
-        // Store them in a simple wrapper so the pipeline knows what to do.
-        pass = new BloomPass(threshold, intensity);
-        return pass;
-    }
+        => new BloomPass(threshold, intensity);
 
     public static PostProcessPass3D Vignette(float radius, float softness)
     {
@@ -60,6 +54,18 @@ public sealed class PostProcessing3D : Component
     {
         return new ColourGradePass(brightness, contrast, saturation);
     }
+
+    /// <summary>
+    /// Creates a CRT scanline pass. Attach the compiled <c>Scanline</c> effect to
+    /// <see cref="PostProcessPass3D.Shader"/>; the pipeline supplies its
+    /// <c>LineSpacing</c>, <c>LineIntensity</c> and <c>Curvature</c> parameters.
+    /// </summary>
+    /// <param name="lineSpacing">Pixels between scanlines.</param>
+    /// <param name="lineIntensity">How dark the scanlines are, 0 to 1.</param>
+    /// <param name="curvature">Barrel distortion amount. 0 is a flat screen.</param>
+    public static PostProcessPass3D Scanline(float lineSpacing = 3f, float lineIntensity = 0.35f,
+                                             float curvature = 0f)
+        => new ScanlinePass(lineSpacing, lineIntensity, curvature);
 
     // -------------------------------------------------------------------------
     // Processing
@@ -155,6 +161,12 @@ public sealed class PostProcessing3D : Component
                 TrySet(effect, "Contrast",    cg.Contrast);
                 TrySet(effect, "Saturation",  cg.Saturation);
                 break;
+
+            case ScanlinePass sl:
+                TrySet(effect, "LineSpacing",   sl.LineSpacing);
+                TrySet(effect, "LineIntensity", sl.LineIntensity);
+                TrySet(effect, "Curvature",     sl.Curvature);
+                break;
         }
     }
 
@@ -205,6 +217,21 @@ public sealed class PostProcessing3D : Component
             Radius   = radius;
             Softness = softness;
             Name     = "Vignette";
+        }
+    }
+
+    private sealed class ScanlinePass : PostProcessPass3D
+    {
+        public float LineSpacing   { get; }
+        public float LineIntensity { get; }
+        public float Curvature     { get; }
+
+        public ScanlinePass(float lineSpacing, float lineIntensity, float curvature)
+        {
+            LineSpacing   = lineSpacing;
+            LineIntensity = lineIntensity;
+            Curvature     = curvature;
+            Name          = "Scanline";
         }
     }
 

@@ -47,7 +47,8 @@ public sealed class Camera3D : Component
     // -------------------------------------------------------------------------
     private Transform3D? _t3d;
 
-    private Transform3D GetTransform3D()
+    /// <summary>The transform this camera views from, created on the actor if absent.</summary>
+    public Transform3D GetTransform3D()
     {
         if (_t3d != null) return _t3d;
         _t3d = Actor.GetComponent<Transform3D>();

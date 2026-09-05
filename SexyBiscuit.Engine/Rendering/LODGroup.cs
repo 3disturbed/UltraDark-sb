@@ -25,11 +25,20 @@ public sealed class LODLevel
 /// </summary>
 public sealed class LODGroup : Component
 {
+    /// <summary>Every live LOD group. <see cref="RenderSystem3D"/> evaluates these each frame.</summary>
+    public static readonly List<LODGroup> All = new();
+
     /// <summary>LOD levels, sorted descending by ScreenRelativeTransitionHeight for correct evaluation.</summary>
     public List<LODLevel> Levels { get; set; } = new();
 
     /// <summary>World-space radius used for screen-size estimation. Default 1 m.</summary>
     public float BoundingRadius { get; set; } = 1f;
+
+    // -------------------------------------------------------------------------
+    // Registration
+    // -------------------------------------------------------------------------
+    public override void Awake()     => All.Add(this);
+    public override void OnDestroy() => All.Remove(this);
 
     // -------------------------------------------------------------------------
     // Cached Transform3D
