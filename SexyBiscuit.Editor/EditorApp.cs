@@ -203,9 +203,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
             if (scene != null && EditorState.Viewport3D && _engine != null)
             {
-                // Prefer the scene's own camera so the viewport shows what the game will;
-                // fall back to the editor camera when the scene has not got one yet.
-                _engine.Renderer3D.OverrideCamera = Camera3D.Main ?? _editorCamera3D;
+                _engine.Renderer3D.OverrideCamera = ActiveViewportCamera;
                 _engine.Renderer3D.Render(scene);
             }
 
@@ -564,6 +562,20 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     /// as a fallback — a scene with its own MainCamera3D renders through that instead, so
     /// what you see matches what the game will show.
     /// </remarks>
+    /// <summary>
+    /// The camera the 3D viewport renders through.
+    /// </summary>
+    /// <remarks>
+    /// The editor's own camera by default, so flying around does not move the camera the
+    /// game will ship with. <see cref="EditorState.UseGameCamera"/> switches to the
+    /// scene's MainCamera3D when you want to check the actual framing.
+    /// </remarks>
+    public Camera3D? ActiveViewportCamera
+        => EditorState.UseGameCamera ? Camera3D.Main ?? _editorCamera3D : _editorCamera3D;
+
+    /// <summary>The editor camera's transform, for viewport navigation.</summary>
+    public Transform3D? EditorCameraTransform => _editorCameraTransform;
+
     private void CreateEditorCamera()
     {
         _editorCamera          = new Actor("(Editor Camera)");
@@ -728,6 +740,44 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
                      : "Rendering the 2D sprite pass. Click for RenderSystem3D.");
 
         ImGui.SameLine();
+        ImGui.BeginDisabled(!EditorState.Viewport3D);
+        bool gameCam = EditorState.UseGameCamera;
+        if (gameCam) ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.22f, 0.38f, 0.58f, 1f));
+        if (ImGui.Button(gameCam ? "Game Cam" : "Editor Cam")) EditorState.UseGameCamera = !gameCam;
+        if (gameCam) ImGui.PopStyleColor();
+        ImGui.EndDisabled();
+        Tooltip(gameCam
+            ? "Rendering through the scene's MainCamera3D. Click to fly the editor camera instead."
+            : "Rendering through the editor camera. Right-drag to look, WASD to move, scroll to dolly.");
+
+        ImGui.SameLine();
+        ImGui.TextDisabled("|");
+        ImGui.SameLine();
+
+        bool snap = EditorState.SnapEnabled;
+        if (snap) ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.30f, 0.45f, 0.65f, 1f));
+        if (ImGui.Button("Snap")) EditorState.SnapEnabled = !snap;
+        if (snap) ImGui.PopStyleColor();
+        Tooltip("Quantise gizmo drags to the increments beside this button.");
+
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(70f);
+        float translateSnap = EditorState.TranslateSnap;
+        if (ImGui.DragFloat("##snapT", ref translateSnap, 0.05f, 0.01f, 100f, "%.2f m"))
+            EditorState.TranslateSnap = translateSnap;
+        Tooltip("Translation snap, in world units.");
+
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(64f);
+        float rotateSnap = EditorState.RotateSnap;
+        if (ImGui.DragFloat("##snapR", ref rotateSnap, 1f, 1f, 180f, "%.0f deg"))
+            EditorState.RotateSnap = rotateSnap;
+        Tooltip("Rotation snap, in degrees.");
+
+        ImGui.SameLine();
+        ImGui.TextDisabled("|");
+        ImGui.SameLine();
+
         bool stats = EditorState.ShowRenderStats;
         if (ImGui.Button("Stats")) EditorState.ShowRenderStats = !stats;
         Tooltip("Toggle the render statistics panel.");

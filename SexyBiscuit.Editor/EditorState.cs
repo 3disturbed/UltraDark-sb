@@ -72,10 +72,24 @@ public static class EditorState
     /// <summary>
     /// Renders the scene through the 3D pipeline instead of the 2D sprite pass.
     /// </summary>
-    public static bool Viewport3D { get; set; }
+    /// <remarks>
+    /// On by default: this is a 3D engine, and the transform gizmos only exist on the 3D
+    /// path. A purely 2D project turns it off from the toolbar.
+    /// </remarks>
+    public static bool Viewport3D { get; set; } = true;
 
     /// <summary>True while the pointer is over the viewport, so it can capture navigation keys.</summary>
     public static bool ViewportFocused { get; set; }
+
+    /// <summary>
+    /// Renders the 3D viewport through the scene's MainCamera3D rather than the editor's
+    /// own camera.
+    /// </summary>
+    /// <remarks>
+    /// Off by default, so flying around the level does not move the camera the game ships
+    /// with. Turn it on to check what the player will actually see.
+    /// </remarks>
+    public static bool UseGameCamera { get; set; }
 
     // -------------------------------------------------------------------------
     // Gizmo snapping

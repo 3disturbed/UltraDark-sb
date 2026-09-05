@@ -3,7 +3,9 @@ using ImGuiNET;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using SexyBiscuit.Engine.Core;
+using SexyBiscuit.Engine.Rendering;
 using XnaButtonState = Microsoft.Xna.Framework.Input.ButtonState;
+using XnaVector3 = Microsoft.Xna.Framework.Vector3;
 
 namespace SexyBiscuit.Editor.Panels;
 
@@ -35,6 +37,18 @@ public sealed class ViewportPanel
     // Viewport bounds in screen space (updated each frame)
     private Vector2 _vpMin;
     private Vector2 _vpMax;
+
+    // 3D handles and editor-camera navigation
+    private readonly Gizmo3D _gizmo3D = new();
+    private float _editorCamYaw;
+    private float _editorCamPitch;
+    private bool  _cameraAnglesSeeded;
+
+    /// <summary>Editor camera movement speed in world units per second.</summary>
+    public float FlySpeed { get; set; } = 8f;
+
+    /// <summary>Mouse look sensitivity for the editor camera, in degrees per pixel.</summary>
+    public float LookSensitivity { get; set; } = 0.2f;
 
     // -------------------------------------------------------------------------
     // Draw
@@ -83,16 +97,31 @@ public sealed class ViewportPanel
         // Toolbar: gizmo mode buttons
         DrawGizmoToolbar();
 
-        // Draw grid lines via ImGui draw list
-        DrawGrid();
-
-        // Draw gizmo handles for selected actor
         var selected = EditorState.SelectedActor;
-        if (selected != null)
-            DrawGizmoHandles(selected);
 
-        // Handle input
-        HandleInput(selected);
+        if (EditorState.Viewport3D)
+        {
+            // The 2D grid over a perspective view reads as noise, so it is 2D-only.
+            var camera = EditorApp.Instance.ActiveViewportCamera;
+            var io     = ImGui.GetIO();
+            var mouse  = new Vector2(io.MousePos.X, io.MousePos.Y);
+
+            bool hovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows);
+
+            // The gizmo gets first refusal on the cursor: dragging a handle must not also
+            // pick a different actor or fly the camera.
+            bool gizmoBusy = _gizmo3D.Draw(selected, camera, _vpMin, availSize, mouse);
+
+            if (hovered && !gizmoBusy) Handle3DInput(camera, mouse);
+
+            DrawViewportHud(camera);
+        }
+        else
+        {
+            DrawGrid();
+            if (selected != null) DrawGizmoHandles(selected);
+            HandleInput(selected);
+        }
 
         ImGui.End();
     }
@@ -249,6 +278,105 @@ public sealed class ViewportPanel
                     screenPos + new Vector2(handleRad, -arrowLen + handleRad), 0xFF33FFFF);
                 drawList.AddCircleFilled(screenPos, 5f, 0xFFFFFFFF);
                 break;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 3D navigation
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Unreal-style viewport navigation: hold the right button to look, WASD to fly while
+    /// looking, Q/E for vertical, scroll to dolly, F to frame the selection.
+    /// </summary>
+    /// <remarks>
+    /// Movement is gated behind the right button being held, which is what stops WASD
+    /// stealing keystrokes from a text field elsewhere in the editor merely because the
+    /// pointer happens to be over the viewport.
+    /// </remarks>
+    private void Handle3DInput(Camera3D? camera, Vector2 mouse)
+    {
+        var transform = EditorApp.Instance.EditorCameraTransform;
+        if (transform == null || camera == null) return;
+
+        // Seed the stored angles from the camera's actual orientation the first time, so
+        // the view does not snap when navigation starts.
+        if (!_cameraAnglesSeeded)
+        {
+            var euler = transform.EulerAngles;
+            _editorCamPitch = euler.X;
+            _editorCamYaw   = euler.Y;
+            _cameraAnglesSeeded = true;
+        }
+
+        var io = ImGui.GetIO();
+        float dt = MathF.Max(1f / 240f, io.DeltaTime);
+
+        // Scroll dollies along the view direction whether or not a button is held.
+        if (io.MouseWheel != 0f)
+            transform.Position += transform.Forward * io.MouseWheel * FlySpeed * 0.25f;
+
+        if (ImGui.IsMouseDown(ImGuiMouseButton.Right))
+        {
+            var delta = ImGui.GetIO().MouseDelta;
+
+            if (delta != System.Numerics.Vector2.Zero)
+            {
+                _editorCamYaw   = SBMath.WrapAngle(_editorCamYaw + delta.X * LookSensitivity);
+                _editorCamPitch = Math.Clamp(_editorCamPitch + delta.Y * LookSensitivity, -89f, 89f);
+                transform.EulerAngles = new XnaVector3(_editorCamPitch, _editorCamYaw, 0f);
+            }
+
+            float speed = FlySpeed * (ImGui.IsKeyDown(ImGuiKey.LeftShift) ? 3f : 1f);
+            var move = XnaVector3.Zero;
+
+            if (ImGui.IsKeyDown(ImGuiKey.W)) move += transform.Forward;
+            if (ImGui.IsKeyDown(ImGuiKey.S)) move -= transform.Forward;
+            if (ImGui.IsKeyDown(ImGuiKey.D)) move += transform.Right;
+            if (ImGui.IsKeyDown(ImGuiKey.A)) move -= transform.Right;
+            if (ImGui.IsKeyDown(ImGuiKey.E)) move += XnaVector3.Up;
+            if (ImGui.IsKeyDown(ImGuiKey.Q)) move -= XnaVector3.Up;
+
+            if (move != XnaVector3.Zero)
+                transform.Position += SBMath.SafeNormalize(move) * speed * dt;
+        }
+        else
+        {
+            // Gizmo shortcuts only while not flying, so W does not fight Move mode.
+            if (ImGui.IsKeyPressed(ImGuiKey.W)) EditorState.GizmoMode = GizmoMode.Translate;
+            if (ImGui.IsKeyPressed(ImGuiKey.E)) EditorState.GizmoMode = GizmoMode.Rotate;
+            if (ImGui.IsKeyPressed(ImGuiKey.R)) EditorState.GizmoMode = GizmoMode.Scale;
+            if (ImGui.IsKeyPressed(ImGuiKey.F)) FrameSelection(transform);
+        }
+    }
+
+    /// <summary>Moves the editor camera to look at the selected actor from a short distance.</summary>
+    private static void FrameSelection(Transform3D cameraTransform)
+    {
+        var target = EditorState.SelectedActor?.GetComponent<Transform3D>();
+        if (target == null) return;
+
+        // Back off along the camera's current direction so framing does not also reorient.
+        cameraTransform.Position = target.Position - cameraTransform.Forward * 6f;
+        cameraTransform.LookAt(target.Position);
+    }
+
+    /// <summary>A corner readout of which camera is active and how to drive it.</summary>
+    private void DrawViewportHud(Camera3D? camera)
+    {
+        var drawList = ImGui.GetWindowDrawList();
+        var pos = _vpMin + new Vector2(10f, 10f);
+
+        string label = camera == null
+            ? "No camera"
+            : EditorState.UseGameCamera ? "Game camera" : "Editor camera";
+
+        drawList.AddText(pos, 0xFFBBBBBB, label);
+
+        if (camera != null && !EditorState.UseGameCamera)
+        {
+            drawList.AddText(pos + new Vector2(0f, 16f), 0xFF888888,
+                "RMB look  ·  WASD/QE fly  ·  scroll dolly  ·  F frame");
         }
     }
 
