@@ -128,7 +128,9 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             Enable3D     = false,
         });
 
-        _engine.SceneManager.CreateScene("Untitled");
+        // Open on a lit, navigable level rather than an empty void — the first thing a
+        // new user needs is proof the viewport works.
+        _engine.SceneManager.AdoptScene(SceneTemplates.CreateDefault3D("Untitled"));
         _engineInitialized = true;
 
         // Panels
@@ -246,7 +248,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         {
             if (ImGui.MenuItem("New Scene"))
             {
-                _engine?.SceneManager.CreateScene("Untitled");
+                _engine?.SceneManager.AdoptScene(SceneTemplates.CreateDefault3D("Untitled"));
                 EditorState.SelectActor(null);
                 ConsoleLog.Add("New scene created.", LogLevel.Info);
             }

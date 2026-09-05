@@ -105,10 +105,34 @@ public abstract class Collider2D : Component
 
     public override void OnDestroy()
     {
-        if (_fixture != null)
+        DetachFixture(ref _fixture);
+    }
+
+    /// <summary>
+    /// Detaches a fixture from its body, tolerating the body already being gone.
+    /// </summary>
+    /// <remarks>
+    /// Components are destroyed in the order they were added, and a scene file is free to
+    /// list Rigidbody2D before its colliders. When it does, the rigidbody's OnDestroy has
+    /// already called World.Remove on the body by the time the collider runs, and Aether
+    /// throws from inside Body.Remove on a body it no longer owns. There is nothing to
+    /// clean up in that case — the whole body is being discarded — so swallowing it is
+    /// correct rather than merely convenient.
+    /// </remarks>
+    internal static void DetachFixture(ref Fixture? fixture)
+    {
+        var target = fixture;
+        fixture = null;
+
+        if (target?.Body == null) return;
+
+        try
         {
-            _fixture.Body?.Remove(_fixture);
-            _fixture = null;
+            target.Body.Remove(target);
+        }
+        catch (Exception)
+        {
+            // The body was torn down first. Nothing left to detach from.
         }
     }
 
@@ -387,8 +411,11 @@ public sealed class CompositeCollider2D : Component
     /// <summary>Removes every generated fixture from the body.</summary>
     public void Clear()
     {
-        foreach (var fixture in _fixtures)
-            fixture.Body?.Remove(fixture);
+        for (int i = 0; i < _fixtures.Count; i++)
+        {
+            Fixture? fixture = _fixtures[i];
+            Collider2D.DetachFixture(ref fixture);
+        }
 
         _fixtures.Clear();
     }

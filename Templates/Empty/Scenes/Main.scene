@@ -11,12 +11,17 @@
             {
               "type": "Camera2D",
               "properties": {
-                "Zoom": 1.0,
-                "BackgroundColor": { "R": 100, "G": 149, "B": 237, "A": 255 }
+                "Zoom": 1.0
               }
             }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         }
       ]
     }

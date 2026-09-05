@@ -8,88 +8,247 @@
           "name": "Main Camera",
           "tag": "MainCamera",
           "components": [
-            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+            {
+              "type": "Camera2D",
+              "properties": {
+                "Zoom": 1.0
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "ArenaManager",
           "tag": "Manager",
           "components": [
-            { "type": "NetworkManager", "properties": {} },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ArenaManager.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ArenaManager.js"
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "WallTop",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 40, "G": 40, "B": 40, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 1280, "Height": 20 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 40,
+                  "G": 40,
+                  "B": 40,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  1280,
+                  20
+                ]
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 10, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 10,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "WallBottom",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 40, "G": 40, "B": 40, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 1280, "Height": 20 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 40,
+                  "G": 40,
+                  "B": 40,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  1280,
+                  20
+                ]
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 710, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 710,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "WallLeft",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 40, "G": 40, "B": 40, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 20, "Height": 720 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 40,
+                  "G": 40,
+                  "B": 40,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  20,
+                  720
+                ]
+              }
+            }
           ],
-          "transform": { "x": 10, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 10,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "WallRight",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 40, "G": 40, "B": 40, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 20, "Height": 720 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 40,
+                  "G": 40,
+                  "B": 40,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  20,
+                  720
+                ]
+              }
+            }
           ],
-          "transform": { "x": 1270, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 1270,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PickupSpawn1",
           "tag": "PickupSpawn",
           "components": [],
-          "transform": { "x": 200, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 200,
+            "y": 200,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PickupSpawn2",
           "tag": "PickupSpawn",
           "components": [],
-          "transform": { "x": 1080, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 1080,
+            "y": 200,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PickupSpawn3",
           "tag": "PickupSpawn",
           "components": [],
-          "transform": { "x": 200, "y": 520, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 200,
+            "y": 520,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PickupSpawn4",
           "tag": "PickupSpawn",
           "components": [],
-          "transform": { "x": 1080, "y": 520, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 1080,
+            "y": 520,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PickupSpawn5",
           "tag": "PickupSpawn",
           "components": [],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         }
       ]
     }

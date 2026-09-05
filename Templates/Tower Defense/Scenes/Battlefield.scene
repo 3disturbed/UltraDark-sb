@@ -8,98 +8,235 @@
           "name": "Main Camera",
           "tag": "MainCamera",
           "components": [
-            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+            {
+              "type": "Camera2D",
+              "properties": {
+                "Zoom": 1.0
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "TDManager",
           "tag": "Manager",
           "components": [
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/TDManager.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/TDManager.js"
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PlacementGrid",
           "tag": "PlacementGrid",
           "components": [
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/PlacementGrid.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/PlacementGrid.js"
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PathNode0",
           "tag": "PathNode",
           "components": [],
-          "transform": { "x": 0, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 200,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PathNode1",
           "tag": "PathNode",
           "components": [],
-          "transform": { "x": 300, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 300,
+            "y": 200,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PathNode2",
           "tag": "PathNode",
           "components": [],
-          "transform": { "x": 300, "y": 400, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 300,
+            "y": 400,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PathNode3",
           "tag": "PathNode",
           "components": [],
-          "transform": { "x": 600, "y": 400, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 600,
+            "y": 400,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PathNode4",
           "tag": "PathNode",
           "components": [],
-          "transform": { "x": 600, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 600,
+            "y": 200,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PathNode5",
           "tag": "PathNode",
           "components": [],
-          "transform": { "x": 900, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 900,
+            "y": 200,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PathNode6",
           "tag": "PathNode",
           "components": [],
-          "transform": { "x": 900, "y": 500, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 900,
+            "y": 500,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "PathNode7",
           "tag": "PathNode",
           "components": [],
-          "transform": { "x": 1280, "y": 500, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 1280,
+            "y": 500,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Base",
           "tag": "Base",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 255, "G": 200, "B": 50, "A": 255 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 48, "Height": 48 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 255,
+                  "G": 200,
+                  "B": 50,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  48,
+                  48
+                ]
+              }
+            }
           ],
-          "transform": { "x": 1280, "y": 500, "rotation": 0, "scaleX": 1.5, "scaleY": 1.5 }
+          "transform": {
+            "x": 1280,
+            "y": 500,
+            "rotation": 0,
+            "scaleX": 1.5,
+            "scaleY": 1.5
+          }
         },
         {
           "name": "PathLine0",
           "tag": "Decoration",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 139, "G": 90, "B": 43, "A": 100 } } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 139,
+                  "G": 90,
+                  "B": 43,
+                  "A": 100
+                }
+              }
+            }
           ],
-          "transform": { "x": 450, "y": 300, "rotation": 0, "scaleX": 30, "scaleY": 10 }
+          "transform": {
+            "x": 450,
+            "y": 300,
+            "rotation": 0,
+            "scaleX": 30,
+            "scaleY": 10
+          }
         },
         {
           "name": "PathLine1",
           "tag": "Decoration",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 139, "G": 90, "B": 43, "A": 100 } } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 139,
+                  "G": 90,
+                  "B": 43,
+                  "A": 100
+                }
+              }
+            }
           ],
-          "transform": { "x": 900, "y": 350, "rotation": 0, "scaleX": 15, "scaleY": 12 }
+          "transform": {
+            "x": 900,
+            "y": 350,
+            "rotation": 0,
+            "scaleX": 15,
+            "scaleY": 12
+          }
         }
       ]
     }

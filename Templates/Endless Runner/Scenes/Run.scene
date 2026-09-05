@@ -8,38 +8,123 @@
           "name": "Main Camera",
           "tag": "MainCamera",
           "components": [
-            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+            {
+              "type": "Camera2D",
+              "properties": {
+                "Zoom": 1.0
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Runner",
           "tag": "Player",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 255, "G": 220, "B": 50, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "Mass": 1.0, "GravityScale": 1.0, "FreezeRotation": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 32, "Height": 48 } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/RunnerController.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 255,
+                  "G": 220,
+                  "B": 50,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {
+                "Mass": 1.0,
+                "GravityScale": 1.0,
+                "FreezeRotation": true
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  32,
+                  48
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/RunnerController.js"
+              }
+            }
           ],
-          "transform": { "x": 200, "y": 450, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 200,
+            "y": 450,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Ground",
           "tag": "Ground",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 100, "G": 90, "B": 70, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 1920, "Height": 64 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 100,
+                  "G": 90,
+                  "B": 70,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  1920,
+                  64
+                ]
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 550, "rotation": 0, "scaleX": 60, "scaleY": 2 }
+          "transform": {
+            "x": 640,
+            "y": 550,
+            "rotation": 0,
+            "scaleX": 60,
+            "scaleY": 2
+          }
         },
         {
           "name": "RunManager",
           "tag": "Manager",
           "components": [
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/RunManager.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/RunManager.js"
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         }
       ]
     }

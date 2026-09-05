@@ -8,96 +8,345 @@
           "name": "Main Camera",
           "tag": "MainCamera",
           "components": [
-            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+            {
+              "type": "Camera2D",
+              "properties": {
+                "Zoom": 1.0
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Player",
           "tag": "Player",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 50, "G": 200, "B": 100, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "Mass": 1.0, "GravityScale": 0.0, "FreezeRotation": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 28, "Height": 28 } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/SurvivorController.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 50,
+                  "G": 200,
+                  "B": 100,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {
+                "Mass": 1.0,
+                "GravityScale": 0.0,
+                "FreezeRotation": true
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  28,
+                  28
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/SurvivorController.js"
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "WorldManager",
           "tag": "Manager",
           "components": [
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/WorldManager.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/WorldManager.js"
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "CameraRig",
           "tag": "CameraRig",
           "components": [
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/CameraFollow.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/CameraFollow.js"
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "TreeNode1",
           "tag": "Resource",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 30, "G": 120, "B": 30, "A": 255 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 32, "Height": 32, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ResourceNode.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 30,
+                  "G": 120,
+                  "B": 30,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  32,
+                  32
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ResourceNode.js"
+              }
+            }
           ],
-          "transform": { "x": 300, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1.5 }
+          "transform": {
+            "x": 300,
+            "y": 200,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1.5
+          }
         },
         {
           "name": "TreeNode2",
           "tag": "Resource",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 30, "G": 120, "B": 30, "A": 255 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 32, "Height": 32, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ResourceNode.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 30,
+                  "G": 120,
+                  "B": 30,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  32,
+                  32
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ResourceNode.js"
+              }
+            }
           ],
-          "transform": { "x": 800, "y": 150, "rotation": 0, "scaleX": 1, "scaleY": 1.5 }
+          "transform": {
+            "x": 800,
+            "y": 150,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1.5
+          }
         },
         {
           "name": "RockNode1",
           "tag": "Resource",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 140, "G": 140, "B": 140, "A": 255 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 28, "Height": 28, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ResourceNode.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 140,
+                  "G": 140,
+                  "B": 140,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  28,
+                  28
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ResourceNode.js"
+              }
+            }
           ],
-          "transform": { "x": 500, "y": 450, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 500,
+            "y": 450,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "RockNode2",
           "tag": "Resource",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 140, "G": 140, "B": 140, "A": 255 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 28, "Height": 28, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ResourceNode.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 140,
+                  "G": 140,
+                  "B": 140,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  28,
+                  28
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ResourceNode.js"
+              }
+            }
           ],
-          "transform": { "x": 950, "y": 500, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 950,
+            "y": 500,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "BerryBush1",
           "tag": "Resource",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 220, "G": 100, "B": 120, "A": 255 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 24, "Height": 24, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ResourceNode.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 220,
+                  "G": 100,
+                  "B": 120,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  24,
+                  24
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ResourceNode.js"
+              }
+            }
           ],
-          "transform": { "x": 200, "y": 500, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 200,
+            "y": 500,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "BerryBush2",
           "tag": "Resource",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 220, "G": 100, "B": 120, "A": 255 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 24, "Height": 24, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ResourceNode.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 220,
+                  "G": 100,
+                  "B": 120,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  24,
+                  24
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ResourceNode.js"
+              }
+            }
           ],
-          "transform": { "x": 1100, "y": 300, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 1100,
+            "y": 300,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         }
       ]
     }

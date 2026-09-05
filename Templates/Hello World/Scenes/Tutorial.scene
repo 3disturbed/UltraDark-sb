@@ -15,7 +15,13 @@
               }
             }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "TutorialManager",
@@ -28,7 +34,13 @@
               }
             }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "ExampleBox",
@@ -37,21 +49,27 @@
             {
               "type": "SpriteRenderer",
               "properties": {
-                "Color": { "R": 50, "G": 150, "B": 255, "A": 255 }
+                "Tint": {
+                  "R": 50,
+                  "G": 150,
+                  "B": 255,
+                  "A": 255
+                }
               }
             },
             {
               "type": "Rigidbody2D",
               "properties": {
-                "GravityScale": 0,
-                "IsStatic": false
+                "GravityScale": 0
               }
             },
             {
               "type": "BoxCollider2D",
               "properties": {
-                "Width": 32,
-                "Height": 32
+                "Size": [
+                  32,
+                  32
+                ]
               }
             },
             {
@@ -61,7 +79,13 @@
               }
             }
           ],
-          "transform": { "x": 400, "y": 300, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 400,
+            "y": 300,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "ClickTarget",
@@ -70,15 +94,22 @@
             {
               "type": "SpriteRenderer",
               "properties": {
-                "Color": { "R": 50, "G": 255, "B": 100, "A": 255 }
+                "Tint": {
+                  "R": 50,
+                  "G": 255,
+                  "B": 100,
+                  "A": 255
+                }
               }
             },
             {
               "type": "BoxCollider2D",
               "properties": {
-                "Width": 48,
-                "Height": 48,
-                "IsTrigger": true
+                "IsTrigger": true,
+                "Size": [
+                  48,
+                  48
+                ]
               }
             },
             {
@@ -88,7 +119,13 @@
               }
             }
           ],
-          "transform": { "x": 700, "y": 350, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 700,
+            "y": 350,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         }
       ]
     }

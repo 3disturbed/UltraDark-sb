@@ -57,6 +57,30 @@ public sealed class MeshRenderer : Component
     /// <summary>Renderer is skipped entirely when false. Set by <see cref="LODGroup"/>.</summary>
     public bool CastShadows { get; set; } = true;
 
+    /// <summary>
+    /// A built-in shape to draw instead of a loaded model — cube, sphere, plane and the
+    /// rest.
+    /// </summary>
+    /// <remarks>
+    /// Geometry is built on the first draw rather than when this is set, because a scene
+    /// file is deserialised long before a <see cref="GraphicsDevice"/> is in reach. That
+    /// is what lets a scene say <c>"MeshType": "Plane"</c> and get a floor with no asset
+    /// on disk. Setting <see cref="LoadModel"/> afterwards takes precedence.
+    /// </remarks>
+    public MeshPrimitive MeshType
+    {
+        get => _meshType;
+        set
+        {
+            if (_meshType == value) return;
+            _meshType = value;
+            _primitive = null;      // rebuilt on the next draw
+        }
+    }
+    private MeshPrimitive _meshType = MeshPrimitive.None;
+
+    private PrimitiveMesh.Geometry? _primitive;
+
     /// <summary>Total triangles across every submesh. Zero until a model is loaded.</summary>
     public int TriangleCount { get; private set; }
 
@@ -209,6 +233,12 @@ public sealed class MeshRenderer : Component
 
         if (_subMeshes.Count == 0)
         {
+            if (TryGetPrimitive(gd) is { } primitive)
+            {
+                DrawPrimitive(gd, primitive, world, view, projection);
+                return;
+            }
+
             DrawFallbackCube(gd, world, view, projection);
             return;
         }
@@ -270,6 +300,64 @@ public sealed class MeshRenderer : Component
                     gd.DrawIndexedPrimitives(Microsoft.Xna.Framework.Graphics.PrimitiveType.TriangleList, 0, 0, sub.PrimitiveCount);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Resolves the generated geometry for <see cref="MeshType"/>, building it on first
+    /// use, and updates the renderer's bounds to match.
+    /// </summary>
+    internal PrimitiveMesh.Geometry? TryGetPrimitive(GraphicsDevice gd)
+    {
+        if (_meshType == MeshPrimitive.None) return null;
+        if (_primitive is { } cached && !cached.VertexBuffer.IsDisposed) return cached;
+
+        _primitive = PrimitiveMesh.Get(_meshType, gd);
+
+        if (_primitive != null)
+        {
+            // Culling and LOD both read LocalBounds, so a generated shape has to publish
+            // its own rather than keeping the default unit cube.
+            LocalBounds   = _primitive.Bounds;
+            TriangleCount = _primitive.PrimitiveCount;
+        }
+
+        return _primitive;
+    }
+
+    private void DrawPrimitive(GraphicsDevice gd, PrimitiveMesh.Geometry geometry,
+        Microsoft.Xna.Framework.Matrix world,
+        Microsoft.Xna.Framework.Matrix view,
+        Microsoft.Xna.Framework.Matrix projection)
+    {
+        var material = Materials.Count > 0 ? Materials[0] : Material3D.Default;
+        var basic = GetOrCreateFallback(gd);
+
+        basic.World      = world;
+        basic.View       = view;
+        basic.Projection = projection;
+
+        if (material.AlbedoMap != null)
+        {
+            basic.TextureEnabled = true;
+            basic.Texture        = material.AlbedoMap;
+            basic.DiffuseColor   = Microsoft.Xna.Framework.Vector3.One;
+        }
+        else
+        {
+            basic.TextureEnabled = false;
+            basic.DiffuseColor   = material.AlbedoColor.ToVector3();
+        }
+
+        gd.SetVertexBuffer(geometry.VertexBuffer);
+        gd.Indices = geometry.IndexBuffer;
+
+        foreach (var pass in basic.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            gd.DrawIndexedPrimitives(
+                Microsoft.Xna.Framework.Graphics.PrimitiveType.TriangleList,
+                0, 0, geometry.PrimitiveCount);
         }
     }
 

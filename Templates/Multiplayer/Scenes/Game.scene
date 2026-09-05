@@ -8,18 +8,39 @@
           "name": "Main Camera",
           "tag": "MainCamera",
           "components": [
-            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+            {
+              "type": "Camera2D",
+              "properties": {
+                "Zoom": 1.0
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "GameManager",
           "tag": "Manager",
           "components": [
-            { "type": "NetworkManager", "properties": {} },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/GameManager.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/GameManager.js"
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         }
       ]
     }

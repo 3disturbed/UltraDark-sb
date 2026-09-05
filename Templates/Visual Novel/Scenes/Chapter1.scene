@@ -8,57 +8,154 @@
           "name": "Main Camera",
           "tag": "MainCamera",
           "components": [
-            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+            {
+              "type": "Camera2D",
+              "properties": {
+                "Zoom": 1.0
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Background",
           "tag": "Background",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 40, "G": 60, "B": 90, "A": 255 } } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 40,
+                  "G": 60,
+                  "B": 90,
+                  "A": 255
+                }
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 40, "scaleY": 23 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 40,
+            "scaleY": 23
+          }
         },
         {
           "name": "PortraitLeft",
           "tag": "PortraitLeft",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 200, "G": 200, "B": 220, "A": 255 } } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 200,
+                  "G": 200,
+                  "B": 220,
+                  "A": 255
+                }
+              }
+            }
           ],
-          "transform": { "x": 250, "y": 350, "rotation": 0, "scaleX": 4, "scaleY": 6 }
+          "transform": {
+            "x": 250,
+            "y": 350,
+            "rotation": 0,
+            "scaleX": 4,
+            "scaleY": 6
+          }
         },
         {
           "name": "PortraitRight",
           "tag": "PortraitRight",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 220, "G": 200, "B": 200, "A": 255 } } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 220,
+                  "G": 200,
+                  "B": 200,
+                  "A": 255
+                }
+              }
+            }
           ],
-          "transform": { "x": 1030, "y": 350, "rotation": 0, "scaleX": 4, "scaleY": 6 }
+          "transform": {
+            "x": 1030,
+            "y": 350,
+            "rotation": 0,
+            "scaleX": 4,
+            "scaleY": 6
+          }
         },
         {
           "name": "TextBox",
           "tag": "TextBox",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 20, "G": 20, "B": 30, "A": 230 } } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 20,
+                  "G": 20,
+                  "B": 30,
+                  "A": 230
+                }
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 600, "rotation": 0, "scaleX": 38, "scaleY": 4 }
+          "transform": {
+            "x": 640,
+            "y": 600,
+            "rotation": 0,
+            "scaleX": 38,
+            "scaleY": 4
+          }
         },
         {
           "name": "DialogueManager",
           "tag": "Manager",
           "components": [
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/DialogueManager.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/DialogueManager.js"
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "ChoiceManager",
           "tag": "ChoiceManager",
           "components": [
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/ChoiceManager.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/ChoiceManager.js"
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         }
       ]
     }

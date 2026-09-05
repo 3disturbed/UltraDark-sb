@@ -8,159 +8,589 @@
           "name": "Main Camera",
           "tag": "MainCamera",
           "components": [
-            { "type": "Camera2D", "properties": { "Zoom": 1.0 } }
+            {
+              "type": "Camera2D",
+              "properties": {
+                "Zoom": 1.0
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Player1Car",
           "tag": "Car",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 50, "G": 120, "B": 255, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "Mass": 1.0, "GravityScale": 0, "FreezeRotation": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 24, "Height": 40 } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/CarController.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 50,
+                  "G": 120,
+                  "B": 255,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {
+                "Mass": 1.0,
+                "GravityScale": 0,
+                "FreezeRotation": true
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  24,
+                  40
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/CarController.js"
+              }
+            }
           ],
-          "transform": { "x": 600, "y": 600, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 600,
+            "y": 600,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Player2Car",
           "tag": "Car",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 255, "G": 80, "B": 80, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "Mass": 1.0, "GravityScale": 0, "FreezeRotation": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 24, "Height": 40 } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/CarController.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 255,
+                  "G": 80,
+                  "B": 80,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {
+                "Mass": 1.0,
+                "GravityScale": 0,
+                "FreezeRotation": true
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  24,
+                  40
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/CarController.js"
+              }
+            }
           ],
-          "transform": { "x": 680, "y": 600, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 680,
+            "y": 600,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "RaceManager",
           "tag": "Manager",
           "components": [
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/RaceManager.js" } }
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/RaceManager.js"
+              }
+            }
           ],
-          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "OuterWallTop",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 60, "G": 60, "B": 60, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 1200, "Height": 20 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 60,
+                  "G": 60,
+                  "B": 60,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  1200,
+                  20
+                ]
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 50, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 50,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "OuterWallBottom",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 60, "G": 60, "B": 60, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 1200, "Height": 20 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 60,
+                  "G": 60,
+                  "B": 60,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  1200,
+                  20
+                ]
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 670, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 670,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "OuterWallLeft",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 60, "G": 60, "B": 60, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 20, "Height": 600 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 60,
+                  "G": 60,
+                  "B": 60,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  20,
+                  600
+                ]
+              }
+            }
           ],
-          "transform": { "x": 50, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 50,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "OuterWallRight",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 60, "G": 60, "B": 60, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 20, "Height": 600 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 60,
+                  "G": 60,
+                  "B": 60,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  20,
+                  600
+                ]
+              }
+            }
           ],
-          "transform": { "x": 1230, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 1230,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "InnerWallTop",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 60, "G": 60, "B": 60, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 700, "Height": 20 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 60,
+                  "G": 60,
+                  "B": 60,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  700,
+                  20
+                ]
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 200, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 200,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "InnerWallBottom",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 60, "G": 60, "B": 60, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 700, "Height": 20 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 60,
+                  "G": 60,
+                  "B": 60,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  700,
+                  20
+                ]
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 520, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 520,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "InnerWallLeft",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 60, "G": 60, "B": 60, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 20, "Height": 300 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 60,
+                  "G": 60,
+                  "B": 60,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  20,
+                  300
+                ]
+              }
+            }
           ],
-          "transform": { "x": 300, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 300,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "InnerWallRight",
           "tag": "Wall",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 60, "G": 60, "B": 60, "A": 255 } } },
-            { "type": "Rigidbody2D", "properties": { "IsStatic": true } },
-            { "type": "BoxCollider2D", "properties": { "Width": 20, "Height": 300 } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 60,
+                  "G": 60,
+                  "B": 60,
+                  "A": 255
+                }
+              }
+            },
+            {
+              "type": "Rigidbody2D",
+              "properties": {}
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "Size": [
+                  20,
+                  300
+                ]
+              }
+            }
           ],
-          "transform": { "x": 980, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 980,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Checkpoint0",
           "tag": "Checkpoint",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 255, "G": 255, "B": 0, "A": 80 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 100, "Height": 30, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/Checkpoint.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 255,
+                  "G": 255,
+                  "B": 0,
+                  "A": 80
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  100,
+                  30
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/Checkpoint.js"
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 650, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 650,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Checkpoint1",
           "tag": "Checkpoint",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 255, "G": 255, "B": 0, "A": 80 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 30, "Height": 100, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/Checkpoint.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 255,
+                  "G": 255,
+                  "B": 0,
+                  "A": 80
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  30,
+                  100
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/Checkpoint.js"
+              }
+            }
           ],
-          "transform": { "x": 100, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 100,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Checkpoint2",
           "tag": "Checkpoint",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 255, "G": 255, "B": 0, "A": 80 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 100, "Height": 30, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/Checkpoint.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 255,
+                  "G": 255,
+                  "B": 0,
+                  "A": 80
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  100,
+                  30
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/Checkpoint.js"
+              }
+            }
           ],
-          "transform": { "x": 640, "y": 80, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 640,
+            "y": 80,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         },
         {
           "name": "Checkpoint3",
           "tag": "Checkpoint",
           "components": [
-            { "type": "SpriteRenderer", "properties": { "Color": { "R": 255, "G": 255, "B": 0, "A": 80 } } },
-            { "type": "BoxCollider2D", "properties": { "Width": 30, "Height": 100, "IsTrigger": true } },
-            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/Checkpoint.js" } }
+            {
+              "type": "SpriteRenderer",
+              "properties": {
+                "Tint": {
+                  "R": 255,
+                  "G": 255,
+                  "B": 0,
+                  "A": 80
+                }
+              }
+            },
+            {
+              "type": "BoxCollider2D",
+              "properties": {
+                "IsTrigger": true,
+                "Size": [
+                  30,
+                  100
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/Checkpoint.js"
+              }
+            }
           ],
-          "transform": { "x": 1200, "y": 360, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+          "transform": {
+            "x": 1200,
+            "y": 360,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
         }
       ]
     }

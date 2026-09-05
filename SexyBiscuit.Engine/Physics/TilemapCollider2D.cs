@@ -118,8 +118,9 @@ public sealed class TilemapCollider2D : Component
     {
         if (_body != null)
         {
+            // UnregisterBody already takes the body out of the world; removing it again
+            // here threw from inside Aether.
             PhysicsSystem2D.Instance.UnregisterBody(Actor);
-            PhysicsSystem2D.Instance.World.Remove(_body);
             _body = null;
         }
 

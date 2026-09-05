@@ -40,6 +40,9 @@ public static class SceneSerializer
             PropertyNameCaseInsensitive = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
+        // Enums as names, not ordinals. A scene file is meant to be read and hand-edited,
+        // and "Directional" survives someone reordering the enum where 0 does not.
+        opts.Converters.Add(new JsonStringEnumConverter());
         opts.Converters.Add(new Vector2JsonConverter());
         opts.Converters.Add(new Vector3JsonConverter());
         opts.Converters.Add(new Vector4JsonConverter());
@@ -204,6 +207,22 @@ public static class SceneSerializer
 
         actor.LifeSpan = dto.LifeSpan ?? 0f;
 
+        // The readable object form overrides the arrays when present.
+        if (dto.TransformObject is { } t2)
+        {
+            actor.Transform.LocalPosition = new Vector2(t2.X, t2.Y);
+            actor.Transform.LocalRotation = t2.Rotation;
+            actor.Transform.LocalScale    = new Vector2(t2.ScaleX, t2.ScaleY);
+        }
+
+        if (dto.Transform3DObject is { } t3)
+        {
+            var t3d = actor.GetComponent<Transform3D>() ?? actor.AddComponent<Transform3D>();
+            t3d.LocalPosition    = new Vector3(t3.X, t3.Y, t3.Z);
+            t3d.LocalEulerAngles = new Vector3(t3.RotX, t3.RotY, t3.RotZ);
+            t3d.LocalScale       = new Vector3(t3.ScaleX, t3.ScaleY, t3.ScaleZ);
+        }
+
         // Restore the 3D transform only when the file carries one, so a 2D actor
         // does not pick up an unnecessary component on load.
         if (dto.Position3 != null || dto.Rotation3 != null || dto.Scale3 != null)
@@ -225,16 +244,7 @@ public static class SceneSerializer
         {
             if (string.IsNullOrWhiteSpace(compDto.Type)) continue;
 
-            Type? type = Type.GetType(compDto.Type);
-            if (type is null)
-            {
-                // Fallback: search loaded assemblies by full name
-                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    type = asm.GetType(compDto.Type);
-                    if (type != null) break;
-                }
-            }
+            Type? type = ResolveComponentType(compDto.Type);
 
             if (type is null)
             {
@@ -267,7 +277,23 @@ public static class SceneSerializer
                     var prop = type.GetProperty(propName,
                         BindingFlags.Public | BindingFlags.Instance);
 
-                    if (prop is null || !prop.CanWrite) continue;
+                    // Say something. A misspelled or renamed property used to be skipped
+                    // in silence, so the component came up with default values and the
+                    // scene just quietly behaved wrong — the worst possible failure for a
+                    // file people edit by hand.
+                    if (prop is null)
+                    {
+                        Console.Error.WriteLine(
+                            $"[SceneSerializer] '{type.Name}' has no property '{propName}'. Ignored.");
+                        continue;
+                    }
+
+                    if (!prop.CanWrite)
+                    {
+                        Console.Error.WriteLine(
+                            $"[SceneSerializer] '{type.Name}.{propName}' is read-only. Ignored.");
+                        continue;
+                    }
 
                     try
                     {
@@ -285,6 +311,84 @@ public static class SceneSerializer
         }
 
         return actor;
+    }
+
+    // -------------------------------------------------------------------------
+    // Component type resolution
+    // -------------------------------------------------------------------------
+
+    private static readonly Dictionary<string, Type?> _typeCache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Resolves a component type name written in a scene file.
+    /// </summary>
+    /// <remarks>
+    /// Tries assembly-qualified, then full name in any loaded assembly, then the bare type
+    /// name. The bare form is what makes scene files writable by hand: nobody should have
+    /// to type "SexyBiscuit.Engine.Rendering.Camera3D, SexyBiscuit.Engine" to place a
+    /// camera. Results are cached because a large scene asks for the same handful of types
+    /// hundreds of times.
+    ///
+    /// An ambiguous bare name — two components with the same short name in different
+    /// namespaces — resolves to the first match and logs, rather than failing the load.
+    /// Write the full name to disambiguate.
+    /// </remarks>
+    internal static Type? ResolveComponentType(string name)
+    {
+        if (_typeCache.TryGetValue(name, out var cached)) return cached;
+
+        Type? found = Type.GetType(name);
+
+        if (found == null)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                found = assembly.GetType(name, throwOnError: false);
+                if (found != null) break;
+            }
+        }
+
+        if (found == null && !name.Contains('.'))
+        {
+            var matches = new List<Type>();
+
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                foreach (var candidate in SafeGetTypes(assembly))
+                {
+                    if (!string.Equals(candidate.Name, name, StringComparison.Ordinal)) continue;
+                    if (!typeof(Component).IsAssignableFrom(candidate)) continue;
+                    if (candidate.IsAbstract) continue;
+                    matches.Add(candidate);
+                }
+            }
+
+            if (matches.Count > 1)
+            {
+                Console.Error.WriteLine(
+                    $"[SceneSerializer] '{name}' matches {matches.Count} component types " +
+                    $"({string.Join(", ", matches.Select(t => t.FullName))}). Using the first; " +
+                    "write the full name to disambiguate.");
+            }
+
+            found = matches.FirstOrDefault();
+        }
+
+        _typeCache[name] = found;
+        return found;
+    }
+
+    /// <summary>Types from an assembly, tolerating ones that fail to load.</summary>
+    /// <remarks>
+    /// An assembly referencing something absent — Steamworks.NET without the native
+    /// library, say — throws from GetTypes. The partial list on the exception is still
+    /// usable, and one unrelated assembly should not fail a scene load.
+    /// </remarks>
+    private static IEnumerable<Type> SafeGetTypes(System.Reflection.Assembly assembly)
+    {
+        try { return assembly.GetTypes(); }
+        catch (System.Reflection.ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null)!; }
+        catch { return Array.Empty<Type>(); }
     }
 
     // -------------------------------------------------------------------------
@@ -419,8 +523,60 @@ internal sealed class ActorDto
     [JsonPropertyName("lifeSpan")]
     public float? LifeSpan { get; set; }
 
+    /// <summary>
+    /// Hand-authoring form of the 2D transform: <c>{ "x": 0, "y": 0, "rotation": 0,
+    /// "scaleX": 1, "scaleY": 1 }</c>. Read only — saving always writes the flat arrays.
+    /// </summary>
+    [JsonPropertyName("transform")]
+    public Transform2Dto? TransformObject { get; set; }
+
+    /// <summary>
+    /// Hand-authoring form of the 3D transform, with rotation in Euler degrees:
+    /// <c>{ "x": 0, "y": 5, "z": 10, "rotX": -45, ... }</c>. Read only.
+    /// </summary>
+    [JsonPropertyName("transform3d")]
+    public Transform3Dto? Transform3DObject { get; set; }
+
     [JsonPropertyName("components")]
     public List<ComponentDto>? Components { get; set; }
+}
+
+/// <summary>
+/// The readable object form of a 2D transform, for scene files written by hand.
+/// </summary>
+/// <remarks>
+/// The canonical on-disk form is flat arrays, which is compact and what saving produces.
+/// Accepting this shape too costs little and makes a hand-edited file far easier to read:
+/// <c>"rotation": 90</c> beats a bare number in the third slot of an array.
+/// </remarks>
+internal sealed class Transform2Dto
+{
+    [JsonPropertyName("x")]        public float X { get; set; }
+    [JsonPropertyName("y")]        public float Y { get; set; }
+    [JsonPropertyName("rotation")] public float Rotation { get; set; }
+    [JsonPropertyName("scaleX")]   public float ScaleX { get; set; } = 1f;
+    [JsonPropertyName("scaleY")]   public float ScaleY { get; set; } = 1f;
+}
+
+/// <summary>
+/// The readable object form of a 3D transform, with rotation as Euler degrees.
+/// </summary>
+/// <remarks>
+/// Euler is offered on read only. Saving writes a quaternion, because Euler round-trips
+/// are lossy near the poles and depend on rotation order — fine for a human typing
+/// "rotX: -45" once, not fine for a value re-saved on every edit.
+/// </remarks>
+internal sealed class Transform3Dto
+{
+    [JsonPropertyName("x")]      public float X { get; set; }
+    [JsonPropertyName("y")]      public float Y { get; set; }
+    [JsonPropertyName("z")]      public float Z { get; set; }
+    [JsonPropertyName("rotX")]   public float RotX { get; set; }
+    [JsonPropertyName("rotY")]   public float RotY { get; set; }
+    [JsonPropertyName("rotZ")]   public float RotZ { get; set; }
+    [JsonPropertyName("scaleX")] public float ScaleX { get; set; } = 1f;
+    [JsonPropertyName("scaleY")] public float ScaleY { get; set; } = 1f;
+    [JsonPropertyName("scaleZ")] public float ScaleZ { get; set; } = 1f;
 }
 
 internal sealed class ComponentDto
@@ -557,6 +713,33 @@ public sealed class ColorJsonConverter : JsonConverter<Color>
 {
     public override Color Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
+        // Accept { "R": 255, "G": 128, "B": 0, "A": 255 } as well as a hex string. Both
+        // turn up in hand-written files, and channel names are the more obvious of the two
+        // to someone reading a scene for the first time.
+        if (reader.TokenType == JsonTokenType.StartObject)
+        {
+            byte r = 255, g = 255, b = 255, a = 255;
+
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName) continue;
+
+                string channel = reader.GetString() ?? "";
+                reader.Read();
+                byte value = (byte)Math.Clamp(reader.GetInt32(), 0, 255);
+
+                switch (channel.ToUpperInvariant())
+                {
+                    case "R": r = value; break;
+                    case "G": g = value; break;
+                    case "B": b = value; break;
+                    case "A": a = value; break;
+                }
+            }
+
+            return new Color(r, g, b, a);
+        }
+
         string hex = reader.GetString() ?? "#FFFFFFFF";
         hex = hex.TrimStart('#');
 

@@ -341,10 +341,11 @@ public sealed class RenderSystem3D : IDisposable
 
         if (subMeshes.Count == 0)
         {
-            // Fallback cube path — MeshRenderer owns the geometry and its own BasicEffect.
+            // Generated primitive, or the fallback cube. MeshRenderer owns both, along
+            // with its own BasicEffect.
             renderer.Draw(_gd, view, proj);
             _stats.DrawCalls++;
-            _stats.Triangles += 12;
+            _stats.Triangles += renderer.TriangleCount > 0 ? renderer.TriangleCount : 12;
             return;
         }
 
