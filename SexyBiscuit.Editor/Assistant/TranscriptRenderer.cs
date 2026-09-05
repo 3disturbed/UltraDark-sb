@@ -37,6 +37,32 @@ public sealed class TranscriptRenderer
     private int  _pruneCountdown = 300;
 
     /// <summary>Scrolls to the newest entry on the next draw.</summary>
+    private bool _wasBusy;
+
+    /// <summary>
+    /// The spinner row at the end of the log: what the assistant is doing, and for how long.
+    /// </summary>
+    /// <remarks>
+    /// Drawn in <see cref="Throbber.Working"/> rather than the text colour, so it reads as
+    /// transient status rather than as another message in the conversation.
+    /// </remarks>
+    private static void DrawWorkingRow(AssistantHost host)
+    {
+        ImGui.Spacing();
+
+        var session = host.Session;
+
+        string label = host.Board.PendingQuestion != null
+            ? "Waiting for your answer"
+            : session?.SubStatus ?? "Working...";
+
+        // Elapsed only makes sense for a turn actually running; a question is waiting on
+        // the user, and timing them would just be a stopwatch on their reading speed.
+        TimeSpan? elapsed = host.Board.PendingQuestion == null ? session?.TurnElapsed : null;
+
+        Throbber.DrawWithLabel(label, elapsed, Throbber.Working);
+    }
+
     public void JumpToLatest()
     {
         _stickToBottom = true;
@@ -73,9 +99,20 @@ public sealed class TranscriptRenderer
             ImGui.Spacing();
         }
 
+        // The activity row lives at the tail of the log, where the eye already is while
+        // waiting. The header's dot says a session is busy; this says what it is doing and
+        // for how long, next to the message it is replying to.
+        bool busy = host.IsBusy;
+        if (busy) DrawWorkingRow(host);
+
         ImGui.PopTextWrapPos();
 
-        if (changed)
+        // Appearing or disappearing changes the content height, so treat it like new
+        // content — otherwise the row can push the last message out of view.
+        bool busyChanged = busy != _wasBusy;
+        _wasBusy = busy;
+
+        if (changed || busyChanged)
         {
             _lastVersion = transcript.Version;
             if (_stickToBottom) ImGui.SetScrollHereY(1f);
@@ -259,6 +296,8 @@ public sealed class TranscriptRenderer
 
     private void DrawToolCall(ToolCallEntry call, ImGuiRenderer imGui)
     {
+        bool running = call.Status == ToolCallStatus.Running;
+
         (string glyph, Vector4 colour) = call.Status switch
         {
             ToolCallStatus.Running   => ("[..]", RunningColour),
@@ -267,12 +306,37 @@ public sealed class TranscriptRenderer
             _                        => ("[--]", DimColour),
         };
 
-        string duration = call.Status == ToolCallStatus.Running ? "" : $"  {call.Duration.TotalMilliseconds:F0} ms";
-        string header   = $"{glyph} {call.Label}{duration}";
+        // A finished call reports how long it took; a running one reports how long it has
+        // been going, which is the number that tells you whether to wait or to stop it.
+        // Below a second the digits churn without informing, so they stay hidden.
+        string duration;
+        if (!running)
+        {
+            duration = $"  {call.Duration.TotalMilliseconds:F0} ms";
+        }
+        else
+        {
+            var elapsed = DateTime.UtcNow - call.CreatedUtc;
+            duration = elapsed.TotalSeconds >= 1
+                ? elapsed.TotalMinutes >= 1
+                    ? $"  {(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}"
+                    : $"  {elapsed.Seconds}s"
+                : "";
+        }
+
+        string header = $"{glyph} {call.Label}{duration}";
 
         ImGui.PushStyleColor(ImGuiCol.Text, colour);
         bool open = ImGui.TreeNodeEx(header + "##call", ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.NoTreePushOnOpen);
         ImGui.PopStyleColor();
+
+        // A spinner beside the row, so a long-running call is distinguishable at a glance
+        // from a finished one without reading the glyph.
+        if (running)
+        {
+            ImGui.SameLine();
+            Throbber.Draw(radius: 5f, thickness: 2f, colour: RunningColour);
+        }
 
         if (call.ArgsCompact.Length > 0 && !open)
         {

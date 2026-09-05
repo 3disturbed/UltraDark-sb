@@ -64,6 +64,7 @@ public sealed class ClaudeCodeSession : IDisposable
     private DateTime?    _interruptUtc;
     private bool         _stdoutClosed;
     private bool         _turnPending;
+    private DateTime?    _turnStartedUtc;
     private bool         _initWarned;
     private bool         _finished;
 
@@ -106,6 +107,20 @@ public sealed class ClaudeCodeSession : IDisposable
     public bool    ResumeFailed  { get; private set; }
     public string? UnknownOption { get; private set; }
     public DateTime StartedUtc   => _startedUtc;
+
+    /// <summary>
+    /// When the current turn began, or null when no turn is running.
+    /// </summary>
+    /// <remarks>
+    /// The activity indicator shows this as elapsed time. A spinner alone says something
+    /// is happening; a spinner with "0:47" on it is the difference between a slow turn and
+    /// a hung one, and decides whether the user reaches for Stop.
+    /// </remarks>
+    public DateTime? TurnStartedUtc => _turnStartedUtc;
+
+    /// <summary>How long the current turn has been running. Zero when idle.</summary>
+    public TimeSpan TurnElapsed
+        => _turnStartedUtc is { } started ? DateTime.UtcNow - started : TimeSpan.Zero;
 
     public bool IsAlive => _process != null && !_finished;
 
@@ -316,6 +331,7 @@ public sealed class ClaudeCodeSession : IDisposable
 
         entry.State  = UserEntryState.Sent;
         _turnPending = true;
+        _turnStartedUtc ??= DateTime.UtcNow;
         if (State == SessionState.Ready) State = SessionState.Working;
         _transcript.SetBusy("Thinking...");
     }
@@ -507,6 +523,7 @@ public sealed class ClaudeCodeSession : IDisposable
                 OutputTokens   += result.OutputTokens;
                 Turns++;
                 _turnPending  = false;
+                _turnStartedUtc = null;
                 _interruptUtc = null;
                 if (result.IsError) NoteApiError(result.ResultText);
                 if (State is SessionState.Working or SessionState.WaitingForPermission or SessionState.Interrupting or SessionState.Starting)
@@ -627,6 +644,7 @@ public sealed class ClaudeCodeSession : IDisposable
         ExitReason = message;
         State      = SessionState.Exited;
         _turnPending = false;
+        _turnStartedUtc = null;
 
         foreach (var pending in PendingPermissions.ToList())
             pending.Decision = PermissionDecision.Withdrawn;

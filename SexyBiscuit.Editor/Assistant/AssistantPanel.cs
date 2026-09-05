@@ -14,7 +14,7 @@ public sealed class AssistantPanel
 {
     private static readonly Vector4 Red    = new(0.75f, 0.20f, 0.20f, 1f);
     private static readonly Vector4 Green  = new(0.35f, 0.75f, 0.40f, 1f);
-    private static readonly Vector4 Amber  = new(0.95f, 0.70f, 0.20f, 1f);
+    private static readonly Vector4 Amber  = Throbber.Working;
     private static readonly Vector4 Grey   = new(0.50f, 0.50f, 0.55f, 1f);
     private static readonly Vector4 Blue   = new(0.45f, 0.65f, 1.00f, 1f);
     private static readonly Vector4 Dim    = new(0.55f, 0.55f, 0.58f, 1f);
@@ -415,7 +415,9 @@ public sealed class AssistantPanel
                 ImGui.TableNextColumn(); ImGui.TextUnformatted(entry.Tool);
                 ImGui.TableNextColumn(); ImGui.TextUnformatted(Truncate(entry.Arguments, 120));
                 ImGui.TableNextColumn(); ImGui.TextUnformatted(entry.State == ActivityState.Running ? "running..." : Truncate(entry.Summary, 120));
-                ImGui.TableNextColumn(); ImGui.TextUnformatted(entry.State == ActivityState.Running ? "" : entry.Duration.TotalMilliseconds.ToString("F0"));
+                ImGui.TableNextColumn();
+                if (entry.State == ActivityState.Running) Throbber.Draw(radius: 5f, thickness: 2f, colour: Throbber.Working);
+                else ImGui.TextUnformatted(entry.Duration.TotalMilliseconds.ToString("F0"));
 
                 ImGui.PopStyleColor();
             }
