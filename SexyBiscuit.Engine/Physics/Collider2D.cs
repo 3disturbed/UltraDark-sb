@@ -208,3 +208,190 @@ public sealed class PolygonCollider2D : Collider2D
         return body.CreateFixture(shape);
     }
 }
+
+// ---------------------------------------------------------------------------
+// EdgeCollider2D
+// ---------------------------------------------------------------------------
+
+/// <summary>
+/// An open polyline collider — terrain outlines, one-way platforms, level boundaries.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Unlike <see cref="PolygonCollider2D"/> this has no interior and no convexity or vertex
+/// limit, so a whole hillside can be one collider. Nothing can be "inside" it; a fast body
+/// can pass through if it moves further than the line in one step, which is what
+/// continuous collision on the <see cref="Rigidbody2D"/> is for.
+/// </para>
+/// <para>
+/// Aether's chain shape handles the ghost-vertex problem for you: without it, a body
+/// sliding across the join between two segments catches on the internal corner.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// var ground = actor.AddComponent&lt;EdgeCollider2D&gt;();
+/// ground.Points = terrainOutline;      // local space, in order
+/// ground.Loop   = false;               // true closes the polyline into a ring
+/// </code>
+/// </example>
+public sealed class EdgeCollider2D : Collider2D
+{
+    /// <summary>
+    /// Points along the line, in local space and in order. At least two are required.
+    /// The default is a flat ten-unit segment.
+    /// </summary>
+    public XnaVec2[] Points { get; set; } = new[]
+    {
+        new XnaVec2(-5f, 0f),
+        new XnaVec2( 5f, 0f),
+    };
+
+    /// <summary>Closes the polyline into a ring, joining the last point back to the first.</summary>
+    public bool Loop { get; set; }
+
+    public override Fixture CreateFixture(Body body)
+    {
+        if (Points.Length < 2)
+            throw new InvalidOperationException(
+                $"EdgeCollider2D on '{Actor.Name}' needs at least two points.");
+
+        var verts = new Vertices(Points.Length);
+        foreach (var p in Points) verts.Add(new AetherVec2(p.X, p.Y));
+
+        var shape = new ChainShape(verts, Loop);
+        return body.CreateFixture(shape);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CompositeCollider2D
+// ---------------------------------------------------------------------------
+
+/// <summary>One shape within a <see cref="CompositeCollider2D"/>.</summary>
+public sealed class CompositeShape2D
+{
+    /// <summary>Offset from the actor's origin, in local space.</summary>
+    public XnaVec2 Offset { get; set; }
+
+    /// <summary>Rotation in radians, applied to a box shape.</summary>
+    public float Rotation { get; set; }
+
+    /// <summary>Full extents when this is a box. Ignored when <see cref="Radius"/> is set.</summary>
+    public XnaVec2 Size { get; set; } = XnaVec2.One;
+
+    /// <summary>Radius when this is a circle. Zero or less means the shape is a box.</summary>
+    public float Radius { get; set; }
+
+    /// <summary>True when this shape is a circle rather than a box.</summary>
+    public bool IsCircle => Radius > 0f;
+
+    /// <summary>Creates a box part.</summary>
+    public static CompositeShape2D Box(XnaVec2 size, XnaVec2 offset = default, float rotation = 0f)
+        => new() { Size = size, Offset = offset, Rotation = rotation };
+
+    /// <summary>Creates a circle part.</summary>
+    public static CompositeShape2D Circle(float radius, XnaVec2 offset = default)
+        => new() { Radius = radius, Offset = offset };
+}
+
+/// <summary>
+/// Several shapes attached to one body, so a concave outline behaves as a single object.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Aether polygons must be convex and are capped at eight vertices. An L-shaped platform
+/// or a spaceship silhouette therefore cannot be one polygon — this decomposes it into
+/// parts that share a body, so it moves and collides as one rigid thing rather than as
+/// several actors held together.
+/// </para>
+/// <para>
+/// This is a component rather than a <see cref="Collider2D"/> subclass because the base
+/// class produces exactly one fixture. Adding it creates a <see cref="Rigidbody2D"/> if
+/// the actor has none, the same as any other collider.
+/// </para>
+/// </remarks>
+/// <example>
+/// <code>
+/// var hull = actor.AddComponent&lt;CompositeCollider2D&gt;();
+/// hull.Shapes.Add(CompositeShape2D.Box(new Vector2(3f, 1f)));
+/// hull.Shapes.Add(CompositeShape2D.Box(new Vector2(1f, 3f), new Vector2(-1f, 1f)));
+/// hull.Shapes.Add(CompositeShape2D.Circle(0.6f, new Vector2(1.5f, 0f)));
+/// hull.Rebuild();
+/// </code>
+/// </example>
+public sealed class CompositeCollider2D : Component
+{
+    /// <summary>The shapes making up this collider.</summary>
+    public List<CompositeShape2D> Shapes { get; } = new();
+
+    /// <summary>Surface material applied to every generated fixture.</summary>
+    public PhysicsMaterial2D? Material { get; set; }
+
+    /// <summary>Generated shapes act as triggers rather than solid geometry.</summary>
+    public bool IsTrigger { get; set; }
+
+    /// <summary>Fixtures produced by the most recent build.</summary>
+    public IReadOnlyList<Fixture> Fixtures => _fixtures;
+
+    private readonly List<Fixture> _fixtures = new();
+
+    public override void Awake()
+    {
+        if (GetComponent<Rigidbody2D>() == null)
+            Actor.AddComponent<Rigidbody2D>();
+    }
+
+    public override void Start() => Rebuild();
+
+    /// <summary>
+    /// Discards the existing fixtures and rebuilds them from <see cref="Shapes"/>.
+    /// Safe to call at runtime after changing the shape list.
+    /// </summary>
+    public void Rebuild()
+    {
+        Clear();
+
+        var body = GetComponent<Rigidbody2D>()?.Body;
+        if (body == null) return;
+
+        float density = Material?.Density ?? 1f;
+
+        foreach (var part in Shapes)
+        {
+            Shape shape = part.IsCircle
+                ? new CircleShape(part.Radius, density)
+                {
+                    Position = new AetherVec2(part.Offset.X, part.Offset.Y),
+                }
+                : new PolygonShape(
+                    PolygonTools.CreateRectangle(
+                        part.Size.X * 0.5f, part.Size.Y * 0.5f,
+                        new AetherVec2(part.Offset.X, part.Offset.Y),
+                        part.Rotation),
+                    density);
+
+            var fixture = body.CreateFixture(shape);
+
+            if (Material != null)
+            {
+                fixture.Friction    = Material.Friction;
+                fixture.Restitution = Material.Restitution;
+            }
+
+            fixture.IsSensor = IsTrigger;
+            _fixtures.Add(fixture);
+        }
+    }
+
+    /// <summary>Removes every generated fixture from the body.</summary>
+    public void Clear()
+    {
+        foreach (var fixture in _fixtures)
+            fixture.Body?.Remove(fixture);
+
+        _fixtures.Clear();
+    }
+
+    public override void OnDestroy() => Clear();
+}

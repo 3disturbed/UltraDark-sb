@@ -344,6 +344,93 @@ public sealed class PhysicsSystem3D : IDisposable
         return handle;
     }
 
+    /// <summary>
+    /// Adds a dynamic cylinder body for the given actor.
+    /// </summary>
+    /// <remarks>
+    /// Bepu treats cylinders as a special case with a more expensive contact solver than
+    /// boxes or capsules. Prefer a capsule for characters and a box for crates; reach for
+    /// a cylinder when the flat circular face matters — wheels, barrels, coins.
+    /// </remarks>
+    public BodyHandle AddCylinder(Actor actor, float radius, float length, float mass)
+    {
+        var shape   = new Cylinder(radius, length);
+        var inertia = shape.ComputeInertia(mass);
+        var idx     = Simulation.Shapes.Add(shape);
+
+        var t3d    = actor.GetComponent<Transform3D>();
+        var pos    = t3d != null ? PhysicsConvert3D.ToNum(t3d.Position) : NumVec3.Zero;
+        var orient = t3d != null ? PhysicsConvert3D.ToNum(t3d.Rotation) : NumQuat.Identity;
+
+        var handle = Simulation.Bodies.Add(BodyDescription.CreateDynamic(
+            new RigidPose(pos, orient),
+            inertia,
+            new CollidableDescription(idx, 0.1f),
+            new BodyActivityDescription(0.01f)));
+
+        Register(actor, handle);
+        return handle;
+    }
+
+    /// <summary>
+    /// Adds a dynamic body built from several child shapes rigidly welded together.
+    /// </summary>
+    /// <remarks>
+    /// A compound is how you get a concave dynamic body — a table, an L-shaped block, a
+    /// vehicle chassis with a bumper. Bepu has no concave dynamic primitive, so the shape
+    /// is decomposed into convex parts and their inertias are combined about the
+    /// compound's centre of mass.
+    /// </remarks>
+    /// <param name="actor">Actor the body belongs to.</param>
+    /// <param name="children">Child shapes with their local poses and individual masses.</param>
+    public BodyHandle AddCompound(Actor actor, IReadOnlyList<CompoundChildShape> children)
+    {
+        if (children.Count == 0)
+            throw new ArgumentException("A compound needs at least one child shape.", nameof(children));
+
+        using var builder = new CompoundBuilder(_pool, Simulation.Shapes, children.Count);
+
+        foreach (var child in children)
+        {
+            var pose = new RigidPose(
+                PhysicsConvert3D.ToNum(child.LocalPosition),
+                PhysicsConvert3D.ToNum(child.LocalRotation));
+
+            switch (child.Kind)
+            {
+                case CompoundChildKind.Box:
+                    builder.Add(new Box(child.Size.X, child.Size.Y, child.Size.Z), pose, child.Mass);
+                    break;
+                case CompoundChildKind.Sphere:
+                    builder.Add(new Sphere(child.Radius), pose, child.Mass);
+                    break;
+                case CompoundChildKind.Capsule:
+                    builder.Add(new Capsule(child.Radius, child.Length), pose, child.Mass);
+                    break;
+                case CompoundChildKind.Cylinder:
+                    builder.Add(new Cylinder(child.Radius, child.Length), pose, child.Mass);
+                    break;
+            }
+        }
+
+        builder.BuildDynamicCompound(out var compoundChildren, out var inertia, out var center);
+        var compound = new Compound(compoundChildren);
+        var idx      = Simulation.Shapes.Add(compound);
+
+        var t3d    = actor.GetComponent<Transform3D>();
+        var pos    = t3d != null ? PhysicsConvert3D.ToNum(t3d.Position) : NumVec3.Zero;
+        var orient = t3d != null ? PhysicsConvert3D.ToNum(t3d.Rotation) : NumQuat.Identity;
+
+        var handle = Simulation.Bodies.Add(BodyDescription.CreateDynamic(
+            new RigidPose(pos + center, orient),
+            inertia,
+            new CollidableDescription(idx, 0.1f),
+            new BodyActivityDescription(0.01f)));
+
+        Register(actor, handle);
+        return handle;
+    }
+
     /// <summary>Adds a static (immovable) box to the world. Not bound to any actor.</summary>
     public void AddStaticBox(XnaVec3 position, XnaQuat rotation, XnaVec3 halfExtents)
     {
@@ -361,7 +448,19 @@ public sealed class PhysicsSystem3D : IDisposable
     /// Adds a static triangle mesh to the world.
     /// <paramref name="vertices"/> and <paramref name="indices"/> form the mesh triangles.
     /// </summary>
-    public void AddStaticMesh(XnaVec3[] vertices, int[] indices, XnaVec3 position)
+    /// <remarks>
+    /// Static only. Bepu supports concave meshes for statics but not for dynamic bodies,
+    /// because a general concave inertia tensor and contact manifold are not tractable at
+    /// simulation speed. For a concave moving object, use <see cref="AddCompound"/> to
+    /// build it out of convex parts.
+    /// </remarks>
+    /// <param name="vertices">Mesh vertices in local space.</param>
+    /// <param name="indices">Triangle indices, three per triangle.</param>
+    /// <param name="position">World position of the mesh origin.</param>
+    /// <param name="rotation">World orientation of the mesh.</param>
+    /// <param name="scale">Per-axis scale applied to the mesh.</param>
+    public void AddStaticMesh(XnaVec3[] vertices, int[] indices, XnaVec3 position,
+                              XnaQuat? rotation = null, XnaVec3? scale = null)
     {
         int triCount = indices.Length / 3;
         _pool.Take<Triangle>(triCount, out var triangles);
@@ -374,11 +473,14 @@ public sealed class PhysicsSystem3D : IDisposable
                 PhysicsConvert3D.ToNum(vertices[indices[i * 3 + 2]]));
         }
 
-        var mesh = new Mesh(triangles, NumVec3.One, _pool);
+        var meshScale = scale.HasValue ? PhysicsConvert3D.ToNum(scale.Value) : NumVec3.One;
+        var mesh = new Mesh(triangles, meshScale, _pool);
         var idx  = Simulation.Shapes.Add(mesh);
 
         Simulation.Statics.Add(new StaticDescription(
-            new RigidPose(PhysicsConvert3D.ToNum(position), NumQuat.Identity),
+            new RigidPose(
+                PhysicsConvert3D.ToNum(position),
+                rotation.HasValue ? PhysicsConvert3D.ToNum(rotation.Value) : NumQuat.Identity),
             idx));
     }
 
