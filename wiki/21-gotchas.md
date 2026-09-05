@@ -1,0 +1,455 @@
+# 21. Gotchas & Known Mismatches
+
+Every trap in this file was found by reading `SexyBiscuit.Engine/` and is listed
+with the fix. Skim it once before you start; come back when something behaves
+strangely.
+
+> The engine is under active development. Each entry ends with a one-line
+> **check** you can run to confirm it still applies.
+
+---
+
+## The big ones
+
+### 1. Nothing draws — `SpriteBatch.Begin` is never called
+
+`SBEngine.Draw` calls `SceneManager.Draw(SpriteBatch)` with no open batch, so the
+first `SpriteRenderer.Draw` throws.
+
+```
+InvalidOperationException: Begin must be called successfully before you can call Draw.
+```
+
+**Fix** — override `Draw` and route through the engine's `Renderer2D`:
+
+```csharp
+protected override void Draw(GameTime gameTime)
+{
+    GraphicsDevice.Clear(Config.ClearColour);
+    var scene = SceneManager.ActiveScene;
+    if (scene == null) return;
+
+    if (Config.Enable3D) Renderer3D.Render(scene);
+    Renderer2D.RenderScene(SpriteBatch, scene, _camera);
+    // no base.Draw(gameTime)
+}
+```
+
+**Check** — `sed -n '/protected override void Draw(GameTime/,/^    }/p' SexyBiscuit.Engine/Engine.cs`
+
+---
+
+### 2. Physics silently off — `EnablePhysics2D` / `EnablePhysics3D`
+
+`SBEngine` steps both simulations inside its fixed loop, but each is gated:
+
+```csharp
+if (Config.EnablePhysics2D) PhysicsSystem2D.Instance.FixedStep(step);
+if (Config.EnablePhysics3D) PhysicsSystem3D.Instance.FixedStep(step);
+```
+
+Both default to `true`. If you turned one off to save the idle cost of a
+simulation you were not using, and later add a `Rigidbody`, nothing moves.
+
+Also note the ordering: **physics steps before `SceneManager.FixedUpdate`**, so
+a force applied in `FixedUpdate` is simulated on the *next* step.
+
+**Check** — `grep -rn --include='*.cs' 'FixedStep(' SexyBiscuit.Engine | grep -v 'Physics/PhysicsSystem'`
+
+---
+
+### 3. Tweens frozen — `Time.TimeScale`
+
+`Tween.UpdateAll(Time.DeltaTime)` is called by the engine, on **scaled** time.
+A pause implemented as `Time.TimeScale = 0` therefore freezes every tween —
+including UI animations. Either drive UI motion off
+`Time.UnscaledDeltaTime` yourself, or pause by deactivating gameplay layers
+instead:
+
+```csharp
+foreach (var layer in scene.Layers)
+    if (layer.Name != "ui") layer.Active = false;
+```
+
+**Check** — `grep -rn --include='*.cs' 'Tween.UpdateAll' SexyBiscuit.Engine`
+
+---
+
+### 4. `LoadScene` does not read the file
+
+`SceneManager.LoadScene(path)` creates a **new empty `Scene` named after the
+file** and never opens it.
+
+```csharp
+// ProcessPendingLoad, in full:
+var scene = new Scene(Path.GetFileNameWithoutExtension(path));
+```
+
+**Fix** — deserialise the file yourself and hand it to `AdoptScene`:
+
+```csharp
+var loaded = SceneSerializer.LoadFromFile(path);
+SceneManager.AdoptScene(loaded);
+```
+
+`AdoptScene` destroys the previous scene, re-adds `DontDestroyOnLoad` actors,
+and raises the load/unload events. Prefer it to `LoadScene` for anything
+file-backed.
+
+**Check** — `sed -n '/private void ProcessPendingLoad/,/^    }/p' SexyBiscuit.Engine/Core/SceneManager.cs`
+
+---
+
+### 5. `Awake` runs inside `AddComponent`
+
+```csharp
+private void AttachComponent(Component c)
+{
+    c.Actor = this;
+    _components.Add(c);
+    c.Awake();                 // ← immediately, before you can configure anything
+    if (_started) c.Start();
+}
+```
+
+Every "I set the property and nothing happened" bug below is a consequence of
+this one line.
+
+**Check** — `sed -n '/private void AttachComponent/,/^    }/p' SexyBiscuit.Engine/Core/Actor.cs`
+
+---
+
+## Consequences of `Awake`-on-attach
+
+| Component | What is captured at `Awake` | Fix |
+|---|---|---|
+| `Rigidbody2D` | creates its Aether body at the actor's **current** position | set `Transform.Position` **before** `AddComponent` |
+| `BoxCollider2D` etc. | builds the fixture from **default** `Size` / `Radius` / `Points` / `Offset` / `IsTrigger` / `Material` | set the properties, then `OnDestroy(); Awake();` to rebuild |
+| `Rigidbody3D` | registers the collider's **default** shape; falls back to a 0.5 sphere with no collider | set the shape, `PhysicsSystem3D.Instance.RemoveBody(actor)`, then `rb.Awake()` |
+| `ScriptComponent` | reads `ScriptPath`, which is still `""` | set `ScriptPath`, then call `script.Awake()` |
+| `AudioSource` | checks `PlayOnAwake`, but `Clip` is still null | assign `Clip`, then call `Play()` |
+
+Two helpers worth keeping in every project:
+
+```csharp
+public static class EngineExtensions
+{
+    /// Rebuilds a 2D collider's fixture after changing its shape.
+    public static T Rebuild<T>(this T c) where T : Collider2D
+    {
+        c.OnDestroy();
+        c.Awake();
+        return c;
+    }
+
+    /// Attaches a JS script and actually starts it.
+    public static ScriptComponent AddScript(this Actor a, string path)
+    {
+        var sc = a.AddComponent<ScriptComponent>();
+        sc.ScriptPath = path;
+        sc.Awake();
+        return sc;
+    }
+}
+```
+
+---
+
+## Naming and tag traps
+
+### Three different camera tags
+
+| Consumer | Tag it looks for |
+|---|---|
+| `Camera3D.Main` | `"MainCamera3D"` |
+| `AudioSource` 3D listener | `"Camera"` |
+| bundled scene templates | `"MainCamera"` |
+
+None of them agree. Pick the tag the system you actually use requires, and if
+you need two, put the second on a child actor parented to the camera.
+
+**Check** — `grep -rn --include='*.cs' 'FindByTag("' SexyBiscuit.Engine`
+
+### `Actor.Layer` vs `Actor.Layer_`
+
+`Layer` is an `int` used as a physics raycast mask. `Layer_` is the `Layer`
+object the actor lives in. They are unrelated.
+
+### `Actor.OnStart` vs `Component.Start`
+
+Actor subclasses override `protected virtual void OnStart()`. Components
+override `public virtual void Start()`. Overriding the wrong name on the wrong
+type compiles fine and never runs.
+
+---
+
+## Rendering
+
+### `Layer.Draw` sorts actors by **local** Y
+
+```csharp
+var sorted = _actors.Where(a => a.IsActive).OrderBy(a => a.Transform.LocalPosition.Y);
+```
+
+Correct for top-down; wrong for a side-scroller, and wrong for children of a
+moving parent (local, not world). Put content that must not be Y-sorted against
+each other on separate layers, and use `SpriteRenderer.LayerDepth` for
+fine-grained order.
+
+### UI scrolls with the camera
+
+`Canvas.Draw` runs inside the camera-transformed scene batch. Hide the `ui`
+layer during the world pass and draw it in its own screen-space batch — see
+[9. UI](09-ui.md#drawing-the-canvas).
+
+### `Canvas` hit-testing ignores the scale matrix
+
+`Canvas.Update` reads `Mouse.GetState()` in raw screen pixels while rendering
+applies `GetScaleMatrix`. With `ScaleWithScreen` at a viewport that differs from
+`ReferenceResolution`, clicks land in the wrong place. Use `PixelPerfect`, or
+set `ReferenceResolution` to the actual back-buffer size.
+
+### Widgets that render nothing
+
+`Widget` provides `FillRect` / `StrokeRect` helpers over a shared 1×1 pixel, and
+the newer widgets (`ProgressBar`, `TextInput`, `Checkbox`, `Dropdown`,
+`ScrollView`, `TabView`) use them — they are visible with no assets. The older
+ones are not:
+
+- `Label` draws nothing when `Canvas.Font` is null.
+- `Panel.BackgroundColor` is only a **tint for `BackgroundTexture`** — no
+  texture, no fill.
+- `Button` with no `NormalTexture` draws only its text.
+- `Image` needs a `Texture`; `Slider` needs `TrackTexture` / `ThumbTexture`.
+
+A 1×1 white texture solves all of them:
+
+```csharp
+var white = new Texture2D(GraphicsDevice, 1, 1);
+white.SetData(new[] { Color.White });
+```
+
+Full table on [9. UI](09-ui.md#which-widgets-need-textures).
+
+### `Widget.Bounds` ignores `AnchorMax`
+
+Stretch anchors only take effect through `AnchorLayout.Apply(child, parent)`,
+which rewrites `Position` and `Size`. `Bounds` on its own uses `AnchorMin`
+plus the literal `Size`.
+
+### A black 3D scene is a missing camera
+
+`RenderSystem3D.Render` returns immediately when `OverrideCamera` is null **and**
+`Camera3D.Main` is null — and `Main` requires an enabled camera on an active
+actor tagged exactly `"MainCamera3D"`.
+
+---
+
+## Physics
+
+### Units are metres, everywhere
+
+`FixedStep` copies Aether positions straight onto `Transform.Position`, and
+default gravity is `(0, 9.8)`. An actor at `(400, 300)` is 400 metres out and
+falls at ~1 pixel per second if you draw 1 unit as 1 pixel. Either work at
+metre scale and set `camera.Zoom = 64`, or scale gravity by your
+pixels-per-metre. See [6. Physics](06-physics.md#units--read-this-first).
+
+### `Rigidbody3D` with no collider is a ball
+
+`Rigidbody3D.Awake` falls back to a 0.5-radius sphere when the actor has no
+`Collider3D`. Boxes that roll are this.
+
+### Raycast masks use `Actor.Layer`, the int
+
+`(layerMask & (1 << actor.Layer)) != 0`. If you never set `Actor.Layer`, every
+actor is layer `0` and only `1 << 0` matches.
+
+---
+
+## Scripting
+
+### `actor` has no `transform`
+
+The bridge exposes `actor` (name/tag/active/destroy) and `transform`
+(x/y/rotation/scale) as **two separate globals**. `actor.transform.x` is
+`undefined` → `NaN`. Actor *proxies* returned by `Scene.find` do have
+`.transform`.
+
+### `Scene.findByTag` returns an array
+
+```js
+var found = Scene.findByTag("Player");
+if (found.length === 0) return;
+var target = found[0];
+```
+
+An array is never falsy, so `if (!target) return;` never fires.
+
+### Only eight lifecycle hooks are dispatched
+
+`onAwake`, `onStart`, `onUpdate`, `onFixedUpdate`, `onLateUpdate`, `onDestroy`,
+`onCollisionEnter`, `onTriggerEnter`. There is **no** `onTriggerExit`,
+`onCollisionExit`, `onCollisionStay` or `onTriggerStay` in script.
+
+### The bundled templates target a wider API
+
+`log()`, `Input.isKeyPressed`, `actor.getComponent`, `Scene.createActor`,
+`Network.*` and friends do not exist in the bridge. Full table in
+[11. Scripting](11-scripting.md#what-the-bundled-templates-assume--and-what-breaks).
+
+### Script errors are silent by default
+
+Failures are written with `System.Diagnostics.Debug.WriteLine` as
+`[Script Error] …`, which is compiled out in `Release`. Add a `Trace` listener
+if you want them in a shipping build.
+
+---
+
+## Assets and scenes
+
+### `AssetManager` handles four types
+
+`Texture2D`, `SoundEffect`, `string`, `byte[]`. `SpriteFont`, `Effect` and
+models go through other paths — see
+[13. Assets](13-assets.md#supported-types--verified).
+
+### Audio must be 16-bit PCM WAV
+
+`SoundEffect.FromStream` is the only decoder wired up, despite NAudio being
+referenced.
+
+### Component type names in scene files must be namespace-qualified
+
+`Type.GetType("Camera2D")` returns null and the component is skipped with a
+warning. Write `"SexyBiscuit.Engine.Rendering.Camera2D"`.
+
+### Textures do not survive serialisation
+
+Only primitives, `string`, `bool`, `enum`, `Vector2/3/4`, `Quaternion` and
+`Color` round-trip. Store an asset **path** in a string property and resolve it
+in `Start`.
+
+### A `new Scene(...)` you drop leaks into static registries
+
+`SceneManager` calls `Scene.Destroy()` when it replaces or unloads a scene. A
+scene you built yourself with `new Scene(...)` — in a test, a tool, a headless
+server — gets no such call, and components only leave their static registries
+(`MeshRenderer.All`, `Light3D.All`, `Light2D.All`, `PlayerStart.All`,
+`SkinnedMeshRenderer.All`, `ParticleSystem3D.All`) in `OnDestroy`. The dropped
+scene stays visible to the renderer and to spawn selection forever.
+
+```csharp
+var scene = new Scene("Headless");
+// … use it …
+scene.Destroy();          // not optional
+```
+
+---
+
+### The bundled `.scene` templates use a different shape
+
+`"transform": {x, y, …}` and short type names. `SceneSerializer` reads
+`"position"/"rotation"/"scale"` arrays and qualified type names. Treat the
+templates as design references.
+
+---
+
+## Editor
+
+### Play mode restore discards the scene
+
+`ExitPlayMode` deserialises the F5 snapshot into `restored`, then calls
+`SceneManager.CreateScene(restored.Name)` — which makes a *new empty scene* and
+drops `restored`'s actors. **Save before pressing F5.**
+
+`SceneManager.AdoptScene` exists for exactly this, and the Open Scene path was
+already switched to it; play mode was not:
+
+```csharp
+var restored = SceneSerializer.Deserialize(_sceneSnapshot);
+_engine.SceneManager.AdoptScene(restored);      // was CreateScene(restored.Name)
+```
+
+**Check** — `sed -n '/private void ExitPlayMode/,/^    }/p' SexyBiscuit.Editor/EditorApp.cs`
+
+### Play mode only runs `Update`
+
+The editor calls `SceneManager.ActiveScene.Update(dt)` directly rather than
+`SBEngine.Update`, so there is no `FixedUpdate`, no `LateUpdate`, no physics
+stepping and no tween updates. Components whose logic lives in `FixedUpdate`
+look inert.
+
+The 2D viewport also draws with a plain `SpriteBatch.Begin()` and **no camera
+transform**, so `Camera2D` has no effect there. The 3D viewport does respect
+`Camera3D.Main`.
+
+**Check** — `grep -n -A5 'EditorState.IsPlaying &&' SexyBiscuit.Editor/EditorApp.cs`
+
+## Build and shipping
+
+### `STEAMWORKS` is defined in every configuration
+
+Including `Release`. Remove it from `DefineConstants` in
+`SexyBiscuit.Engine.csproj` if you are not shipping on Steam.
+
+### There is no `sbengine` CLI
+
+The root `README.md` shows `sbengine build …` and a `--all` flag. Neither
+exists. Wrap `ExportPipeline.RunCli(args)` in a small console project — see
+[18. Build & Export](18-build-export.md#the-cli).
+
+### `RunCli` ignores a trailing flag
+
+The parse loop is `for (i = 0; i < args.Length - 1; i++)`, so the final argument
+is never examined as a flag. Always pass flag/value pairs.
+
+### The export pipeline does not compile your game
+
+It stages assets, scripts, scenes and metadata. Run `dotnet publish -r <rid>`
+into the same folder yourself.
+
+### Android and iOS are validated, not built
+
+No manifest generation, no APK/AAB packaging, no Xcode project. The pipeline
+checks for a keystore path and a team id, then stages content.
+
+### Saves default to the working directory
+
+`SaveManager.SaveDirectory` is `"Saves/"` and `PlayerPrefs.PrefsPath` is
+`"Saves/prefs.json"` — both relative. Point them at a per-user directory before
+you ship.
+
+### `PlayerPrefs.Save()` is not automatic
+
+Nothing is written until you call it.
+
+### `InputManager.LoadBindings` throws on a missing file
+
+Guard with `File.Exists`.
+
+---
+
+## Design-doc-only features
+
+Described in the root `README.md`, not present in the source at the time of
+writing:
+
+- `sbengine` CLI and `--all`
+- Automatic `steamcmd` upload
+- Android manifest / keystore manager / APK packaging
+- iOS Xcode project generation and icon scaling
+- `async` Steam lobby API (`await SteamLobby.CreateLobby(...)`, filter builders)
+- Prefab editor, animator editor, tilemap painter panels
+
+The root `README.md` has been partly corrected since — it now marks Spine as not
+implemented, for instance — so cross-check it rather than assuming either
+document is stale. Where the two disagree, **the source is right**; every entry
+on this page carries a check you can run.
+
+---
+
+## Next
+
+- [3. The Game Loop](03-game-loop.md) — what the frame does, and what it leaves you.
+- [Tutorials](../tutorials/README.md) — the same knowledge, applied.
