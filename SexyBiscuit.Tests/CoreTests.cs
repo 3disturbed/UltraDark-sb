@@ -432,3 +432,30 @@ public class LayerDestroyTests
         Assert.DoesNotContain(mesh, SexyBiscuit.Engine.Rendering.MeshRenderer.All);
     }
 }
+
+public class CursorVisibilityTests
+{
+    [Fact]
+    public void CursorRequestsGoThroughTheHostCallbackAndNeverNeedTheStandaloneGame()
+    {
+        // Why: ShowCursor/HideCursor used to write SBEngine.Instance.IsMouseVisible, which is null
+        // when the editor hosts the engine; a first-person controller locking the cursor threw.
+        var input = new SexyBiscuit.Engine.Input.InputManager(new SexyBiscuit.Engine.EngineConfig());
+        var seen  = new List<bool>();
+        input.CursorVisibilityChanged = seen.Add;
+
+        input.LockCursor();
+        Assert.True(input.IsCursorLocked);
+        Assert.False(input.IsCursorVisible);
+
+        input.UnlockCursor();
+        Assert.False(input.IsCursorLocked);
+        Assert.True(input.IsCursorVisible);
+        Assert.Equal(new[] { false, true }, seen);
+
+        // No callback and no standalone game: still no exception.
+        input.CursorVisibilityChanged = null;
+        input.HideCursor();
+        Assert.False(input.IsCursorVisible);
+    }
+}

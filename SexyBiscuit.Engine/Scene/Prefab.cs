@@ -125,7 +125,7 @@ public static class Prefab
             actor.Transform.LocalRotation = rotation.Value;
 
         // Add to the active scene. Fall back gracefully when no scene is active.
-        var activeScene = SBEngine.Instance?.SceneManager?.ActiveScene;
+        var activeScene = EngineHost.Current?.SceneManager.ActiveScene;
         if (activeScene is not null)
         {
             activeScene.AddActor(actor);

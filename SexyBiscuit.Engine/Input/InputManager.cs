@@ -148,14 +148,27 @@ public sealed class InputManager
     // Mouse — cursor management
     // =========================================================================
 
-    public void ShowCursor()
-    {
-        SBEngine.Instance.IsMouseVisible = true;
-    }
+    /// <summary>
+    /// How the host shows or hides the window's cursor. <c>SBEngine</c> and the editor set it;
+    /// with nothing set the request only updates <see cref="IsCursorVisible"/>.
+    /// </summary>
+    public Action<bool>? CursorVisibilityChanged { get; set; }
 
-    public void HideCursor()
+    /// <summary>What the game last asked for. The editor keeps its own cursor outside play mode.</summary>
+    public bool IsCursorVisible { get; private set; } = true;
+
+    /// <summary>True while <see cref="LockCursor"/> is in effect.</summary>
+    public bool IsCursorLocked => _cursorLocked;
+
+    public void ShowCursor() => SetCursorVisible(true);
+
+    public void HideCursor() => SetCursorVisible(false);
+
+    private void SetCursorVisible(bool visible)
     {
-        SBEngine.Instance.IsMouseVisible = false;
+        IsCursorVisible = visible;
+        if (CursorVisibilityChanged != null) CursorVisibilityChanged(visible);
+        else if (SBEngine.Instance is { } game) game.IsMouseVisible = visible;
     }
 
     /// <summary>

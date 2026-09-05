@@ -26,7 +26,7 @@ public abstract class CameraControllerBase : Component
     protected Transform3D T3D => _t3d ??= Actor.GetComponent<Transform3D>() ?? Actor.AddComponent<Transform3D>();
 
     /// <summary>The engine input manager, or null before the engine has initialised.</summary>
-    protected static InputManager? Input => SBEngine.Instance?.Input;
+    protected static InputManager? Input => EngineHost.Current?.Input;
 
     /// <summary>Vertical look angle in degrees, clamped to avoid flipping over the poles.</summary>
     protected float Pitch { get; set; }

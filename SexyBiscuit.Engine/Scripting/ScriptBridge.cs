@@ -209,7 +209,7 @@ public sealed class ScriptBridge
     {
         var obj = NewObj();
 
-        InputManager? GetInput() => SBEngine.Instance?.Input;
+        InputManager? GetInput() => EngineHost.Current?.Input;
 
         // Input.isPressed(action)
         obj.Set("isPressed", Fn("isPressed", (_, args) =>
@@ -253,7 +253,7 @@ public sealed class ScriptBridge
     {
         var obj = NewObj();
 
-        AudioManager? GetAudio() => SBEngine.Instance?.Audio;
+        AudioManager? GetAudio() => EngineHost.Current?.Audio;
 
         // Audio.play(path) — returns an opaque handle object {id: number}
         obj.Set("play", Fn("play", (_, args) =>
@@ -312,7 +312,7 @@ public sealed class ScriptBridge
     {
         var obj = NewObj();
 
-        Core.Scene? GetScene() => SBEngine.Instance?.SceneManager?.ActiveScene;
+        Core.Scene? GetScene() => EngineHost.Current?.SceneManager.ActiveScene;
 
         // Scene.find(name)
         obj.Set("find", Fn("find", (_, args) =>
@@ -355,7 +355,7 @@ public sealed class ScriptBridge
         // Scene.load(scenePath)
         obj.Set("load", Fn("load", (_, args) =>
         {
-            SBEngine.Instance?.SceneManager?.LoadScene(args.At(0).ToString());
+            EngineHost.Current?.SceneManager.LoadScene(args.At(0).ToString());
             return JsValue.Undefined;
         }, length: 1));
 

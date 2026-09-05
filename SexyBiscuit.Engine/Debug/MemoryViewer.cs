@@ -1,3 +1,4 @@
+using SexyBiscuit.Engine.Core;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -192,7 +193,7 @@ public static class MemoryViewer
     {
         try
         {
-            var engine = SBEngine.Instance;
+            var engine = EngineHost.Current;
             if (engine?.Assets == null) return 0;
 
             // AssetManager.GetLoadedAssets() returns an IEnumerable of loaded paths

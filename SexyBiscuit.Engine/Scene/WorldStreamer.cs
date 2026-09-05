@@ -107,7 +107,7 @@ public class WorldStreamer : Component
             if (File.Exists(path))
             {
                 _loadedChunks.Add(chunk);
-                SBEngine.Instance.SceneManager.LoadSceneAdditive(path);
+                EngineHost.Current?.SceneManager.LoadSceneAdditive(path);
             }
             else
             {
@@ -165,7 +165,7 @@ public class WorldStreamer : Component
 
         // Unload the additive scene by the derived scene name
         string sceneName = ChunkSceneName(chunk.cx, chunk.cy);
-        SBEngine.Instance.SceneManager.UnloadScene(sceneName);
+        EngineHost.Current?.SceneManager.UnloadScene(sceneName);
     }
 
     // -------------------------------------------------------------------------

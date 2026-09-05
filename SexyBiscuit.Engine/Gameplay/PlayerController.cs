@@ -64,7 +64,7 @@ public class PlayerController : Controller
     public PlayerController() : base("PlayerController") { }
 
     /// <summary>The engine input manager. Null before the engine has initialised.</summary>
-    protected static InputManager? Input => SBEngine.Instance?.Input;
+    protected static InputManager? Input => EngineHost.Current?.Input;
 
     protected override void OnStart()
     {
@@ -136,7 +136,7 @@ public class PlayerController : Controller
     public (Vector3 origin, Vector3 direction)? GetCursorRay()
     {
         var cam = ViewCamera ?? Camera3D.Main;
-        var gd  = SBEngine.Instance?.GraphicsDevice;
+        var gd  = EngineHost.Current?.GraphicsDevice;
         if (cam == null || gd == null || Input == null) return null;
         return cam.ScreenToWorldRay(Input.MousePosition, gd);
     }

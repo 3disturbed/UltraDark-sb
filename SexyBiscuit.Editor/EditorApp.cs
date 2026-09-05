@@ -158,6 +158,13 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         // Open on a lit, navigable level rather than an empty void: the first thing a
         // new user needs is proof the viewport works.
+        // The game may hide or lock the cursor (a first-person controller); only let it while
+        // playing, and never take the editor's own cursor away.
+        _engine.Input.CursorVisibilityChanged = visible =>
+        {
+            if (visible || EditorState.IsPlaying) IsMouseVisible = visible;
+        };
+
         // Edit mode: actors start so they render, but gameplay (a GameMode spawning players)
         // waits for Play. Set before the first scene exists.
         PlayMode.IsActive = false;
@@ -1212,6 +1219,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         // Back to edit mode before the restored scene starts its actors, or its GameMode
         // would spawn a player into the edit scene.
         PlayMode.IsActive = false;
+
+        // Whatever the game did to the cursor ends with play mode.
+        _engine?.Input.UnlockCursor();
+        IsMouseVisible = true;
 
         Time.TimeScale = 1f;
         _engine?.Timers.ClearAll();

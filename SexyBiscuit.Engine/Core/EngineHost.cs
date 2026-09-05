@@ -45,8 +45,18 @@ namespace SexyBiscuit.Engine.Core;
 /// </example>
 public sealed class EngineHost : IDisposable
 {
+    /// <summary>
+    /// The host running right now, or null before one exists. Engine code that needs a service
+    /// (input, audio, the scene manager) reaches it here, so it works the same under the
+    /// standalone game and under the editor; <c>SBEngine.Instance</c> only exists in the former.
+    /// </summary>
+    public static EngineHost? Current { get; private set; }
+
     /// <summary>Startup configuration this host was built with.</summary>
     public EngineConfig Config { get; }
+
+    /// <summary>The device everything renders and uploads with.</summary>
+    public GraphicsDevice GraphicsDevice { get; }
 
     /// <summary>Sprite batch for the 2D pass.</summary>
     public SpriteBatch SpriteBatch { get; }
@@ -88,7 +98,9 @@ public sealed class EngineHost : IDisposable
         ArgumentNullException.ThrowIfNull(graphicsDevice);
         ArgumentNullException.ThrowIfNull(content);
 
-        Config = config ?? new EngineConfig();
+        Config         = config ?? new EngineConfig();
+        GraphicsDevice = graphicsDevice;
+        Current        = this;
 
         Time.Reset();
         Time.FixedDeltaTime = Config.FixedTimestep;
@@ -185,6 +197,7 @@ public sealed class EngineHost : IDisposable
 
     public void Dispose()
     {
+        if (ReferenceEquals(Current, this)) Current = null;
         if (ReferenceEquals(AssetManager.Current, Assets)) AssetManager.Current = null;
         GameInstance.InternalShutdown();
         Coroutines.StopAll();

@@ -370,6 +370,19 @@ name comes back with the candidates.
 
 **Check** — `grep -n 'ids change' SexyBiscuit.Engine/Mcp/Tools/SceneResources.cs`
 
+### Reach services through `EngineHost.Current`, not `SBEngine.Instance`
+
+`SBEngine.Instance` is the standalone game window and is null when the editor
+hosts the engine. Engine code that looked services up through it (player and
+camera controllers reading input, `AudioSource`, `Prefab.Instantiate`,
+`WorldStreamer`, the script bridge, cursor show/hide) silently did nothing or
+threw in editor play mode — a first-person controller never got its input.
+Everything now goes through `EngineHost.Current`, which both hosts set; game code
+should do the same. `SBEngine.Instance` stays for code that really needs the
+window.
+
+**Check** — `grep -rn 'SBEngine.Instance' --include='*.cs' SexyBiscuit.Engine | grep -v '///'`
+
 ### Actors Start in edit mode too — gate gameplay on `PlayMode.IsActive`
 
 The editor flushes pending actors every frame so the outliner and the renderer

@@ -1,3 +1,4 @@
+using SexyBiscuit.Engine.Core;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -125,7 +126,7 @@ public class ScrollView : Widget
             }
         }
 
-        var wheel = SBEngine.Instance?.Input?.ScrollDelta ?? 0f;
+        var wheel = EngineHost.Current?.Input.ScrollDelta ?? 0f;
         if (over && wheel != 0f) ApplyScroll(new Vector2(0f, -wheel * WheelStep));
 
         // Children are hit-tested in the scrolled coordinate space.

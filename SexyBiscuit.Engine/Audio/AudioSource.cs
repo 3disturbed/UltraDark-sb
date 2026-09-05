@@ -240,7 +240,7 @@ public class AudioSource : Component
         float finalVol   = _volume * _fadeCurrent * spatialVol;
         float finalPitch = _pitch + dopplerPitch;
 
-        SBEngine.Instance.Audio.SetVoiceParameters(_handle, finalVol, finalPitch, pan);
+        EngineHost.Current?.Audio.SetVoiceParameters(_handle, finalVol, finalPitch, pan);
     }
 
     public override void OnDestroy()
@@ -261,9 +261,10 @@ public class AudioSource : Component
 
         // Stop any existing voice first
         if (_handle.IsValid)
-            SBEngine.Instance.Audio.Stop(_handle);
+            EngineHost.Current?.Audio.Stop(_handle);
 
-        var mgr = SBEngine.Instance.Audio;
+        var mgr = EngineHost.Current?.Audio;
+        if (mgr == null) return;   // no engine running (an editor building a scene, say)
         var bus  = Bus ?? mgr.SFX;
         _handle  = mgr.Play(Clip, Loop, bus);
 
@@ -279,7 +280,7 @@ public class AudioSource : Component
     public void Stop()
     {
         if (!_handle.IsValid) return;
-        SBEngine.Instance.Audio.Stop(_handle);
+        EngineHost.Current?.Audio.Stop(_handle);
         _handle         = AudioHandle.Invalid;
         _posInitialised = false;
         _fadeSpeed      = 0f;
@@ -300,7 +301,7 @@ public class AudioSource : Component
         // Workaround: set volume to 0 so the voice is silent but still alive.
         // TODO: expose a Pause(AudioHandle) API on AudioManager once it stores
         //       SoundEffectInstance accessors in the public surface.
-        SBEngine.Instance.Audio.SetVoiceParameters(_handle, 0f, _pitch, 0f);
+        EngineHost.Current?.Audio.SetVoiceParameters(_handle, 0f, _pitch, 0f);
     }
 
     /// <summary>
@@ -342,7 +343,7 @@ public class AudioSource : Component
     /// </summary>
     private static Vector2 GetListenerPosition()
     {
-        var scene = SBEngine.Instance.SceneManager.ActiveScene;
+        var scene = EngineHost.Current?.SceneManager.ActiveScene;
         if (scene == null) return Vector2.Zero;
 
         // Find the first actor tagged "Camera"

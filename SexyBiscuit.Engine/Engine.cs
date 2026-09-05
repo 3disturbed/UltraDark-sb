@@ -92,6 +92,7 @@ public class SBEngine : Game
         base.Initialize();
 
         Host = new EngineHost(GraphicsDevice, Content, Config);
+        Host.Input.CursorVisibilityChanged = visible => IsMouseVisible = visible;
 
         OnEngineReady();
     }

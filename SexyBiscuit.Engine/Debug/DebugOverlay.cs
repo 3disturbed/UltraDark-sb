@@ -152,7 +152,7 @@ public static class DebugOverlay
 
     private static int CountActiveActors()
     {
-        var engine = SBEngine.Instance;
+        var engine = EngineHost.Current;
         if (engine == null) return 0;
 
         int count = 0;
