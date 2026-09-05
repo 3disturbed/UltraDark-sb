@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Reflection;
 using ImGuiNET;
+using SexyBiscuit.Engine.Core;
 
 namespace SexyBiscuit.Editor.Panels;
 
@@ -10,6 +11,11 @@ namespace SexyBiscuit.Editor.Panels;
 /// </summary>
 public sealed class ApiReferencePanel
 {
+    public ApiReferencePanel()
+    {
+        GameCode.GameCodeHost.TypesChanged += () => _initialized = false;
+    }
+
     // -------------------------------------------------------------------------
     // Data structures
     // -------------------------------------------------------------------------
@@ -77,7 +83,7 @@ public sealed class ApiReferencePanel
         var componentType = typeof(SexyBiscuit.Engine.Core.Component);
         var assembly = componentType.Assembly;
 
-        var publicTypes = assembly.GetExportedTypes()
+        var publicTypes = assembly.SafeGetTypes().Where(t => t.IsPublic)
             .Where(t => !t.IsCompilerGenerated())
             .OrderBy(t => t.Namespace)
             .ThenBy(t => t.Name);

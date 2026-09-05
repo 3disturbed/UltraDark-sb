@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SexyBiscuit.Engine.Core;
+using SexyBiscuit.Engine.Scene;
 
 namespace SexyBiscuit.Editor;
 
@@ -120,6 +121,24 @@ public static class EditorState
     /// <summary>Shows the Git panel.</summary>
     public static bool ShowGitPanel { get; set; }
 
+    /// <summary>Shows the C# Project panel.</summary>
+    public static bool ShowCodeProject { get; set; } = true;
+
+    /// <summary>Shows the Assistant panel.</summary>
+    public static bool ShowAssistant { get; set; } = true;
+
+    /// <summary>True while the assistant is working, waiting for permission or waiting for an answer. Drives the viewport banner.</summary>
+    public static bool AssistantBusy { get; set; }
+
+    /// <summary>What the assistant is doing, for the banner.</summary>
+    public static string AssistantBusyLabel { get; set; } = "";
+
+    /// <summary>The dock node the Details window sits in, refreshed every frame it is drawn.</summary>
+    public static uint DetailsDockId { get; set; }
+
+    /// <summary>Set once when a saved layout predates the Assistant panel: dock it beside Details on first draw.</summary>
+    public static bool DockAssistantIntoDetails { get; set; }
+
     /// <summary>Shows the project launcher. Open on startup until a project is chosen.</summary>
     public static bool ShowProjectManager { get; set; } = true;
 
@@ -135,6 +154,22 @@ public static class EditorState
 
     /// <summary>The open project file, or null when none is loaded.</summary>
     public static ProjectFile? CurrentProject { get; private set; }
+
+    /// <summary>Absolute path of the open <c>.sbproject</c> file, or null.</summary>
+    public static string? CurrentProjectFile { get; private set; }
+
+    // -------------------------------------------------------------------------
+    // Scene file state
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Where the active scene was loaded from or last saved, relative to the project root.
+    /// Null for a scene that has never been saved.
+    /// </summary>
+    public static string? CurrentScenePath { get; set; }
+
+    /// <summary>True when the scene has changes not yet on disk.</summary>
+    public static bool SceneDirty { get; set; }
 
     /// <summary>Raised after a project is opened, with its root directory.</summary>
     public static event Action<string>? OnProjectOpened;
@@ -153,19 +188,58 @@ public static class EditorState
             var root    = Path.GetDirectoryName(Path.GetFullPath(projectFilePath))
                           ?? Directory.GetCurrentDirectory();
 
-            CurrentProject = project;
-            ProjectPath    = root;
+            CurrentProject     = project;
+            CurrentProjectFile = Path.GetFullPath(projectFilePath);
+            ProjectPath        = root;
+            ProjectPaths.Root  = root;
 
             AddRecentProject(project.ProjectName, projectFilePath);
             SaveRecentProjects();
 
             ShowProjectManager = false;
             ConsoleLog.Add($"Opened project '{project.ProjectName}' at {root}", LogLevel.Info);
+
+            LoadDefaultScene(project, root);
             OnProjectOpened?.Invoke(root);
         }
         catch (Exception ex)
         {
             ConsoleLog.Add($"Could not open '{projectFilePath}': {ex.Message}", LogLevel.Error);
+        }
+    }
+
+    /// <summary>
+    /// Opening a project used to leave whatever scene was already showing. Load the project's
+    /// default scene when the file exists; a project without one keeps the current scene.
+    /// </summary>
+    private static void LoadDefaultScene(ProjectFile project, string root)
+    {
+        if (string.IsNullOrWhiteSpace(project.DefaultScene)) return;
+
+        var engine = EditorApp.Instance?.Engine;
+        if (engine == null) return;
+
+        string? file = SceneManager.ResolveScenePath(project.DefaultScene);
+        if (file == null)
+        {
+            ConsoleLog.Add($"The project's default scene '{project.DefaultScene}' was not found under {root}.", LogLevel.Warning);
+            return;
+        }
+
+        try
+        {
+            var scene = SceneSerializer.LoadFromFile(file);
+            engine.SceneManager.AdoptScene(scene);
+            scene.FlushPendingActors();
+            SelectActor(null);
+
+            CurrentScenePath = Path.GetRelativePath(root, file).Replace('\\', '/');
+            SceneDirty       = false;
+            ConsoleLog.Add($"Opened scene {CurrentScenePath}", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Add($"Could not open the default scene '{file}': {ex.Message}", LogLevel.Warning);
         }
     }
 

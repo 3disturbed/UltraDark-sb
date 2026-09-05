@@ -97,6 +97,32 @@ public class Actor
         return c;
     }
 
+    /// <summary>
+    /// Adds a component by type, honouring <see cref="RequireComponentAttribute"/> like the
+    /// generic overload does. The type-name path tools take arrives here.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="AddComponentByType"/> deliberately skips the requirement walk because the
+    /// scene loader restores components in file order and must not invent extra ones; a tool
+    /// adding a single component by name wants the opposite, so it gets its own entry point.
+    /// </remarks>
+    public Component AddComponent(Type type, bool honourRequirements = true)
+    {
+        if (!typeof(Component).IsAssignableFrom(type))
+            throw new ArgumentException($"{type.Name} is not a Component.", nameof(type));
+
+        if (honourRequirements)
+        {
+            foreach (var attr in type.GetCustomAttributes(typeof(RequireComponentAttribute), true).Cast<RequireComponentAttribute>())
+            {
+                if (!HasComponent(attr.RequiredType))
+                    AddComponent(attr.RequiredType);
+            }
+        }
+
+        return AddComponentByType(type);
+    }
+
     private void AttachComponent(Component c)
     {
         c.Actor = this;
@@ -135,6 +161,21 @@ public class Actor
         _components.Remove(c);
     }
 
+    /// <summary>
+    /// Removes one specific component instance. The actor's own <see cref="Transform"/> is
+    /// refused: every actor has exactly one and nothing else can stand in for it.
+    /// </summary>
+    /// <returns>False when the component was not on this actor or was the transform.</returns>
+    public bool RemoveComponent(Component component)
+    {
+        if (ReferenceEquals(component, Transform)) return false;
+        if (!_components.Contains(component)) return false;
+
+        component.OnDestroy();
+        _components.Remove(component);
+        return true;
+    }
+
     public IReadOnlyList<Component> GetAllComponents() => _components;
 
     // -------------------------------------------------------------------------
@@ -145,13 +186,25 @@ public class Actor
         // Awake is called per component during Attach; nothing extra needed here.
     }
 
+    // Every callback below is guarded by ExceptionIsolation as an exception *filter*: with no
+    // handler installed the filter is false and the exception propagates untouched, so a
+    // shipped game keeps its fail-fast behaviour and pays nothing. The editor installs a
+    // handler so one throwing game component cannot take the whole editor down.
+
     internal void InternalStart()
     {
         if (_started) return;
         _started = true;
-        OnStart();
+
+        try { OnStart(); }
+        catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, this, "OnStart")) { }
+
         foreach (var c in _components.ToArray())
-            if (c.Enabled) c.Start();
+        {
+            if (!c.Enabled) continue;
+            try { c.Start(); }
+            catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, c, "Start")) { }
+        }
     }
 
     internal void InternalUpdate(float dt)
@@ -164,33 +217,60 @@ public class Actor
             if (LifeSpan <= 0f) { Destroy(); return; }
         }
 
-        Update(dt);
+        try { Update(dt); }
+        catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, this, "Update")) { }
+
         foreach (var c in _components.ToArray())
-            if (c.Enabled) c.Update(dt);
+        {
+            if (!c.Enabled) continue;
+            try { c.Update(dt); }
+            catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, c, "Update")) { }
+        }
     }
 
     internal void InternalFixedUpdate(float dt)
     {
         if (!IsActive || _destroyed) return;
-        FixedUpdate(dt);
+
+        try { FixedUpdate(dt); }
+        catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, this, "FixedUpdate")) { }
+
         foreach (var c in _components.ToArray())
-            if (c.Enabled) c.FixedUpdate(dt);
+        {
+            if (!c.Enabled) continue;
+            try { c.FixedUpdate(dt); }
+            catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, c, "FixedUpdate")) { }
+        }
     }
 
     internal void InternalLateUpdate(float dt)
     {
         if (!IsActive || _destroyed) return;
-        LateUpdate(dt);
+
+        try { LateUpdate(dt); }
+        catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, this, "LateUpdate")) { }
+
         foreach (var c in _components.ToArray())
-            if (c.Enabled) c.LateUpdate(dt);
+        {
+            if (!c.Enabled) continue;
+            try { c.LateUpdate(dt); }
+            catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, c, "LateUpdate")) { }
+        }
     }
 
     internal void InternalDraw(SpriteBatch sb)
     {
         if (!IsActive || _destroyed) return;
-        Draw(sb);
+
+        try { Draw(sb); }
+        catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, this, "Draw")) { }
+
         foreach (var c in _components.ToArray())
-            if (c.Enabled) c.Draw(sb);
+        {
+            if (!c.Enabled) continue;
+            try { c.Draw(sb); }
+            catch (Exception ex) when (ExceptionIsolation.TryHandle(ex, c, "Draw")) { }
+        }
     }
 
     internal void InternalDestroy()

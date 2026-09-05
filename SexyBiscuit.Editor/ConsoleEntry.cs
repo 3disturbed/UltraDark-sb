@@ -1,6 +1,10 @@
 namespace SexyBiscuit.Editor;
 
-public record ConsoleEntry(string Message, LogLevel Level, DateTime Timestamp);
+public record ConsoleEntry(string Message, LogLevel Level, DateTime Timestamp)
+{
+    /// <summary>Monotonic position in the log, so a reader can ask for "everything since N".</summary>
+    public long Sequence { get; init; }
+}
 
 /// <summary>
 /// Thread-safe static console log shared across all editor panels.
@@ -9,19 +13,33 @@ public static class ConsoleLog
 {
     private static readonly object _lock = new();
     private static readonly List<ConsoleEntry> _entries = new();
+    private static long _sequence;
 
     public static IReadOnlyList<ConsoleEntry> Entries
     {
         get { lock (_lock) return _entries.ToList(); }
     }
 
+    /// <summary>The sequence number the next entry will get.</summary>
+    public static long NextSequence
+    {
+        get { lock (_lock) return _sequence + 1; }
+    }
+
+    /// <summary>Entries with a sequence number above <paramref name="sequence"/>.</summary>
+    public static IReadOnlyList<ConsoleEntry> EntriesSince(long sequence)
+    {
+        lock (_lock) return _entries.Where(e => e.Sequence > sequence).ToList();
+    }
+
     public static event Action? OnEntryAdded;
 
     public static void Add(string message, LogLevel level = LogLevel.Info)
     {
-        var entry = new ConsoleEntry(message, level, DateTime.Now);
+        ConsoleEntry entry;
         lock (_lock)
         {
+            entry = new ConsoleEntry(message, level, DateTime.Now) { Sequence = ++_sequence };
             _entries.Add(entry);
         }
         OnEntryAdded?.Invoke();

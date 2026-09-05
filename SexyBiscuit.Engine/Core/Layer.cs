@@ -62,6 +62,27 @@ public class Layer
         _pendingRemove.Add(actor);
     }
 
+    /// <summary>
+    /// Takes an actor out of this layer immediately and intact, so it can be added to
+    /// another one. Unlike <see cref="RemoveActor"/> nothing is destroyed: components stay
+    /// awake and registered.
+    /// </summary>
+    /// <remarks>
+    /// Call it between frames — from a tool or the editor — not from a component callback,
+    /// because it edits the actor list the update loop may be walking.
+    /// </remarks>
+    /// <returns>True when the actor was present (live or still queued to be added).</returns>
+    public bool DetachActor(Actor actor)
+    {
+        bool present = _actors.Remove(actor) | _pendingAdd.Remove(actor);
+        _pendingRemove.Remove(actor);
+
+        if (present && ReferenceEquals(actor.Layer_, this))
+            actor.Layer_ = null;
+
+        return present;
+    }
+
     public Actor? FindByName(string name)
         => _actors.FirstOrDefault(a => a.Name == name);
 

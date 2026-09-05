@@ -118,44 +118,37 @@ New actors land on the selected layer, or `"default"`.
 
 ```csharp
 if (EditorState.IsPlaying && !EditorState.IsPlayPaused && _engineInitialized)
-    _engine?.SceneManager.ActiveScene?.Update(dt);
+    _engine?.Tick(dt, pumpInput: true);
 ```
 
-**Only `Update`.** No `FixedUpdate`, no `LateUpdate`, no physics stepping, no
-tween updates. Components whose logic lives in `FixedUpdate` — including
-`CharacterController2D` and everything in
-[Tutorial 6](06-physics-platformer.md) — will look completely inert.
+The editor hosts the engine as an `EngineHost` and, while playing, runs its full
+tick: time, the game instance, fixed steps (physics included), `Update`, tweens,
+timers, coroutines, `LateUpdate` and audio, in the same order as a standalone
+game. Input reaches the game only in play mode, so editor shortcuts and game
+bindings never fight over the same keys. A component that throws is disabled
+after three consecutive exceptions rather than taking the editor down, and
+anything that escapes ends play mode with a message in the Output Log.
 
-Drawing is a plain `SpriteBatch.Begin()` / `End()` with **no camera transform**,
-so `Camera2D` has no effect on the viewport.
+The 3D viewport renders through the scene's `MainCamera3D` when **Game Cam** is
+on, or the editor's own camera otherwise. The 2D pass still draws with a plain
+`SpriteBatch.Begin()` / `End()` and no camera transform, so `Camera2D` has no
+effect on the 2D viewport.
 
-So editor play mode is useful for checking **layout and static appearance**, not
-for testing gameplay. Test gameplay by running your game.
+## 4. Stop restores the scene
 
-## 4. One bug to know about
+`EnterPlayMode` serialises the scene; `ExitPlayMode` deserialises the snapshot
+and installs it with `SceneManager.AdoptScene`, so whatever the game did while
+playing is thrown away and the level comes back exactly as you left it —
+including edits you had not saved. (An earlier build created a new empty scene
+here instead; that is fixed.) Global state is reset too: `Time.TimeScale`,
+timers and coroutines.
 
-### Play-mode restore discards the scene
+Tool calls made by [Claude](20-building-a-game-with-claude.md) during play mode
+carry a warning for the same reason: they are discarded on Stop.
 
-```csharp
-// EditorApp.ExitPlayMode
-var restored = SceneSerializer.Deserialize(_sceneSnapshot);
-_engine.SceneManager.CreateScene(restored.Name);      // ← a NEW EMPTY scene
-```
+### Opening a scene
 
-`restored`'s actors are never installed. **Press Ctrl+S before F5.**
-
-`SceneManager.AdoptScene` was added for exactly this case, and the Open Scene
-path already uses it. Play mode is the one call site that was missed — a
-one-line fix:
-
-```csharp
-var restored = SceneSerializer.Deserialize(_sceneSnapshot);
-_engine.SceneManager.AdoptScene(restored);
-```
-
-### Opening a scene works
-
-This used to have the same bug. It does not any more:
+Open Scene goes through the same pair:
 
 ```csharp
 FileDialog.OpenFile("Open Scene", EditorState.ProjectPath, new[] { ".scene", ".json" }, path =>
@@ -388,9 +381,10 @@ assets; a loop like the one above covers the rest.
 
 You know:
 
-- What the editor does today — cross-platform, ten panels, a project launcher
+- What the editor does today — cross-platform, twelve panels, a project launcher
 - The Create menu, and why it beats assembling 3D actors by hand
-- The one remaining scene-loss bug, and the one-line fix
+- Play mode runs the full engine tick, and Stop restores the scene
+- That Claude can drive all of it — [Tutorial 20](20-building-a-game-with-claude.md)
 - `AdoptScene`, which makes the editor→code hybrid workflow actually work
 - A code-first loop with script, asset and tuning hot reload
 - An in-game inspector that works everywhere

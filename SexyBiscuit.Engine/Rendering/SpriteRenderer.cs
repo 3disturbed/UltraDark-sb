@@ -18,6 +18,46 @@ public class SpriteRenderer : Component
     public Texture2D? Texture { get; set; }
 
     /// <summary>
+    /// Asset path of the texture, relative to the project root. This is what a scene file
+    /// stores: a <see cref="Texture2D"/> cannot be serialised, so the path is kept and loaded
+    /// through the running host's asset manager — immediately when one exists, otherwise on
+    /// <see cref="Start"/>.
+    /// </summary>
+    public string? TexturePath
+    {
+        get => _texturePath;
+        set
+        {
+            _texturePath = value;
+            TryResolveTexture();
+        }
+    }
+    private string? _texturePath;
+
+    public override void Start()
+    {
+        if (Texture == null) TryResolveTexture();
+    }
+
+    private void TryResolveTexture()
+    {
+        if (string.IsNullOrWhiteSpace(_texturePath)) return;
+
+        var assets = Assets.AssetManager.Current;
+        if (assets == null) return;
+
+        try
+        {
+            Texture = assets.Load<Texture2D>(_texturePath);
+            if (FrameWidth > 0 && FrameHeight > 0) RecalculateFrameRect();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SpriteRenderer] Could not load '{_texturePath}': {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Source rectangle within the texture. When null the full texture is used.
     /// Setting FrameIndex will override this automatically.
     /// </summary>

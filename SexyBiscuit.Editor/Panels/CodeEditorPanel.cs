@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Text;
 using ImGuiNET;
+using SexyBiscuit.Engine.Core;
 
 namespace SexyBiscuit.Editor.Panels;
 
@@ -12,6 +13,11 @@ namespace SexyBiscuit.Editor.Panels;
 /// </summary>
 public sealed class CodeEditorPanel
 {
+    public CodeEditorPanel()
+    {
+        GameCode.GameCodeHost.TypesChanged += () => _hintsBuilt = false;
+    }
+
     // -------------------------------------------------------------------------
     // Nested types
     // -------------------------------------------------------------------------
@@ -558,7 +564,7 @@ public sealed class CodeEditorPanel
         {
             var assembly = typeof(SexyBiscuit.Engine.Core.Component).Assembly;
 
-            foreach (var type in assembly.GetExportedTypes())
+            foreach (var type in assembly.SafeGetTypes().Where(t => t.IsPublic))
             {
                 var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                     .Where(m => !m.IsSpecialName)

@@ -10,12 +10,15 @@ dotnet run --project SexyBiscuit.Editor
 An ImGui.NET shell hosting a live `SBEngine` instance that renders into a
 `RenderTarget2D`, shown in a dockable Viewport panel.
 
-The engine is brought up with
-[`SBEngine.InitializeHosted(GraphicsDevice, ContentManager)`](03-game-loop.md#hosting-the-engine-inside-another-app)
-rather than `Run()`, because the editor already owns the device and the message
-loop. `TickHosted` advances it in the standalone loop's order, minus input — the
-editor decides when the game sees the keyboard, which is how WASD stays out of
-the game while you type in a panel.
+The engine is brought up as an
+[`EngineHost`](03-game-loop.md#hosting-the-engine-inside-another-app) rather than
+a `Game` of its own, because the editor already owns the device and the message
+loop. `EngineHost.Tick` advances it in the standalone loop's order, and only in
+play mode — the editor decides when the game sees the keyboard, which is how
+WASD stays out of the game while you type in a panel.
+
+The editor is also an MCP server and hosts Claude Code: see
+[25. AI Assistant & MCP](25-ai-assistant-mcp.md).
 
 > The editor used to target `net8.0-windows` and depend on WinForms for file
 > dialogs and the clipboard. Both now go through the editor's own
@@ -73,10 +76,11 @@ and resizable. Drag a panel by its tab to rearrange; the layout persists in
 
 | Menu | Items |
 |---|---|
-| **File** | New Scene · Open Scene… · Save Scene (Ctrl+S) · Exit |
-| **Edit** | Undo (Ctrl+Z) · Redo (Ctrl+Y) — *placeholders, not implemented* |
+| **File** | New Scene · Open Scene… · Save Scene (Ctrl+S) · Save Scene As… · Exit |
+| **Edit** | Undo (Ctrl+Z) · Redo (Ctrl+Y) — the scene undo stack, each item named after the change |
 | **Play** | Play (F5) · Pause (F6) · Stop (F7) |
-| **View** | 3D Viewport · Render Stats · API Reference · Code Editor · Git · Project Manager |
+| **View** | 3D Viewport · Render Stats · API Reference · Code Editor · Git · C# Project · Assistant (F8) · Project Manager · Reset Layout |
+| **Tools** | Assistant Settings… · Focus Assistant (F8) · Stop Assistant (Shift+F8) · New / Resume / Stop Assistant Session · Write .mcp.json · Copy MCP Connect Command · Rebuild Engine & Restart |
 | **Create** | actor presets — see [below](#the-create-menu) |
 
 ### Hotkeys
@@ -85,13 +89,17 @@ and resizable. Drag a panel by its tab to rearrange; the layout persists in
 |---|---|
 | <kbd>F5</kbd> / <kbd>F6</kbd> / <kbd>F7</kbd> | Play / Pause / Stop |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save scene |
-| <kbd>G</kbd> / <kbd>R</kbd> / <kbd>S</kbd> | Translate / Rotate / Scale gizmo (while hovering the viewport) |
+| <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Undo / Redo a scene edit (not while a text field has focus) |
+| <kbd>F8</kbd> / <kbd>Shift</kbd>+<kbd>F8</kbd> | Focus the Assistant composer / stop Claude |
+| <kbd>G</kbd> / <kbd>R</kbd> / <kbd>S</kbd> | Translate / Rotate / Scale gizmo (while hovering the viewport and no text field has focus) |
 
 ---
 
 ## Panels
 
-All ten panels are wired into `EditorApp.DrawPanels`.
+Twelve panels are wired into `EditorApp.DrawPanels`, plus the Render Stats
+overlay. The Assistant and C# Project panels have a page of their own,
+[25. AI Assistant & MCP](25-ai-assistant-mcp.md); the short version is below.
 
 ### Hierarchy
 
@@ -193,6 +201,30 @@ A small overlay of what `RenderSystem3D` submitted last frame — FPS, renderers
 drawn/culled/total, draw calls, triangles, active lights, shadow casters. Toggle
 with **View → Render Stats**.
 
+### Place Actors
+
+The palette on the left: every `ActorPresets` entry grouped by category (Basic,
+Geometry, Lights, Cameras, Gameplay, UI, 2D) plus a **Project** group for actor
+classes from the project's own C# assembly. Click to place on the selected layer.
+The same presets back the Create menu and the `place_actor` tool.
+
+### C# Project
+
+The project's code: the csproj and source count, the loaded assembly generation
+and whether it matches the engine build the editor runs, **Build**, **Build &
+Reload**, **Run Standalone**, **Auto-reload on save**, the live build log, and
+diagnostics that open the Code Editor at the line. **Add C# Project** generates
+one for a project that has none. Toggle with **View → C# Project**
+(`EditorState.ShowCodeProject`).
+
+### Assistant
+
+Claude Code inside the editor: a chat transcript with a row per tool call,
+questions and permission prompts, an Activity tab over every MCP call, and a
+Diagnostics tab. <kbd>F8</kbd> focuses it, <kbd>Shift</kbd>+<kbd>F8</kbd> stops
+Claude, `EditorState.ShowAssistant` toggles it. The whole story is
+[25. AI Assistant & MCP](25-ai-assistant-mcp.md).
+
 ---
 
 ## The Create menu
@@ -274,37 +306,35 @@ F6  TogglePause
 F7  ExitPlayMode    → restore from the snapshot
 ```
 
-While playing, the editor drives `SceneManager.ActiveScene.Update(dt)`
-directly — **only `Update`**. `FixedUpdate`, `LateUpdate`, physics stepping and
-tween updates do not run, because it does not call `TickHosted`. Components
-whose logic lives in `FixedUpdate` (including `CharacterController2D`) will
-appear inert.
+While playing, the editor calls `EngineHost.Tick(dt, pumpInput: true)`: the
+full standalone order — time, game instance, fixed steps with physics, `Update`,
+tweens, timers, coroutines, `LateUpdate`, audio — with input reaching the game
+only in play mode. A component that throws is disabled after three consecutive
+exceptions (the Output Log names it); anything that escapes ends play mode
+instead of the editor. While paused, the `step_frame` tool advances fixed frames
+one at a time.
 
 The 2D viewport draws with a plain `SpriteBatch.Begin()` / `End()` and **no
-camera transform**, so `Camera2D` has no effect there. The 3D viewport does
-respect `Camera3D.Main`.
+camera transform**, so `Camera2D` has no effect there. The 3D viewport renders
+through the scene's `MainCamera3D` when **Game Cam** is on, otherwise through the
+editor camera.
 
-> **Play-mode restore still loses the scene — save before pressing F5.**
-> `ExitPlayMode` deserialises the snapshot into `restored`, then calls
-> `SceneManager.CreateScene(restored.Name)`, which makes a *new empty scene with
-> the same name* and discards `restored`'s actors.
->
-> `SceneManager.AdoptScene` now exists precisely for this, and the Open Scene
-> path was already switched to it. The same one-line change fixes play mode:
->
-> ```csharp
-> var restored = SceneSerializer.Deserialize(_sceneSnapshot);
-> _engine.SceneManager.AdoptScene(restored);      // was CreateScene(restored.Name)
-> ```
+Stop restores the snapshot with `SceneManager.AdoptScene`, resets
+`Time.TimeScale`, and clears timers and coroutines. Tool calls made during play
+mode warn that they are discarded on Stop, and skip the undo snapshot.
 
 ---
 
 ## Scene files
 
-**Open Scene…** and **Save Scene** go through `SceneSerializer`, so they use the
-[canonical format](12-scenes-prefabs.md#the-scene-file-format) with
-`position` / `rotation` / `scale` arrays and assembly-qualified component type
-names — *not* the shape used by the files in `Templates/*/Scenes/`.
+**Open Scene…**, **Save Scene** and **Save Scene As…** go through
+`SceneSerializer`, so they use the
+[canonical format](12-scenes-prefabs.md#the-scene-file-format): `position` /
+`rotation` / `scale` arrays, an actor `class` for subclasses, and short component
+type names — the same shape the bundled templates use. **Save Scene** writes to
+the scene's known path (`EditorState.CurrentScenePath`) and clears the dirty
+marker in the title (`EditorState.SceneDirty`); the Assistant's `save_scene`
+tool goes through the same path.
 
 Opening a scene works correctly: `EditorApp.OpenSceneDialog` deserialises the
 file and installs it with `SceneManager.AdoptScene`.
@@ -389,11 +419,16 @@ EditorState.ViewportFocused;
 // Panel visibility
 EditorState.ShowApiReference;  EditorState.ShowCodeEditor;
 EditorState.ShowGitPanel;      EditorState.ShowProjectManager;   // true on startup
-EditorState.ShowRenderStats;
+EditorState.ShowRenderStats;   EditorState.ShowCodeProject;      EditorState.ShowAssistant;
+
+// Assistant
+EditorState.AssistantBusy;  EditorState.AssistantBusyLabel;      // drive the viewport banner
 
 // Project
 EditorState.ProjectPath;              // root directory
 EditorState.CurrentProject;           // ProjectFile?
+EditorState.CurrentProjectFile;       // absolute .sbproject path
+EditorState.CurrentScenePath;  EditorState.SceneDirty;           // the open scene file and its dirty flag
 EditorState.OnProjectOpened;          // event Action<string>
 EditorState.RecentProjects;           // List<RecentProject>
 EditorState.OpenProject(sbprojectPath);
@@ -422,5 +457,7 @@ load it in code with `SceneSerializer.LoadFromFile` +
 
 ## Next
 
+- [25. AI Assistant & MCP](25-ai-assistant-mcp.md)
 - [17. Debugging & Profiling](17-debugging.md)
 - [Tutorial 17: Editor Workflow](../tutorials/17-editor-workflow.md)
+- [Tutorial 20: Building a Game with Claude](../tutorials/20-building-a-game-with-claude.md)

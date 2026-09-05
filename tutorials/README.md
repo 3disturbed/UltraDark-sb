@@ -70,6 +70,7 @@ Everything is built in one project, `MyGame`, created in
 |---|---|---|---|
 | 17 | [Editor Workflow](17-editor-workflow.md) | Using — and working around — the editor | 20 min |
 | 18 | [Shipping Your Game](18-shipping.md) | A packaged, distributable build | 40 min |
+| 20 | [Building a Game with Claude](20-building-a-game-with-claude.md) | A level and a C# component built by talking to Claude in the editor | 30 min |
 
 ## Capstone
 

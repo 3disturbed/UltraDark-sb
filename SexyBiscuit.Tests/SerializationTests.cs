@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using SexyBiscuit.Engine.Core;
+using SexyBiscuit.Engine.Rendering;
 using SexyBiscuit.Engine.Localization;
 using SexyBiscuit.Engine.Scene;
 using Xunit;
@@ -200,5 +201,363 @@ public class LocalizationTests
         Loc.Clear();
         Loc.LoadTable("bad", "{ not json");
         Assert.DoesNotContain("bad", Loc.AvailableLanguages);
+    }
+}
+
+public class SceneSerializerClassTests
+{
+    private sealed class Marker : Component
+    {
+        public int Value { get; set; } = 1;
+    }
+
+    private sealed class Turret : Actor
+    {
+        public float Range { get; set; } = 3f;
+
+        public Turret() : base("Turret")
+        {
+            // Added by the constructor, so a naive loader would duplicate it.
+            AddComponent<Marker>();
+        }
+    }
+
+    private sealed class Sensitive : Component
+    {
+        public int Shown { get; set; } = 2;
+
+        [SceneIgnore]
+        public int Hidden { get; set; } = 5;
+
+        public int Runtime { get; private set; } = 3;
+
+        public void Touch() => Runtime++;
+    }
+
+    [Fact]
+    public void AnActorSubclassSurvivesARoundTrip()
+    {
+        var scene = new Engine.Core.Scene("classes");
+        try
+        {
+            scene.AddActor(new Turret { Range = 9.5f });
+            scene.FlushPendingActors();
+
+            string json = SceneSerializer.Serialize(scene);
+            Assert.Contains("\"class\": \"Turret\"", json);
+
+            var restored = SceneSerializer.Deserialize(json);
+            restored.FlushPendingActors();
+
+            var turret = Assert.IsType<Turret>(restored.FindByName("Turret"));
+            Assert.Equal(9.5f, turret.Range, 4);
+        }
+        finally
+        {
+            scene.Destroy();
+        }
+    }
+
+    [Fact]
+    public void ComponentsAddedByASubclassConstructorAreNotDuplicatedOnLoad()
+    {
+        var scene = new Engine.Core.Scene("merge");
+        try
+        {
+            var turret = scene.AddActor(new Turret());
+            turret.GetComponent<Marker>()!.Value = 42;
+            scene.FlushPendingActors();
+
+            var restored = SceneSerializer.Deserialize(SceneSerializer.Serialize(scene));
+            restored.FlushPendingActors();
+
+            var copy = restored.FindByName("Turret")!;
+            var markers = copy.GetAllComponents().OfType<Marker>().ToList();
+            Assert.Single(markers);
+            Assert.Equal(42, markers[0].Value);
+        }
+        finally
+        {
+            scene.Destroy();
+        }
+    }
+
+    [Fact]
+    public void APlainActorWritesNoClassField()
+    {
+        var scene = new Engine.Core.Scene("plain");
+        scene.AddActor(new Actor("Box"));
+        scene.FlushPendingActors();
+
+        Assert.DoesNotContain("\"class\"", SceneSerializer.Serialize(scene));
+    }
+
+    [Fact]
+    public void AnUnknownActorClassFallsBackToActorAndKeepsItsComponents()
+    {
+        const string json = """
+        {
+          "name": "Lost",
+          "layers": [{ "name": "default", "order": 0, "actors": [{
+            "name": "Ghost", "class": "NoSuch.Turret",
+            "components": [{ "type": "Camera3D", "properties": { "FieldOfView": 72.0 } }]
+          }]}]
+        }
+        """;
+
+        var scene = SceneSerializer.Deserialize(json);
+        scene.FlushPendingActors();
+
+        var ghost = scene.FindByName("Ghost");
+        Assert.NotNull(ghost);
+        Assert.IsType<Actor>(ghost);
+        Assert.Equal(72f, ghost!.GetComponent<Camera3D>()!.FieldOfView, 3);
+
+        // The class name is written back so the file is not silently downgraded.
+        string again = SceneSerializer.Serialize(scene);
+        Assert.Contains("\"class\": \"NoSuch.Turret\"", again);
+        Assert.DoesNotContain("MissingActorClass", again);
+    }
+
+    [Fact]
+    public void AnUnknownComponentRoundTripsAsAMissingComponentPlaceholder()
+    {
+        const string json = """
+        {
+          "name": "Lost",
+          "layers": [{ "name": "default", "order": 0, "actors": [{
+            "name": "Widget",
+            "components": [{ "type": "Frobnicator", "properties": { "Speed": 3 } }]
+          }]}]
+        }
+        """;
+
+        var scene = SceneSerializer.Deserialize(json);
+        scene.FlushPendingActors();
+
+        var widget = scene.FindByName("Widget")!;
+        var missing = Assert.Single(widget.GetAllComponents().OfType<MissingComponent>());
+        Assert.Equal("Frobnicator", missing.TypeName);
+
+        string again = SceneSerializer.Serialize(scene);
+        Assert.Contains("\"type\": \"Frobnicator\"", again);
+        Assert.Contains("\"Speed\": 3", again);
+        Assert.DoesNotContain("MissingComponent", again);
+
+        // Placeholders are for the loader, not the Add Component menu.
+        Assert.DoesNotContain(ReflectionUtil.FindComponentTypes(), t => t == typeof(MissingComponent));
+    }
+
+    [Fact]
+    public void ShortTypeNamesAreWrittenByDefaultAndResolve()
+    {
+        var scene = new Engine.Core.Scene("names");
+        var actor = scene.AddActor(new Actor("Cam"));
+        actor.AddComponent<Camera3D>();
+        scene.FlushPendingActors();
+
+        string json = SceneSerializer.Serialize(scene);
+        Assert.Contains("\"type\": \"Camera3D\"", json);
+        Assert.DoesNotContain("SexyBiscuit.Engine.Rendering.Camera3D,", json);
+
+        var restored = SceneSerializer.Deserialize(json);
+        restored.FlushPendingActors();
+        Assert.NotNull(restored.FindByName("Cam")!.GetComponent<Camera3D>());
+
+        string qualified = SceneSerializer.Serialize(scene, new SceneSerializerOptions { TypeNames = TypeNameStyle.AssemblyQualified });
+        Assert.Contains("SexyBiscuit.Engine.Rendering.Camera3D, SexyBiscuit.Engine", qualified);
+    }
+
+    [Fact]
+    public void ResolveComponentTypeAcceptsAssemblyQualifiedNamesFromOtherBuilds()
+    {
+        // A file saved by a different build carries a version the running assembly does not
+        // have. The qualifier is stripped and the full name resolves anyway.
+        var type = SceneSerializer.ResolveComponentType(
+            "SexyBiscuit.Engine.Rendering.Camera3D, SexyBiscuit.Engine, Version=9.9.9.9, Culture=neutral, PublicKeyToken=null");
+
+        Assert.Equal(typeof(Camera3D), type);
+        Assert.Null(SceneSerializer.ResolveComponentType("Some.Missing.Type, NoSuchAssembly"));
+
+        SceneSerializer.ClearTypeCache();
+        Assert.Equal(typeof(Camera3D), SceneSerializer.ResolveComponentType("Camera3D"));
+    }
+
+    [Fact]
+    public void IgnoredAndPrivateSetterPropertiesAreNotWritten()
+    {
+        var scene = new Engine.Core.Scene("filter");
+        var actor = scene.AddActor(new Actor("S"));
+        var sensitive = actor.AddComponent<Sensitive>();
+        sensitive.Touch();
+        scene.FlushPendingActors();
+
+        string json = SceneSerializer.Serialize(scene);
+        Assert.Contains("\"Shown\": 2", json);
+        Assert.DoesNotContain("\"Hidden\"", json);
+        Assert.DoesNotContain("\"Runtime\"", json);
+    }
+}
+
+public class AssetPathAndScriptTests
+{
+    [Fact]
+    public void TexturePathRoundTripsWithoutAnAssetManager()
+    {
+        var scene = new Engine.Core.Scene("sprites");
+        var actor = scene.AddActor(new Actor("Hero"));
+        actor.AddComponent<SpriteRenderer>().TexturePath = "Assets/Sprites/hero.png";
+        scene.FlushPendingActors();
+
+        var restored = SceneSerializer.Deserialize(SceneSerializer.Serialize(scene));
+        restored.FlushPendingActors();
+
+        var sprite = restored.FindByName("Hero")!.GetComponent<SpriteRenderer>()!;
+        Assert.Equal("Assets/Sprites/hero.png", sprite.TexturePath);
+        Assert.Null(sprite.Texture);     // no host, so the path waits
+    }
+
+    [Fact]
+    public void MaterialProxiesWriteToAnOwnedMaterialThatSerialises()
+    {
+        var scene = new Engine.Core.Scene("materials");
+        try
+        {
+            var actor = scene.AddActor(new Actor("Cube"));
+            actor.AddComponent<Transform3D>();
+            var mesh = actor.AddComponent<MeshRenderer>();
+            scene.FlushPendingActors();
+
+            mesh.AlbedoColor = Color.Red;
+            mesh.Roughness   = 0.25f;
+
+            // The shared default material must never pick up a scene's colour.
+            Assert.NotSame(Material3D.Default, mesh.Materials[0]);
+            Assert.Equal(Color.White, Material3D.Default.AlbedoColor);
+
+            string json = SceneSerializer.Serialize(scene);
+            Assert.DoesNotContain("\"AlbedoColor\": \"#FF0000FF\",\n          \"Metallic\"", json); // proxies are not written as component properties
+            Assert.Contains("#FF0000FF", json);                                                     // the material itself is
+
+            var restored = SceneSerializer.Deserialize(json);
+            restored.FlushPendingActors();
+            try
+            {
+                var copy = restored.FindByName("Cube")!.GetComponent<MeshRenderer>()!;
+                Assert.Equal(Color.Red, copy.AlbedoColor);
+                Assert.Equal(0.25f, copy.Roughness, 4);
+            }
+            finally
+            {
+                restored.Destroy();
+            }
+        }
+        finally
+        {
+            scene.Destroy();
+        }
+    }
+
+    [Fact]
+    public void ModelPathIsWrittenAndReadBack()
+    {
+        var scene = new Engine.Core.Scene("models");
+        try
+        {
+            var actor = scene.AddActor(new Actor("Tree"));
+            actor.AddComponent<Transform3D>();
+            actor.AddComponent<MeshRenderer>().ModelPath = "Assets/Models/tree.obj";
+            scene.FlushPendingActors();
+
+            string json = SceneSerializer.Serialize(scene);
+            Assert.Contains("\"ModelPath\": \"Assets/Models/tree.obj\"", json);
+
+            var restored = SceneSerializer.Deserialize(json);
+            restored.FlushPendingActors();
+            try
+            {
+                Assert.Equal("Assets/Models/tree.obj", restored.FindByName("Tree")!.GetComponent<MeshRenderer>()!.ModelPath);
+            }
+            finally
+            {
+                restored.Destroy();
+            }
+        }
+        finally
+        {
+            scene.Destroy();
+        }
+    }
+
+    [Fact]
+    public void ScriptPathSetAfterAttachStartsTheScript()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "sb-scripts-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string script = Path.Combine(dir, "spin.js");
+        File.WriteAllText(script, "var started = false;\nfunction onStart() { started = true; }\n");
+
+        string? previousRoot = SexyBiscuit.Engine.Core.ProjectPaths.Root;
+        try
+        {
+            SexyBiscuit.Engine.Core.ProjectPaths.Root = dir;
+
+            var scene = new Engine.Core.Scene("scripts");
+            var actor = scene.AddActor(new Actor("Spinner"));
+
+            // Attach first, then set the path — the order every loader and tool uses.
+            var component = actor.AddComponent<SexyBiscuit.Engine.Scripting.ScriptComponent>();
+            component.ScriptPath = "spin.js";
+
+            Assert.NotNull(component.Runtime);
+            Assert.True(component.Runtime!.HasFunction("onStart"));
+
+            scene.FlushPendingActors();
+            Assert.Equal("true", component.Runtime.Evaluate("String(started)")?.ToString());
+        }
+        finally
+        {
+            SexyBiscuit.Engine.Core.ProjectPaths.Root = previousRoot;
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LoadSceneReadsTheFileOnTheNextUpdate()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "sb-scenes-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, "Scenes"));
+
+        var authored = new Engine.Core.Scene("Level1");
+        authored.AddActor(new Actor("Hero"));
+        authored.FlushPendingActors();
+        SceneSerializer.SaveToFile(authored, Path.Combine(dir, "Scenes", "Level1.scene"));
+
+        string? previousRoot = SexyBiscuit.Engine.Core.ProjectPaths.Root;
+        var manager = new SceneManager();
+        try
+        {
+            SexyBiscuit.Engine.Core.ProjectPaths.Root = dir;
+
+            // The extension is optional, as ProjectSettings.json's StartScene omits it.
+            manager.LoadScene("Scenes/Level1");
+            manager.Update(0.016f);
+
+            Assert.NotNull(manager.ActiveScene);
+            Assert.Equal("Level1", manager.ActiveScene!.Name);
+            Assert.NotNull(manager.ActiveScene.FindByName("Hero"));
+
+            // A missing file still yields an empty scene rather than an exception.
+            manager.LoadScene("Scenes/Nowhere");
+            manager.Update(0.016f);
+            Assert.Equal("Nowhere", manager.ActiveScene!.Name);
+            Assert.Empty(manager.ActiveScene.Layers.SelectMany(l => l.Actors));
+        }
+        finally
+        {
+            manager.ActiveScene?.Destroy();
+            SexyBiscuit.Engine.Core.ProjectPaths.Root = previousRoot;
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }

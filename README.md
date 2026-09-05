@@ -65,6 +65,7 @@ effects, and [CONTRIBUTING](CONTRIBUTING.md) for build, test and style expectati
 22. [AI & Navigation](#22-ai--navigation)
 23. [Localisation](#23-localisation)
 24. [Testing & CI](#24-testing--ci)
+25. [AI Assistant & MCP](#25-ai-assistant--mcp)
 
 ---
 
@@ -951,6 +952,18 @@ Built with **ImGui.NET** — dockable panels, multi-window layout, dark theme by
 - **Build** and **Build & Run** buttons
 - Inline build log with errors and warnings
 
+### Assistant Panel
+- Claude Code embedded in the editor: a chat transcript with streaming replies, one row per tool call, questions with buttons, permission prompts
+- **Stop** (Shift+F8) interrupts the turn and cancels running tool calls; a viewport banner shows when Claude is working
+- Activity tab: every MCP call served, from the embedded session or a terminal Claude Code
+- Autonomous by default; Accept-edits, Ask and Auto modes available
+- See [§25](#25-ai-assistant--mcp)
+
+### C# Project Panel
+- Build, Build & Reload and Run Standalone for the project's C# code
+- Live build log and clickable diagnostics that open the Code Editor
+- Hot reload keeps the scene, including unsaved edits, across an assembly swap
+
 ---
 
 ## 16. Debug & Tooling
@@ -1504,8 +1517,43 @@ maths and damping, bounds and transform hierarchies, actor lifecycle, timers, co
 pooling, events, possession, subsystems, blackboards, behaviour trees, nav mesh building
 and pathfinding, scene serialization round-trips, and localisation.
 
-[CI](.github/workflows/ci.yml) builds and tests on Windows, macOS and Linux, and builds
+The suite also covers the MCP layer: the JSON-RPC transport over real HTTP, the tool
+registry and schema generation, the scene tools and undo stack, C# project generation and
+the assembly loader, and the Claude Code stream-json plumbing.
+
+[CI](.github/workflows/ci.yml) builds the engine, editor and demo and runs the tests on
+Windows, macOS and Linux, runs the editor's headless tool dump as a smoke test, and builds
 the engine a second time with `-warnaserror` to keep it warning-free.
+
+---
+
+## 25. AI Assistant & MCP
+
+The editor is an MCP server (`http://127.0.0.1:7331/mcp/`, Streamable HTTP, JSON-RPC 2.0)
+and it runs Claude Code. Claude builds and changes a game inside the running editor while
+you watch: it spawns actors and primitives, sets materials, moves the camera, takes
+screenshots of the viewport, writes C# and hot-reloads it, plays and stops the game, and
+asks you through `ask_user` when a decision is expensive to reverse. Every mutating call
+takes an undo snapshot first.
+
+Two ways in: the **Assistant panel** spawns and drives a Claude Code process itself
+(autonomous by default, with Stop, a viewport banner and an activity log as the safety
+net), or a Claude Code in a terminal connects through the project's `.mcp.json` and talks to
+you in the editor with `say`, `ask_user` and `wait_for_user`.
+
+The C# side: `create_code_project` gives a project a `.csproj` with Unreal-style starters
+(`GameMode`, `PlayerController`, `Character`), `reload_game_code` hot-swaps the assembly in a
+collectible `AssemblyLoadContext` with the scene round-tripped through JSON, and
+`rebuild_engine_and_restart` rebuilds the engine and editor from source, restarts the
+editor into the same project and scene, and resumes the Claude session.
+
+```bash
+dotnet run --project SexyBiscuit.Editor -- --assistant-selftest --dry-run   # find the binary, print the command line
+dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --markdown        # the tool catalogue
+```
+
+See the [AI Assistant & MCP wiki page](wiki/25-ai-assistant-mcp.md) and
+[Tutorial 20](tutorials/20-building-a-game-with-claude.md).
 
 ---
 

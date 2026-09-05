@@ -154,8 +154,9 @@ public sealed class HierarchyPanel
                 var payload = ImGui.AcceptDragDropPayload(DragDropType);
                 if (payload.NativePtr != null && _draggedActor != null && _draggedActor.Layer_ != layer)
                 {
-                    _draggedActor.Layer_?.RemoveActor(_draggedActor);
-                    layer.AddActor(_draggedActor);
+                    // MoveActor, not RemoveActor + AddActor: the removal queue destroys the
+                    // actor, which is how dragging a cube between layers used to lose its mesh.
+                    scene.MoveActor(_draggedActor, layer.Name, layer.Order);
                     ConsoleLog.Add($"Moved '{_draggedActor.Name}' to layer '{layer.Name}'.", LogLevel.Info);
                     _draggedActor = null;
                 }

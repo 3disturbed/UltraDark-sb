@@ -18,6 +18,7 @@ Namespace: `SexyBiscuit.Engine.Scene`
       "actors": [
         {
           "name": "Player",
+          "class": "Character",
           "tag": "Player",
           "layer": 1,
           "active": true,
@@ -26,11 +27,12 @@ Namespace: `SexyBiscuit.Engine.Scene`
           "scale": [1.0, 1.0],
           "components": [
             {
-              "type": "SexyBiscuit.Engine.Rendering.SpriteRenderer, SexyBiscuit.Engine",
+              "type": "SpriteRenderer",
               "properties": {
                 "Tint": "#FFFFFFFF",
                 "LayerDepth": 0.5,
-                "Pivot": [0.5, 0.5]
+                "Pivot": [0.5, 0.5],
+                "TexturePath": "Assets/Sprites/player.png"
               }
             }
           ]
@@ -49,6 +51,8 @@ Field by field:
 | `layers[].name` | string | resolved with `GetOrCreateLayer` |
 | `layers[].order` | int | draw order |
 | `actors[].name` / `tag` | string | |
+| `actors[].class` | string | the `Actor` subclass (`GameMode`, `Character`, a project class); omitted for a plain `Actor` |
+| `actors[].properties` | object | public get/set properties declared by that subclass |
 | `actors[].layer` | int | the numeric `Actor.Layer`, used for raycast masks |
 | `actors[].active` | bool | default `true` |
 | `actors[].position` | `[x, y]` | **local** 2D position |
@@ -58,63 +62,58 @@ Field by field:
 | `actors[].rotation3` | `[x, y, z, w]` | local `Transform3D` rotation quaternion |
 | `actors[].scale3` | `[x, y, z]` | local `Transform3D` scale |
 | `actors[].lifeSpan` | float? | `Actor.LifeSpan`; absent when the actor lives indefinitely |
-| `components[].type` | string | a .NET type name — see below |
+| `components[].type` | string | a type name, short by default — see below |
 | `components[].properties` | object | property name → value |
 
 Property names are matched **case-insensitively**
 (`PropertyNameCaseInsensitive = true`).
 
-### Component type names must resolve — Verified
+### Type names
 
-```csharp
-Type? type = Type.GetType(compDto.Type);
-if (type is null)
-    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-    { type = asm.GetType(compDto.Type); if (type != null) break; }
-```
+The serialiser writes **short type names** (`"Camera2D"`, `"SpriteRenderer"`) and
+resolves them across every loaded assembly, including a project's hot-reloaded
+game assembly. A full name (`SexyBiscuit.Engine.Rendering.Camera2D`) or an
+assembly-qualified one from an older file still resolves — the assembly
+qualifier is ignored, so a scene saved against one engine build loads against
+the next. Only when two loaded types share a short name does the writer fall
+back to the full name. `SceneSerializerOptions.TypeNames` (`Short`, `Full`,
+`AssemblyQualified`) changes what `Serialize` / `SaveToFile` write.
 
-Both lookups need a **namespace-qualified** name. The serialiser writes
-`type.AssemblyQualifiedName`, which always round-trips. A short name like
-`"Camera2D"` resolves to `null` and the component is skipped with:
+A component whose type cannot be resolved — a game class that was renamed, or is
+not loaded yet — is kept as a `MissingComponent` placeholder carrying the type
+name and its properties, and is written back out unchanged, so nothing is lost;
+loading logs one warning per placeholder. An actor whose `class` cannot be
+resolved loads as a plain `Actor` with a `MissingActorClass` marker and keeps its
+components.
 
-```
-[SceneSerializer] Could not resolve component type 'Camera2D'. Skipping.
-```
-
-Hand-written scene files must therefore use at least the full name:
-
-```json
-{ "type": "SexyBiscuit.Engine.Rendering.Camera2D" }
-```
-
-or, for a component in your own game assembly:
-
-```json
-{ "type": "MyGame.Components.PlayerController, MyGame" }
-```
+Actor subclasses record their class (`"class": "Character"`). On load the
+subclass is constructed, so components its constructor adds are filled in from
+the file rather than duplicated, and `Prefab.InstantiateAs<T>` works for a prefab
+saved from a `T`.
 
 ### Which properties round-trip
 
-`GetSerializableProperties` keeps public instance properties that are **both
-readable and writable** and whose type is serialisable:
-primitives, `string`, `bool`, `enum`, `Vector2`, `Vector3`, `Vector4`,
-`Quaternion` and `Color`.
+`GetSerializableProperties` keeps public instance properties with a **public
+getter and a public setter** whose type is serialisable: primitives, `string`,
+`bool`, `enum`, `Vector2`, `Vector3`, `Vector4`, `Quaternion`, `Color`,
+`Material3D`, and `List<T>` of any of those. Properties marked `[SceneIgnore]` are
+skipped, as are read-only runtime values such as a triangle count.
 
-Everything else is skipped — notably **`Texture2D`, `SoundEffect`, `Effect`,
-`SpriteFont`, and every collection type**. A serialised `SpriteRenderer`
-keeps its `Tint`, `Pivot`, `LayerDepth`, `FrameWidth`, `FrameHeight`,
-`FrameIndex`, `IsSliced` and `SliceBorder`, and loses its `Texture`.
+GPU and audio resources (`Texture2D`, `SoundEffect`, `Effect`, `Model`) are not
+serialisable, so the components that hold them expose a **path twin** that is:
 
-Assign textures after loading:
+| Component | Path property | Resolved |
+|---|---|---|
+| `SpriteRenderer` | `TexturePath` | on `Start`, or at once when set while attached |
+| `AudioSource` | `ClipPath` | on `Start` |
+| `MeshRenderer` | `ModelPath`, `AlbedoTexturePath` (a proxy for the first material's albedo map) | on the first `Draw`, when a device is in hand |
+| `Material3D` | `AlbedoMapPath`, `NormalMapPath`, `MetallicMapPath`, `RoughnessMapPath`, `EmissiveMapPath`, `ShaderPath` | `ResolveTextures()` after the scene loads |
 
-```csharp
-foreach (var actor in scene.FindByTag("Enemy"))
-    if (actor.GetComponent<SpriteRenderer>() is { } sr)
-        sr.Texture = Assets.Load<Texture2D>("Assets/Sprites/enemy.png");
-```
-
-Or store the path in a custom string property on your own component and resolve
-it in `Start`:
+Paths are relative to the project root (`ProjectPaths.Root`) and load through the
+running host's `AssetManager.Current`; with no host running (headless tools,
+tests) the path is kept and resolved later. Set the path and the asset follows.
+Your own components need the same pattern — a `string` path plus a `Start` that
+resolves it:
 
 ```csharp
 public sealed class SpriteLoader : Component
@@ -129,9 +128,6 @@ public sealed class SpriteLoader : Component
     }
 }
 ```
-
-This pattern — a serialisable `string` path plus a `Start` that resolves it —
-is the standard way to get assets into scene files.
 
 Converters, all in `SceneSerializer.cs`:
 
@@ -165,9 +161,11 @@ nulls.
 
 ### Loading a scene file
 
-`SceneManager.LoadScene` does **not** read the file — it creates an empty scene
-named after it. `SceneSerializer.LoadFromFile` reads the file and returns a
-detached `Scene`. `SceneManager.AdoptScene` connects the two:
+`SceneManager.LoadScene(path)` reads the file on the next `Update` when it
+exists (`.scene` or `.json`, resolved against `ProjectPaths.Root`) and falls back
+to an empty scene with a warning when it does not. `SceneSerializer.LoadFromFile`
++ `SceneManager.AdoptScene` is the immediate, synchronous route, and what the
+editor uses:
 
 ```csharp
 using SexyBiscuit.Engine.Scene;
@@ -199,48 +197,12 @@ component's `Awake` — before the actor belonged to a scene. **Component work
 that needs scene context belongs in `Start`**, which fires when the adopted
 scene flushes the actor on its next `Update`.
 
-### The bundled `.scene` templates use a different shape
+### The bundled `.scene` templates
 
-The files in `Templates/*/Scenes/*.scene` are written for an editor-side format
-that `SceneSerializer` does not read:
-
-```json
-{
-  "name": "Village",
-  "layers": [{ "name": "Default", "actors": [{
-    "name": "Hero",
-    "components": [ { "type": "Camera2D", "properties": { "Zoom": 1.0 } } ],
-    "transform": { "x": 400, "y": 300, "rotation": 0, "scaleX": 1, "scaleY": 1 }
-  }]}]
-}
-```
-
-Two incompatibilities: `"transform": {x, y, …}` instead of
-`"position"/"rotation"/"scale"`, and short component type names. Loading one
-through `SceneSerializer` yields actors at the origin with no components.
-
-Treat them as **design references**. If you want to load them, write a small
-converter:
-
-```csharp
-static string ConvertTemplateScene(string json)
-{
-    using var doc = JsonDocument.Parse(json);
-    // Map "transform" → position/rotation/scale, and short type names →
-    // "SexyBiscuit.Engine.<Namespace>.<Name>" via a lookup table.
-    // …
-}
-```
-
-or build a lookup from short name to `Type` and pre-process
-`components[].type` before deserialising:
-
-```csharp
-static readonly Dictionary<string, Type> ShortNames =
-    typeof(SBEngine).Assembly.GetTypes()
-        .Where(t => typeof(Component).IsAssignableFrom(t) && !t.IsAbstract)
-        .ToDictionary(t => t.Name, t => t);
-```
+The files in `Templates/*/Scenes/*.scene` use this format with short type names,
+which the serialiser reads, so a template project's default scene loads as-is.
+The remaining mismatch is the camera tag (`"MainCamera"` rather than
+`"MainCamera3D"`); see [21. Gotchas](21-gotchas.md#three-different-camera-tags).
 
 ---
 
@@ -270,15 +232,16 @@ layer**. With no active scene it logs to stderr and returns an unparented actor.
 The prefab JSON is one `ActorDto`, the same shape as an entry in a scene's
 `actors` array, with the same type-name and serialisable-property rules.
 
-### `InstantiateAs<T>` will usually throw
+### `InstantiateAs<T>`
 
 ```csharp
-var enemy = Prefab.InstantiateAs<EnemyActor>("Prefabs/Enemy.prefab");   // InvalidCastException
+var enemy = Prefab.InstantiateAs<EnemyActor>("Prefabs/Enemy.prefab");
 ```
 
-`ActorDto` records no actor subclass — `BuildActor` always constructs a plain
-`Actor`. `InstantiateAs<T>` therefore only succeeds for `T = Actor`. For typed
-actors, write a factory instead:
+Works when the prefab was saved from an `EnemyActor`: the `class` field records
+the subclass and `BuildActor` constructs it. A prefab saved from a plain `Actor`
+still throws `InvalidCastException` for any other `T`. A C# factory remains the
+better pattern when instances need assets, events or components wired in code:
 
 ```csharp
 public static EnemyActor SpawnEnemy(Scene scene, Vector2 pos)
@@ -372,7 +335,7 @@ chunks too — use the `SpriteLoader`-style pattern for chunk content.
 | Approach | Good for | Cost |
 |---|---|---|
 | **Code-first scene loaders** (what the demo does) | full control, assets and events wired directly, no format mismatch | scenes live in C#, rebuilt to change |
-| **`SceneSerializer` files** | data-driven levels, editor round-trip | assets need the path-property pattern; type names must be qualified |
+| **`SceneSerializer` files** | data-driven levels, editor round-trip, the Assistant's tools | assets load through the path twins; scenes only reach disk when saved |
 | **Prefab + factory hybrid** | many similar objects | prefabs cover layout, factories cover assets |
 
 The demo's `MainMenuScene.Load(sm)` / `OverworldScene.Load(sm)` pattern is the
@@ -383,4 +346,5 @@ most reliable option today, and the one the tutorials use.
 ## Next
 
 - [13. Assets](13-assets.md)
+- [25. AI Assistant & MCP](25-ai-assistant-mcp.md) — building scenes by talking to Claude
 - [Tutorial 10: Scenes & Prefabs](../tutorials/10-scenes-and-prefabs.md)

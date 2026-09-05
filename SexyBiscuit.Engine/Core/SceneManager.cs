@@ -180,11 +180,12 @@ public class SceneManager
         var path = _pendingLoad;
         _pendingLoad = null;
 
+        var scene = ReadScene(path);
+
         if (_pendingLoadAdditive)
         {
-            var additive = new Scene(System.IO.Path.GetFileNameWithoutExtension(path));
-            _additiveScenes.Add(additive);
-            OnSceneLoaded?.Invoke(additive);
+            _additiveScenes.Add(scene);
+            OnSceneLoaded?.Invoke(scene);
         }
         else
         {
@@ -194,12 +195,55 @@ public class SceneManager
                 _activeScene.Destroy();
             }
 
-            var scene = new Scene(System.IO.Path.GetFileNameWithoutExtension(path));
             foreach (var actor in _dontDestroyActors)
                 scene.AddActor(actor);
 
             _activeScene = scene;
             OnSceneLoaded?.Invoke(scene);
+        }
+    }
+
+    /// <summary>
+    /// Finds the file a scene path refers to: as given, with a <c>.scene</c> or <c>.json</c>
+    /// extension, or under <c>Assets/</c> — each relative to the project root. Null when
+    /// nothing matches.
+    /// </summary>
+    public static string? ResolveScenePath(string path)
+    {
+        foreach (var candidate in new[] { path, path + ".scene", path + ".json" })
+        {
+            string direct = ProjectPaths.Resolve(candidate);
+            if (File.Exists(direct)) return direct;
+
+            string underAssets = ProjectPaths.Resolve(Path.Combine("Assets", candidate));
+            if (File.Exists(underAssets)) return underAssets;
+        }
+
+        return null;
+    }
+
+    // LoadScene used to produce an empty scene named after the file — the queued load was
+    // only ever a placeholder, and every game had to deserialise its own scenes. Now the file
+    // is read when it exists; a missing file still yields the empty scene, with a warning.
+    private static Scene ReadScene(string path)
+    {
+        string fallbackName = Path.GetFileNameWithoutExtension(path);
+        string? file = ResolveScenePath(path);
+
+        if (file == null)
+        {
+            Console.Error.WriteLine($"[SceneManager] No scene file found for '{path}' under '{ProjectPaths.EffectiveRoot}'. Created an empty scene.");
+            return new Scene(fallbackName);
+        }
+
+        try
+        {
+            return global::SexyBiscuit.Engine.Scene.SceneSerializer.LoadFromFile(file);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SceneManager] Could not load '{file}': {ex.Message}. Created an empty scene.");
+            return new Scene(fallbackName);
         }
     }
 }

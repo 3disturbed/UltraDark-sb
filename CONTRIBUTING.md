@@ -3,12 +3,15 @@
 ## Building
 
 ```bash
-dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj
+dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj -warnaserror
+dotnet build SexyBiscuit.Editor/SexyBiscuit.Editor.csproj
 dotnet test  SexyBiscuit.Tests/SexyBiscuit.Tests.csproj
 ```
 
-The editor is `net8.0-windows` and only runs on Windows. Everything else is
-cross-platform, and CI builds all three desktop OSes.
+Everything, the editor included, is cross-platform (`net8.0`, MonoGame DesktopGL and
+ImGui.NET), and CI builds and tests all three desktop OSes. The editor can also rebuild
+itself from a running session (`rebuild_engine_and_restart`), so keep the engine building
+with `-warnaserror` locally too.
 
 ## Before you open a PR
 
@@ -44,6 +47,8 @@ Match the surrounding file. In general:
 | `Animation`, `Audio`, `Input`, `UI` | Their respective systems |
 | `Networking`, `Steam` | Multiplayer and platform integration |
 | `Scripting` | The Jint runtime and its bridge |
+| `Mcp` | The MCP server, tool registry and schema, the scene tools, undo, and the Claude Code plumbing (`Mcp/ClaudeCode`) |
+| `Code` | C# game projects: generation, `dotnet build`, the collectible assembly loader, engine rebuild + relaunch |
 
 A new subsystem gets its own folder and namespace, plus a page in `wiki/`.
 

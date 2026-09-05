@@ -142,7 +142,7 @@ public sealed class ScriptHotReload : IDisposable
             var affected = _registered
                 .Where(sc => !string.IsNullOrEmpty(sc.ScriptPath)
                           && string.Equals(
-                                 Path.GetFullPath(sc.ScriptPath),
+                                 Core.ProjectPaths.Resolve(sc.ScriptPath),
                                  fullChanged,
                                  StringComparison.OrdinalIgnoreCase))
                 .ToArray();

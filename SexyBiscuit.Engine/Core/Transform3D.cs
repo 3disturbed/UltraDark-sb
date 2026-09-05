@@ -234,7 +234,8 @@ public sealed class Transform3D : Component
     // -------------------------------------------------------------------------
     // Euler conversions
     // -------------------------------------------------------------------------
-    private static Quaternion EulerToQuaternion(Vector3 eulerDegrees)
+    /// <summary>Builds a rotation from Euler angles in degrees: X pitch, Y yaw, Z roll.</summary>
+    public static Quaternion EulerToQuaternion(Vector3 eulerDegrees)
     {
         float rx = MathHelper.ToRadians(eulerDegrees.X);
         float ry = MathHelper.ToRadians(eulerDegrees.Y);
@@ -242,7 +243,8 @@ public sealed class Transform3D : Component
         return Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
     }
 
-    private static Vector3 QuaternionToEuler(Quaternion q)
+    /// <summary>The inverse of <see cref="EulerToQuaternion"/>: pitch, yaw and roll in degrees.</summary>
+    public static Vector3 QuaternionToEuler(Quaternion q)
     {
         float sinr = 2f * (q.W * q.X + q.Y * q.Z);
         float cosr = 1f - 2f * (q.X * q.X + q.Y * q.Y);

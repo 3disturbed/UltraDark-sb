@@ -94,7 +94,7 @@ public sealed class EngineHost : IDisposable
         Time.FixedDeltaTime = Config.FixedTimestep;
 
         SpriteBatch  = new SpriteBatch(graphicsDevice);
-        Assets       = new AssetManager(graphicsDevice, content);
+        Assets       = AssetManager.Current = new AssetManager(graphicsDevice, content);
         Input        = new InputManager(Config);
         Audio        = new AudioManager();
         SceneManager = new SceneManager();
@@ -185,6 +185,7 @@ public sealed class EngineHost : IDisposable
 
     public void Dispose()
     {
+        if (ReferenceEquals(AssetManager.Current, Assets)) AssetManager.Current = null;
         GameInstance.InternalShutdown();
         Coroutines.StopAll();
         Timers.ClearAll();

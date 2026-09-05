@@ -50,6 +50,7 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [17. Debugging & Profiling](17-debugging.md) | Debug overlay, gizmos, profiler, memory viewer, network diagnostics |
 | [18. Build & Export](18-build-export.md) | `PlatformConfig`, asset cooking, the export pipeline, the CLI |
 | [19. Steam](19-steam.md) | `SteamManager`, achievements, cloud, lobbies, workshop |
+| [25. AI Assistant & MCP](25-ai-assistant-mcp.md) | Claude inside the editor: the Assistant panel, the MCP server and its tools, C# hot reload, engine rebuild + restart |
 
 ## Reference
 
