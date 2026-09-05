@@ -214,7 +214,7 @@ public class NetworkObject : Component
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Deserialises a state payload produced by <see cref="CollectLocalState"/>
+    /// Deserialises a state payload produced by <see cref="CollectLocalState()"/>
     /// and applies each value to the appropriate field or property on the Actor
     /// or one of its Components.
     /// </summary>
@@ -297,7 +297,7 @@ public class NetworkObject : Component
     }
 
     /// <summary>
-    /// Builds a Dictionary<memberName, (memberInfo, target)> across all objects
+    /// Builds a <c>Dictionary&lt;memberName, (memberInfo, target)&gt;</c> across all objects
     /// for fast lookup during ApplyRemoteState.
     /// </summary>
     private Dictionary<string, (MemberInfo, object)> BuildMemberLookup()

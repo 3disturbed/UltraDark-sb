@@ -133,7 +133,7 @@ public static class Profiler
 
     /// <summary>
     /// Draws a colour-coded table of profiler sections at the given screen position.
-    /// Green = &lt; 2 ms, Yellow = &lt; 8 ms, Red = &ge; 8 ms.
+    /// Green = under 2 ms, Yellow = under 8 ms, Red = 8 ms or more.
     /// </summary>
     public static void Draw(SpriteBatch sb, Vector2 position)
     {

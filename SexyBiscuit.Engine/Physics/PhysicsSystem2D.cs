@@ -169,10 +169,11 @@ public sealed class PhysicsSystem2D
     // Queries — Raycast
     // -----------------------------------------------------------------------
 
-    /// <summary>
-    /// Fires a ray from <paramref name="origin"/> in <paramref name="direction"/> for
-    /// up to <paramref name="distance"/> metres.  Returns true if something was hit.
-    /// </summary>
+    /// <summary>Fires a ray into the 2D world. Returns true if something was hit.</summary>
+    /// <param name="origin">Start of the ray, in world units.</param>
+    /// <param name="direction">Direction of the ray. Normalised internally.</param>
+    /// <param name="distance">Maximum length of the ray in world units.</param>
+    /// <param name="hit">Receives the closest hit when the method returns true.</param>
     /// <param name="layerMask">Actor.Layer bitmask filter; -1 = hit everything.</param>
     public bool Raycast(
         XnaVec2 origin,

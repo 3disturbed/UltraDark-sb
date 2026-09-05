@@ -305,7 +305,7 @@ public static class PlayerPrefs
 
     /// <summary>
     /// Builds a plain <c>Dictionary&lt;string, object&gt;</c> suitable for
-    /// <see cref="JsonSerializer.Serialize"/> from the internal store.
+    /// <see cref="JsonSerializer.Serialize{TValue}(TValue, System.Text.Json.JsonSerializerOptions?)"/> from the internal store.
     /// JsonElement values are preserved as-is; other types are their native CLR values.
     /// </summary>
     private static Dictionary<string, object> BuildSerializableDict()

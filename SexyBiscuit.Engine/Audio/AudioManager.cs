@@ -198,8 +198,11 @@ public class AudioManager : IDisposable
             if (_crossFade != null &&
                 (v.HandleId == _crossFade.OldHandleId || v.HandleId == _crossFade.NewHandleId)) continue;
 
+            // Cache the instance: passing v by ref past this point defeats the
+            // compiler's null-flow analysis even though the slot cannot change here.
+            var instance = v.Instance;
             ApplyVolume(ref v, v.RequestedVolume, anySolo);
-            v.Instance.Pitch = Math.Clamp(
+            instance.Pitch = Math.Clamp(
                 v.RequestedPitch + (v.Bus?.GetEffectivePitch() ?? 0f), -1f, 1f);
         }
     }
@@ -403,9 +406,10 @@ public class AudioManager : IDisposable
         v.RequestedPitch  = Math.Clamp(pitch,  -1f, 1f);
 
         bool anySolo = HasAnySolo();
+        var instance = v.Instance;
         ApplyVolume(ref v, v.RequestedVolume, anySolo);
-        v.Instance.Pitch = Math.Clamp(v.RequestedPitch + (v.Bus?.GetEffectivePitch() ?? 0f), -1f, 1f);
-        v.Instance.Pan   = Math.Clamp(pan, -1f, 1f);
+        instance.Pitch = Math.Clamp(v.RequestedPitch + (v.Bus?.GetEffectivePitch() ?? 0f), -1f, 1f);
+        instance.Pan   = Math.Clamp(pan, -1f, 1f);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
