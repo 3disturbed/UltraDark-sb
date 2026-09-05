@@ -124,6 +124,21 @@ public static class EditorState
     /// <summary>Shows the C# Project panel.</summary>
     public static bool ShowCodeProject { get; set; } = true;
 
+    /// <summary>Shows the Assistant panel.</summary>
+    public static bool ShowAssistant { get; set; } = true;
+
+    /// <summary>True while the assistant is working, waiting for permission or waiting for an answer. Drives the viewport banner.</summary>
+    public static bool AssistantBusy { get; set; }
+
+    /// <summary>What the assistant is doing, for the banner.</summary>
+    public static string AssistantBusyLabel { get; set; } = "";
+
+    /// <summary>The dock node the Details window sits in, refreshed every frame it is drawn.</summary>
+    public static uint DetailsDockId { get; set; }
+
+    /// <summary>Set once when a saved layout predates the Assistant panel: dock it beside Details on first draw.</summary>
+    public static bool DockAssistantIntoDetails { get; set; }
+
     /// <summary>Shows the project launcher. Open on startup until a project is chosen.</summary>
     public static bool ShowProjectManager { get; set; } = true;
 

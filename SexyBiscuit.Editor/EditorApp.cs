@@ -38,7 +38,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private readonly GraphicsDeviceManager _graphics;
     private SpriteBatch _spriteBatch = null!;
 
-    // Viewport render target — engine draws into this
+    // Viewport render target: engine draws into this
     private RenderTarget2D? _viewportTarget;
     private int _viewportWidth  = 1280;
     private int _viewportHeight = 720;
@@ -72,6 +72,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private EditorRestart?    _restart;
     private CodeProjectPanel? _codeProject;
     private readonly LaunchOptions _options;
+
+    // Claude in the editor: the embedded session, the interaction board and the panel.
+    private AssistantHost?  _assistant;
+    private AssistantPanel? _assistantPanel;
 
     // Frames still to simulate while paused (step_frame).
     private int _pendingSteps;
@@ -122,7 +126,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         Content.RootDirectory = "Assets";
         IsMouseVisible = true;
         Window.AllowUserResizing = true;
-        Window.Title = "SexyBiscuit Engine — Editor";
+        Window.Title = "SexyBiscuit Engine: Editor";
         IsFixedTimeStep = false;
     }
 
@@ -141,7 +145,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         RecreateViewportTarget();
 
         // EngineHost, not SBEngine. SBEngine is a MonoGame Game, and constructing one
-        // creates a second SDL window — which MonoGame's static Mouse then binds to,
+        // creates a second SDL window: which MonoGame's static Mouse then binds to,
         // stealing cursor coordinates with no supported way to give them back.
         _engine = new EngineHost(GraphicsDevice, Content, new EngineConfig
         {
@@ -152,7 +156,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             Enable3D     = false,
         });
 
-        // Open on a lit, navigable level rather than an empty void — the first thing a
+        // Open on a lit, navigable level rather than an empty void: the first thing a
         // new user needs is proof the viewport works.
         _engine.SceneManager.AdoptScene(SceneTemplates.CreateDefault3D("Untitled"));
         _engineInitialized = true;
@@ -190,9 +194,12 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         EditorState.OnProjectOpened += root => _code?.OnProjectOpened(root);
         _codeProject = new CodeProjectPanel(_code);
 
+        _assistant      = new AssistantHost(_mcp, _code, _restart, settings, _options.NoAssistant);
+        _assistantPanel = new AssistantPanel(_assistant);
+        EditorState.OnProjectOpened += root => _assistant?.OnProjectOpened(root);
+        Resumed += state => _assistant?.OnEditorResumed(state);
+
         ApplyLaunchOptions();
-
-
     }
 
     protected override void LoadContent()
@@ -209,6 +216,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         // flushed into the layers below and drawn this same frame.
         _mcp?.Drain();
         _code?.Update();
+        _assistant?.Update();
 
         var keys = Keyboard.GetState();
 
@@ -217,7 +225,15 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         if (KeyJustPressed(keys, Keys.F6))  TogglePause();
         if (KeyJustPressed(keys, Keys.F7))  ExitPlayMode();
 
-        // Undo / Redo for scene edits. Not while a text field has focus — MonoGame's keyboard
+        // F8 talks to Claude; Shift+F8 stops it.
+        if (KeyJustPressed(keys, Keys.F8))
+        {
+            bool shiftHeld = keys.IsKeyDown(Keys.LeftShift) || keys.IsKeyDown(Keys.RightShift);
+            if (shiftHeld) _assistant?.Interrupt();
+            else _assistantPanel?.RequestFocus();
+        }
+
+        // Undo / Redo for scene edits. Not while a text field has focus: MonoGame's keyboard
         // state is global, and Ctrl+Z in the rename box must stay a text-edit undo.
         bool control = keys.IsKeyDown(Keys.LeftControl) || keys.IsKeyDown(Keys.RightControl)
                     || keys.IsKeyDown(Keys.LeftWindows) || keys.IsKeyDown(Keys.RightWindows);
@@ -232,7 +248,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         UpdateWindowTitle();
 
         // Apply queued spawns and destroys every frame, playing or not. Layer.AddActor
-        // only queues, and the queue is normally drained by Scene.Update — which the
+        // only queues, and the queue is normally drained by Scene.Update: which the
         // editor does not call outside play mode. Without this the outliner and picking
         // see an empty scene while the renderer, which works off the component
         // registries, draws it perfectly.
@@ -305,7 +321,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         // Screenshots asked for by tools, taken from the same target the viewport shows.
         _mcp?.Capture.ServiceScene(GraphicsDevice, _viewportTarget, _spriteBatch, _engine, _engine?.SceneManager.ActiveScene);
 
-        // Main backbuffer — ImGui
+        // Main backbuffer: ImGui
         GraphicsDevice.Clear(new Color(30, 30, 30));
 
         _imGui.NewFrame(gameTime);
@@ -407,6 +423,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             if (ImGui.MenuItem("C# Project", "", codeProject))
                 EditorState.ShowCodeProject = !codeProject;
 
+            bool assistant = EditorState.ShowAssistant;
+            if (ImGui.MenuItem("Assistant", "F8", assistant))
+                EditorState.ShowAssistant = !assistant;
+
             ImGui.Separator();
 
             if (ImGui.MenuItem("Project Manager"))
@@ -420,9 +440,59 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             ImGui.EndMenu();
         }
 
+        DrawToolsMenu();
         DrawCreateMenu();
 
         ImGui.EndMainMenuBar();
+    }
+
+    // -------------------------------------------------------------------------
+    // Tools menu
+    // -------------------------------------------------------------------------
+
+    /// <summary>The assistant and the engine-rebuild entry points that are not panel toggles.</summary>
+    private void DrawToolsMenu()
+    {
+        if (!ImGui.BeginMenu("Tools")) return;
+
+        bool projectOpen  = EditorState.CurrentProject != null;
+        bool sessionAlive = _assistant?.Session is { IsAlive: true };
+
+        if (ImGui.MenuItem("Assistant Settings...")) _assistantPanel?.RequestSettings();
+        if (ImGui.MenuItem("Focus Assistant", "F8")) _assistantPanel?.RequestFocus();
+        if (ImGui.MenuItem("Stop Assistant", "Shift+F8", false, _assistant?.IsBusy == true)) _assistant?.Interrupt();
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("New Assistant Session", "", false, _assistant != null && !_assistant.Disabled && projectOpen && _assistant.Install.Info != null))
+            _assistant?.NewSession();
+        if (ImGui.MenuItem("Resume Assistant Session", "", false, _assistant?.CanStart == true)) _assistant?.RestartSession();
+        if (ImGui.MenuItem("Stop Assistant Session", "", false, sessionAlive)) _assistant?.StopSession();
+
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Write .mcp.json", "", false, projectOpen)) _assistant?.WriteProjectMcpConfig();
+        if (ImGui.MenuItem("Copy MCP Connect Command", "", false, _mcp?.Url != null) && _assistant?.ConnectCommand is { } command)
+            DesktopShell.SetClipboardText(command);
+
+        ImGui.Separator();
+
+        bool canRebuild = _code?.Repo != null && _restart?.IsRestartScheduled == false;
+        if (ImGui.MenuItem("Rebuild Engine && Restart", "", false, canRebuild))
+        {
+            try
+            {
+                _restart!.Begin(null, runTests: false);
+            }
+            catch (Exception ex)
+            {
+                ConsoleLog.Add(ex.Message, LogLevel.Error);
+            }
+        }
+        if (ImGui.IsItemHovered() && !canRebuild)
+            ImGui.SetTooltip("Needs the editor to run from a source checkout (or SEXYBISCUIT_REPO set).");
+
+        ImGui.EndMenu();
     }
 
     // -------------------------------------------------------------------------
@@ -434,7 +504,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     /// </summary>
     /// <remarks>
     /// Building a 3D scene by hand means adding a bare Actor, then a Transform3D, then a
-    /// Camera3D, then remembering the "MainCamera3D" tag — four steps to get anything on
+    /// Camera3D, then remembering the "MainCamera3D" tag: four steps to get anything on
     /// screen. Each preset here is one click, and the result is selected so the inspector
     /// opens on it.
     /// </remarks>
@@ -680,7 +750,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     /// <remarks>
     /// Deliberately not added to the scene: it must not be saved with the level, must not
     /// appear in the hierarchy, and must survive the scene being replaced. It is only used
-    /// as a fallback — a scene with its own MainCamera3D renders through that instead, so
+    /// as a fallback: a scene with its own MainCamera3D renders through that instead, so
     /// what you see matches what the game will show.
     /// </remarks>
     /// <summary>
@@ -751,7 +821,16 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         {
             _layoutBuilt = true;
             if (_resetLayoutRequested || !File.Exists("imgui.ini"))
+            {
                 BuildDefaultLayout(dockspaceId, viewport.WorkSize);
+            }
+            else if (ReadLayoutVersion() < LayoutVersion)
+            {
+                // A saved layout from before the Assistant existed: dock the new panel beside
+                // Details instead of letting it float, without discarding the user's arrangement.
+                EditorState.DockAssistantIntoDetails = true;
+            }
+            WriteLayoutVersion();
         }
 
         if (_resetLayoutRequested)
@@ -766,6 +845,22 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private bool _layoutBuilt;
     private bool _resetLayoutRequested;
 
+    /// <summary>Bumped when a new panel joins the default layout, so existing layouts adopt it.</summary>
+    private const int LayoutVersion = 2;
+    private const string LayoutVersionFile = "imgui.layout-version";
+
+    private static int ReadLayoutVersion()
+    {
+        try { return File.Exists(LayoutVersionFile) && int.TryParse(File.ReadAllText(LayoutVersionFile).Trim(), out int v) ? v : 1; }
+        catch (Exception) { return 1; }
+    }
+
+    private static void WriteLayoutVersion()
+    {
+        try { File.WriteAllText(LayoutVersionFile, LayoutVersion.ToString()); }
+        catch (Exception) { }
+    }
+
     /// <summary>
     /// Arranges the panels the way Unreal arranges its editor: a palette on the left, the
     /// viewport filling the centre, browsers along the bottom, and outliner over details
@@ -774,7 +869,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     /// <remarks>
     /// Splitting is order-dependent. Each split returns two node ids and the parent id
     /// stops being valid for docking, so every subsequent split works on one of the
-    /// returned halves — reusing the parent silently docks windows into the wrong pane.
+    /// returned halves: reusing the parent silently docks windows into the wrong pane.
     /// </remarks>
     private void BuildDefaultLayout(uint dockspaceId, System.Numerics.Vector2 size)
     {
@@ -804,6 +899,8 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         ImGuiDock.DockWindow("World Outliner", rightTop);
 
+        // The Assistant docks first so it is the visible tab: Claude is the headline feature.
+        ImGuiDock.DockWindow("Assistant###Assistant", rightBottom);
         ImGuiDock.DockWindow("Details",        rightBottom);
         ImGuiDock.DockWindow("Build Settings", rightBottom);
         ImGuiDock.DockWindow("Git",            rightBottom);
@@ -829,7 +926,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         bool playing = EditorState.IsPlaying;
         bool paused  = EditorState.IsPlayPaused;
 
-        // Play turns green while running so the editor's state is obvious at a glance —
+        // Play turns green while running so the editor's state is obvious at a glance -
         // in a docked layout the viewport border is easy to miss.
         if (playing) ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.20f, 0.55f, 0.25f, 1f));
         if (ImGui.Button(playing ? "Stop" : "Play"))
@@ -910,6 +1007,31 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         if (ImGui.Button("Stats")) EditorState.ShowRenderStats = !stats;
         Tooltip("Toggle the render statistics panel.");
 
+        // Claude's state, with a Stop button while it is doing something.
+        if (_assistant != null && !_assistant.Disabled)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled("|");
+            ImGui.SameLine();
+
+            if (_assistant.IsBusy)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.75f, 0.20f, 0.20f, 1f));
+                if (ImGui.Button("Stop Claude")) _assistant.Interrupt();
+                ImGui.PopStyleColor();
+                Tooltip("Interrupt the assistant (Shift+F8)");
+                ImGui.SameLine();
+                ImGui.TextColored(new System.Numerics.Vector4(0.95f, 0.72f, 0.45f, 1f), $"Claude: {EditorState.AssistantBusyLabel}");
+            }
+            else
+            {
+                if (ImGui.Button("Claude")) _assistantPanel?.RequestFocus();
+                Tooltip("Open the Assistant panel (F8)");
+                ImGui.SameLine();
+                ImGui.TextDisabled(_assistant.StateText);
+            }
+        }
+
         // Frame timing on the right, where Unreal puts its performance readout.
         var readout = $"{Time.Fps:F0} fps";
         float textWidth = ImGui.CalcTextSize(readout).X;
@@ -962,11 +1084,13 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             _codeEditor.Draw();
             _git.Draw();
             _codeProject?.Draw();
+            _assistantPanel?.Draw(_imGui);
 
             if (EditorState.ShowRenderStats) DrawRenderStats();
         }
 
-        // Last, so its modal sits above every panel.
+        // Last, so the modals sit above every panel.
+        _assistantPanel?.DrawModals();
         FileDialog.Draw();
     }
 
@@ -1019,7 +1143,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         {
             // Without a snapshot, Stop cannot restore. Say so rather than letting the
             // user discover it after they have played through their level.
-            ConsoleLog.Add($"Scene snapshot failed — Stop will not restore this scene: {ex.Message}",
+            ConsoleLog.Add($"Scene snapshot failed: Stop will not restore this scene: {ex.Message}",
                 LogLevel.Warning);
             _sceneSnapshot = null;
         }
@@ -1060,7 +1184,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         // Play mode is free to change global state, and none of it belongs to the scene,
         // so restoring the snapshot alone would leave the editor in whatever state the
-        // game left behind — a paused TimeScale being the one you notice immediately.
+        // game left behind: a paused TimeScale being the one you notice immediately.
         Time.TimeScale = 1f;
         _engine?.Timers.ClearAll();
         _engine?.Coroutines.StopAll();
@@ -1195,7 +1319,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private void UpdateWindowTitle()
     {
         string scene = _engine?.SceneManager.ActiveScene?.Name ?? "";
-        string title = $"SexyBiscuit Engine — Editor — {scene}{(EditorState.SceneDirty ? " *" : "")}";
+        string title = $"SexyBiscuit Engine: Editor: {scene}{(EditorState.SceneDirty ? " *" : "")}";
         if (title == _lastTitle) return;
 
         Window.Title = title;
@@ -1204,6 +1328,8 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
     protected override void OnExiting(object sender, EventArgs args)
     {
+        _assistant?.Shutdown();
+        _assistant = null;
         _code?.Dispose();
         _code = null;
         _mcp?.Stop();
@@ -1216,6 +1342,9 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
     /// <summary>The engine rebuild + restart service.</summary>
     public EditorRestart? Restart => _restart;
+
+    /// <summary>The assistant host, when it exists.</summary>
+    public AssistantHost? Assistant => _assistant;
 
     /// <summary>Raised after the editor resumed a project and scene following a self-restart.</summary>
     public event Action<RelaunchState>? Resumed;
@@ -1311,7 +1440,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         // Depth24, not None. Without a depth buffer the 3D pass has no depth test at all:
         // triangles land in submission order, the far side of a mesh paints over the near
-        // side, and solid geometry renders inside-out — which reads as the perspective
+        // side, and solid geometry renders inside-out: which reads as the perspective
         // being inverted rather than as a missing depth buffer.
         _viewportTarget = new RenderTarget2D(
             GraphicsDevice,

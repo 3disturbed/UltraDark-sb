@@ -11,7 +11,7 @@ using XnaVector3 = Microsoft.Xna.Framework.Vector3;
 namespace SexyBiscuit.Editor.Panels;
 
 /// <summary>
-/// Viewport panel — renders the engine's RenderTarget2D as an ImGui image,
+/// Viewport panel: renders the engine's RenderTarget2D as an ImGui image,
 /// draws gizmos, handles mouse picking, camera pan/zoom, and the play-mode banner.
 /// </summary>
 public sealed class ViewportPanel
@@ -91,9 +91,11 @@ public sealed class ViewportPanel
             ImGui.TextDisabled("(no viewport)");
         }
 
-        // Play-mode banner overlay
+        // Play-mode banner overlay, and the assistant's below it when both apply.
         if (EditorState.IsPlaying)
             DrawPlayModeBanner();
+        if (EditorState.AssistantBusy)
+            DrawAssistantBanner(EditorState.IsPlaying ? 28f : 0f);
 
         // Toolbar: gizmo mode buttons
         DrawGizmoToolbar();
@@ -117,7 +119,7 @@ public sealed class ViewportPanel
             {
                 Handle3DInput(camera, mouse);
 
-                // Selection only on the press, and only when the gizmo did not take it —
+                // Selection only on the press, and only when the gizmo did not take it -
                 // otherwise finishing a handle drag over another object reselects it.
                 if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                     Pick3D(camera, availSize, mouse);
@@ -160,6 +162,20 @@ public sealed class ViewportPanel
             0xFFFFFFFF, text);
     }
 
+    /// <summary>A strip saying Claude is at work, so a scene changing by itself is never a surprise.</summary>
+    private void DrawAssistantBanner(float offsetY)
+    {
+        var drawList = ImGui.GetWindowDrawList();
+        string text = $"CLAUDE: {EditorState.AssistantBusyLabel.ToUpperInvariant()}   (Shift+F8 to stop)";
+        var textSize = ImGui.CalcTextSize(text);
+
+        var rectMin = new Vector2(_vpMin.X, _vpMin.Y + offsetY);
+        var rectMax = new Vector2(_vpMax.X, _vpMin.Y + offsetY + 24f);
+
+        drawList.AddRectFilled(rectMin, rectMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.45f, 0.30f, 0.65f, 0.75f)));
+        drawList.AddText(new Vector2((_vpMin.X + _vpMax.X) / 2f - textSize.X / 2f, rectMin.Y + 5f), 0xFFFFFFFF, text);
+    }
+
     // -------------------------------------------------------------------------
     // Gizmo toolbar
     // -------------------------------------------------------------------------
@@ -193,7 +209,7 @@ public sealed class ViewportPanel
         var tPos = pos + new Vector2((w - ts.X) / 2f, (h - ts.Y) / 2f);
         dl.AddText(tPos, 0xFFFFFFFF, label);
 
-        // Click detection — use ImGui invisible button trick
+        // Click detection: use ImGui invisible button trick
         ImGui.SetCursorScreenPos(pos);
         ImGui.InvisibleButton("##gbt" + label, new Vector2(w, h));
         if (ImGui.IsItemClicked()) EditorState.GizmoMode = mode;
@@ -351,11 +367,15 @@ public sealed class ViewportPanel
         }
         else
         {
-            // Gizmo shortcuts only while not flying, so W does not fight Move mode.
-            if (ImGui.IsKeyPressed(ImGuiKey.W)) EditorState.GizmoMode = GizmoMode.Translate;
-            if (ImGui.IsKeyPressed(ImGuiKey.E)) EditorState.GizmoMode = GizmoMode.Rotate;
-            if (ImGui.IsKeyPressed(ImGuiKey.R)) EditorState.GizmoMode = GizmoMode.Scale;
-            if (ImGui.IsKeyPressed(ImGuiKey.F)) FrameSelection(transform);
+            // Gizmo shortcuts only while not flying, so W does not fight Move mode: and never
+            // while a text field (the Assistant composer, say) owns the keyboard.
+            if (!io.WantTextInput)
+            {
+                if (ImGui.IsKeyPressed(ImGuiKey.W)) EditorState.GizmoMode = GizmoMode.Translate;
+                if (ImGui.IsKeyPressed(ImGuiKey.E)) EditorState.GizmoMode = GizmoMode.Rotate;
+                if (ImGui.IsKeyPressed(ImGuiKey.R)) EditorState.GizmoMode = GizmoMode.Scale;
+                if (ImGui.IsKeyPressed(ImGuiKey.F)) FrameSelection(transform);
+            }
         }
     }
 
@@ -365,7 +385,7 @@ public sealed class ViewportPanel
     /// <remarks>
     /// Tests against each renderer's world bounds rather than its triangles. Bounds are
     /// already maintained for frustum culling, they are cheap to intersect, and for
-    /// clicking on objects in an editor the difference is rarely noticeable — the nearest
+    /// clicking on objects in an editor the difference is rarely noticeable: the nearest
     /// hit along the ray wins, so overlapping bounds still resolve sensibly.
     ///
     /// The unprojection is done here rather than through Camera3D.ScreenToWorldRay
@@ -482,15 +502,18 @@ public sealed class ViewportPanel
 
         // Take the cursor from ImGui, not from Mouse.GetState(). _vpMin comes from
         // ImGui.GetCursorScreenPos, so every comparison and subtraction below has to be
-        // in ImGui's space — mixing the two sources only happens to line up while the
+        // in ImGui's space: mixing the two sources only happens to line up while the
         // window is at the origin and the display is 1:1.
         var io       = ImGui.GetIO();
         var mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
 
-        // Gizmo mode shortcuts (Blender-style)
-        if (ImGui.IsKeyPressed(ImGuiKey.G)) EditorState.GizmoMode = GizmoMode.Translate;
-        if (ImGui.IsKeyPressed(ImGuiKey.R)) EditorState.GizmoMode = GizmoMode.Rotate;
-        if (ImGui.IsKeyPressed(ImGuiKey.S)) EditorState.GizmoMode = GizmoMode.Scale;
+        // Gizmo mode shortcuts (Blender-style), unless a text field has the keyboard.
+        if (!io.WantTextInput)
+        {
+            if (ImGui.IsKeyPressed(ImGuiKey.G)) EditorState.GizmoMode = GizmoMode.Translate;
+            if (ImGui.IsKeyPressed(ImGuiKey.R)) EditorState.GizmoMode = GizmoMode.Rotate;
+            if (ImGui.IsKeyPressed(ImGuiKey.S)) EditorState.GizmoMode = GizmoMode.Scale;
+        }
 
         // Right-click drag = pan
         bool rightDown = mouse.RightButton == XnaButtonState.Pressed;

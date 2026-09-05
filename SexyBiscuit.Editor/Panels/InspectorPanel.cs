@@ -38,7 +38,10 @@ public sealed class InspectorPanel
 
     public void Draw()
     {
-        if (!ImGui.Begin("Details"))
+        bool detailsOpen = ImGui.Begin("Details");
+        // Remembered so a newly added panel (the Assistant) can dock beside Details in a saved layout.
+        EditorState.DetailsDockId = ImGui.GetWindowDockID();
+        if (!detailsOpen)
         {
             ImGui.End();
             return;

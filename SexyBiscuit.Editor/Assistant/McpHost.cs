@@ -174,7 +174,7 @@ public sealed class McpHost : IDisposable
             if (outcome == "written")
                 ConsoleLog.Add($"Wrote {Path.Combine(root, ".mcp.json")} so Claude Code in this project connects to the editor.", LogLevel.Info);
             else if (outcome.StartsWith("skipped", StringComparison.Ordinal))
-                ConsoleLog.Add($".mcp.json not updated — {outcome}.", LogLevel.Warning);
+                ConsoleLog.Add($".mcp.json not updated: {outcome}.", LogLevel.Warning);
         }
         catch (Exception ex)
         {
@@ -199,7 +199,7 @@ public sealed class McpHost : IDisposable
         };
 
         string detail = entry.State == ActivityState.Succeeded ? "" : ": " + entry.Summary;
-        ConsoleLog.Add($"[Claude] {entry.Label} — {entry.State.ToString().ToLowerInvariant()} ({entry.Duration.TotalMilliseconds:F0} ms){detail}", level);
+        ConsoleLog.Add($"[Claude] {entry.Label}: {entry.State.ToString().ToLowerInvariant()} ({entry.Duration.TotalMilliseconds:F0} ms){detail}", level);
     }
 
     private static void Log(string message, bool isError)

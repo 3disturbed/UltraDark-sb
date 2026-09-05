@@ -51,6 +51,9 @@ public static class McpJson
     public static string Serialize(object? value, bool indented = false)
         => JsonSerializer.Serialize(value, indented ? Indented : Compact);
 
+    /// <summary>An indented rendering of a detached element, for panels.</summary>
+    public static string PrettyPrint(JsonElement element) => JsonSerializer.Serialize(element, Indented);
+
     public static string ToText(JsonNode? node, bool indented = true)
         => node?.ToJsonString(indented ? Indented : Compact) ?? "null";
 }
