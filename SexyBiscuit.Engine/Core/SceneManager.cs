@@ -13,7 +13,6 @@ public class SceneManager
     private Scene?       _activeScene;
     private readonly List<Scene>   _additiveScenes = new();
     private readonly List<Actor>   _dontDestroyActors = new();
-    private readonly SBEngine      _engine;
 
     private string? _pendingLoad;
     private bool    _pendingLoadAdditive;
@@ -30,9 +29,8 @@ public class SceneManager
     // -------------------------------------------------------------------------
     // Construction
     // -------------------------------------------------------------------------
-    public SceneManager(SBEngine engine)
+    public SceneManager()
     {
-        _engine = engine;
     }
 
     // -------------------------------------------------------------------------

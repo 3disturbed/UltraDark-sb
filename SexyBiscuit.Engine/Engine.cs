@@ -26,36 +26,39 @@ public class SBEngine : Game
     // Core services (populated in Initialize)
     // -------------------------------------------------------------------------
     public GraphicsDeviceManager Graphics { get; }
-    public SpriteBatch SpriteBatch { get; private set; } = null!;
-    public SceneManager SceneManager { get; private set; } = null!;
-    public AssetManager Assets { get; private set; } = null!;
-    public InputManager Input { get; private set; } = null!;
-    public AudioManager Audio { get; private set; } = null!;
-
-    /// <summary>Session-wide state and subsystems that outlive every scene.</summary>
-    public GameInstance GameInstance { get; private set; } = null!;
-
-    /// <summary>Schedules delayed and repeating callbacks. Ticked between Update and LateUpdate.</summary>
-    public TimerManager Timers { get; private set; } = null!;
-
-    /// <summary>Drives <see cref="Coroutine"/> instances. Ticked between Update and LateUpdate.</summary>
-    public CoroutineRunner Coroutines { get; private set; } = null!;
 
     /// <summary>
-    /// The 3D forward renderer. Runs before the 2D <see cref="SpriteBatch"/> pass each frame
-    /// so sprites and UI composite on top of the 3D scene.
+    /// Every engine service. Created in <c>Initialize</c>; the properties below forward
+    /// to it so game code can keep saying <c>SBEngine.Instance.Assets</c>.
     /// </summary>
-    public RenderSystem3D Renderer3D { get; private set; } = null!;
+    public EngineHost Host { get; private set; } = null!;
 
-    /// <summary>The 2D sprite renderer used for the scene's <c>Draw</c> pass.</summary>
-    public RenderSystem2D Renderer2D { get; private set; } = null!;
+    public SpriteBatch  SpriteBatch  => Host.SpriteBatch;
+    public SceneManager SceneManager => Host.SceneManager;
+    public AssetManager Assets       => Host.Assets;
+    public InputManager Input        => Host.Input;
+    public AudioManager Audio        => Host.Audio;
+
+    /// <summary>Session-wide state and subsystems that outlive every scene.</summary>
+    public GameInstance GameInstance => Host.GameInstance;
+
+    /// <summary>Schedules delayed and repeating callbacks.</summary>
+    public TimerManager Timers => Host.Timers;
+
+    /// <summary>Drives <see cref="Coroutine"/> instances.</summary>
+    public CoroutineRunner Coroutines => Host.Coroutines;
+
+    /// <summary>The 3D forward renderer, run before the 2D pass each frame.</summary>
+    public RenderSystem3D Renderer3D => Host.Renderer3D;
+
+    /// <summary>The 2D sprite renderer.</summary>
+    public RenderSystem2D Renderer2D => Host.Renderer2D;
 
     // -------------------------------------------------------------------------
     // Config
     // -------------------------------------------------------------------------
     public EngineConfig Config { get; }
 
-    private float _fixedAccumulator;
 
     // -------------------------------------------------------------------------
     // Construction
@@ -88,140 +91,14 @@ public class SBEngine : Game
     {
         base.Initialize();
 
-        Time.Reset();
-        Time.FixedDeltaTime = Config.FixedTimestep;
-
-        Assets       = new AssetManager(GraphicsDevice, Content);
-        Input        = new InputManager(Config);
-        Audio        = new AudioManager();
-        SceneManager = new SceneManager(this);
-
-        Timers     = TimerManager.Instance     = new TimerManager();
-        Coroutines = CoroutineRunner.Instance  = new CoroutineRunner();
-
-        Renderer2D = new RenderSystem2D();
-        Renderer2D.Initialize(GraphicsDevice);
-
-        Renderer3D = new RenderSystem3D();
-        Renderer3D.Initialize(GraphicsDevice);
-
-        GameInstance = Config.GameInstanceFactory?.Invoke() ?? new GameInstance();
-        GameInstance.InternalInit();
-        GameInstance.InternalStart();
+        Host = new EngineHost(GraphicsDevice, Content, Config);
 
         OnEngineReady();
     }
 
     protected override void LoadContent()
     {
-        SpriteBatch = new SpriteBatch(GraphicsDevice);
-    }
-
-    /// <summary>
-    /// Brings up the engine's services against a graphics device owned by someone else,
-    /// for a tool that hosts the engine inside its own window.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The normal path is <see cref="Microsoft.Xna.Framework.Game.Run()"/>, which creates a
-    /// window and a device and then calls <c>Initialize</c>. An editor already has both,
-    /// and cannot call <c>Run</c> because that would take over the process's message loop.
-    /// This does the same service setup against the caller's device instead.
-    /// </para>
-    /// <para>
-    /// A hosted engine does not tick itself. The host drives it by calling
-    /// <see cref="TickHosted"/> and rendering through <see cref="Renderer3D"/> and
-    /// <see cref="SceneManager"/> at whatever cadence suits it — which is what lets an
-    /// editor pause the simulation while still drawing the scene.
-    /// </para>
-    /// </remarks>
-    /// <param name="graphicsDevice">The host's device. Used for asset upload and rendering.</param>
-    /// <param name="content">The host's content manager.</param>
-    public void InitializeHosted(GraphicsDevice graphicsDevice, Microsoft.Xna.Framework.Content.ContentManager content)
-    {
-        ArgumentNullException.ThrowIfNull(graphicsDevice);
-        ArgumentNullException.ThrowIfNull(content);
-
-        if (IsHosted) return;
-        IsHosted = true;
-
-        Time.Reset();
-        Time.FixedDeltaTime = Config.FixedTimestep;
-
-        SpriteBatch  = new SpriteBatch(graphicsDevice);
-        Assets       = new AssetManager(graphicsDevice, content);
-        Input        = new InputManager(Config);
-        Audio        = new AudioManager();
-        SceneManager = new SceneManager(this);
-
-        Timers     = TimerManager.Instance    = new TimerManager();
-        Coroutines = CoroutineRunner.Instance = new CoroutineRunner();
-
-        Renderer2D = new RenderSystem2D();
-        Renderer2D.Initialize(graphicsDevice);
-
-        Renderer3D = new RenderSystem3D();
-        Renderer3D.Initialize(graphicsDevice);
-
-        GameInstance = Config.GameInstanceFactory?.Invoke() ?? new GameInstance();
-        GameInstance.InternalInit();
-        GameInstance.InternalStart();
-
-        OnEngineReady();
-    }
-
-    /// <summary>
-    /// True when the engine was brought up by <see cref="InitializeHosted"/> rather than
-    /// by running its own window.
-    /// </summary>
-    public bool IsHosted { get; private set; }
-
-    /// <summary>
-    /// Advances a hosted engine by one frame: time, fixed steps, update, timers,
-    /// coroutines, late update and audio, in the same order as the standalone loop.
-    /// </summary>
-    /// <param name="rawDeltaSeconds">Real seconds since the host's previous frame.</param>
-    /// <remarks>
-    /// Input is not pumped here — the host owns the keyboard and mouse and decides when
-    /// the game should see them, which is how an editor keeps WASD out of the game while
-    /// the pointer is over a panel. Call <c>Input.Update</c> yourself when it should.
-    /// </remarks>
-    public void TickHosted(float rawDeltaSeconds)
-    {
-        if (!IsHosted) return;
-
-        Time.Advance(rawDeltaSeconds);
-
-        float dt         = Time.DeltaTime;
-        float unscaledDt = Time.UnscaledDeltaTime;
-
-        GameInstance.InternalTick(dt);
-
-        float step = Config.FixedTimestep;
-        Time.FixedDeltaTime = step * Time.TimeScale;
-
-        _fixedAccumulator += dt;
-        int steps = 0;
-        while (_fixedAccumulator >= step && steps < Config.MaxFixedStepsPerFrame)
-        {
-            if (Config.EnablePhysics2D) PhysicsSystem2D.Instance.FixedStep(step);
-            if (Config.EnablePhysics3D) PhysicsSystem3D.Instance.FixedStep(step);
-
-            SceneManager.FixedUpdate(step);
-            _fixedAccumulator -= step;
-            steps++;
-        }
-        if (_fixedAccumulator > step * Config.MaxFixedStepsPerFrame)
-            _fixedAccumulator = 0f;
-
-        SceneManager.Update(dt);
-
-        Tween.UpdateAll(dt);
-        Timers.Tick(dt, unscaledDt);
-        Coroutines.Tick(dt, unscaledDt);
-
-        SceneManager.LateUpdate(dt);
-        Audio.Update(dt);
+        // The sprite batch belongs to the host, which is created in Initialize.
     }
 
     /// <summary>
@@ -234,69 +111,20 @@ public class SBEngine : Game
     // -------------------------------------------------------------------------
     protected override void Update(GameTime gameTime)
     {
-        Time.Advance((float)gameTime.ElapsedGameTime.TotalSeconds);
-
-        float dt         = Time.DeltaTime;
-        float unscaledDt = Time.UnscaledDeltaTime;
-
-        // Input runs on unscaled time so menus stay responsive while the game is paused.
-        Input.Update(unscaledDt);
-
-        GameInstance.InternalTick(dt);
-
-        // Fixed timestep accumulator for physics and network. Capped so a long frame
-        // catches up over several frames instead of stalling in a spiral of death.
-        float step = Config.FixedTimestep;
-        Time.FixedDeltaTime = step * Time.TimeScale;
-
-        _fixedAccumulator += dt;
-        int steps = 0;
-        while (_fixedAccumulator >= step && steps < Config.MaxFixedStepsPerFrame)
-        {
-            // Physics steps before FixedUpdate so components see the results of the
-            // step they are reacting to, not the previous one.
-            if (Config.EnablePhysics2D) PhysicsSystem2D.Instance.FixedStep(step);
-            if (Config.EnablePhysics3D) PhysicsSystem3D.Instance.FixedStep(step);
-
-            SceneManager.FixedUpdate(step);
-            _fixedAccumulator -= step;
-            steps++;
-        }
-        if (_fixedAccumulator > step * Config.MaxFixedStepsPerFrame)
-            _fixedAccumulator = 0f;
-
-        SceneManager.Update(dt);
-
-        Tween.UpdateAll(dt);
-        Timers.Tick(dt, unscaledDt);
-        Coroutines.Tick(dt, unscaledDt);
-
-        SceneManager.LateUpdate(dt);
-        Audio.Update(dt);
-
+        Host.Tick((float)gameTime.ElapsedGameTime.TotalSeconds);
         base.Update(gameTime);
     }
 
     protected override void Draw(GameTime gameTime)
     {
         GraphicsDevice.Clear(Config.ClearColour);
-
-        // 3D first, then the 2D/UI pass composites over it.
-        if (Config.Enable3D && SceneManager.ActiveScene != null)
-            Renderer3D.Render(SceneManager.ActiveScene);
-
-        SceneManager.Draw(SpriteBatch);
+        Host.Render();
         base.Draw(gameTime);
     }
 
     protected override void UnloadContent()
     {
-        GameInstance?.InternalShutdown();
-        Coroutines?.StopAll();
-        Timers?.ClearAll();
-        Renderer3D?.Dispose();
-        Assets.UnloadAll();
-        Audio.Dispose();
+        Host?.Dispose();
         base.UnloadContent();
     }
 

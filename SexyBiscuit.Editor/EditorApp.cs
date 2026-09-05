@@ -69,8 +69,8 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     // -------------------------------------------------------------------------
     // Engine
     // -------------------------------------------------------------------------
-    private SBEngine? _engine;
-    private bool      _engineInitialized;
+    private EngineHost? _engine;
+    private bool        _engineInitialized;
 
     // Scene snapshot for play-mode restoration
     private string? _sceneSnapshot;
@@ -116,10 +116,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         // Viewport render target
         RecreateViewportTarget();
 
-        // Host the engine inside this window rather than letting it run its own.
-        // Constructing SBEngine is not enough: every service is created in Game.Initialize,
-        // which only runs from Run() — and Run() would take over the message loop.
-        _engine = new SBEngine(new EngineConfig
+        // EngineHost, not SBEngine. SBEngine is a MonoGame Game, and constructing one
+        // creates a second SDL window — which MonoGame's static Mouse then binds to,
+        // stealing cursor coordinates with no supported way to give them back.
+        _engine = new EngineHost(GraphicsDevice, Content, new EngineConfig
         {
             WindowTitle  = "SexyBiscuit [Editor Preview]",
             WindowWidth  = _viewportWidth,
@@ -128,7 +128,6 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             Enable3D     = false,
         });
 
-        _engine.InitializeHosted(GraphicsDevice, Content);
         _engine.SceneManager.CreateScene("Untitled");
         _engineInitialized = true;
 
@@ -151,6 +150,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         // Route Debug output to editor console
         System.Diagnostics.Trace.Listeners.Add(new EditorTraceListener());
         ConsoleLog.Add("SexyBiscuit Editor initialized.", LogLevel.Info);
+
 
     }
 
@@ -181,8 +181,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
             // Input goes to the game only while playing, so editor shortcuts and the
             // game's own bindings never fight over the same keys.
-            _engine?.Input.Update(dt);
-            _engine?.TickHosted(dt);
+            _engine?.Tick(dt, pumpInput: true);
         }
 
         base.Update(gameTime);
@@ -954,5 +953,5 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private bool KeyJustPressed(KeyboardState current, Keys key)
         => current.IsKeyDown(key) && !_prevKeys.IsKeyDown(key);
 
-    public SBEngine? Engine => _engine;
+    public EngineHost? Engine => _engine;
 }

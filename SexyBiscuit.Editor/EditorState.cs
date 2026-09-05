@@ -78,6 +78,22 @@ public static class EditorState
     public static bool ViewportFocused { get; set; }
 
     // -------------------------------------------------------------------------
+    // Gizmo snapping
+    // -------------------------------------------------------------------------
+
+    /// <summary>Quantises gizmo drags to the snap increments below.</summary>
+    public static bool SnapEnabled { get; set; }
+
+    /// <summary>Translation snap, in world units.</summary>
+    public static float TranslateSnap { get; set; } = 0.25f;
+
+    /// <summary>Rotation snap, in degrees.</summary>
+    public static float RotateSnap { get; set; } = 15f;
+
+    /// <summary>Scale snap, as a multiplier increment.</summary>
+    public static float ScaleSnap { get; set; } = 0.1f;
+
+    // -------------------------------------------------------------------------
     // Panel visibility
     // -------------------------------------------------------------------------
 
