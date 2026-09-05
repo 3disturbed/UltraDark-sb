@@ -1,3 +1,4 @@
+using System.Collections;
 using Microsoft.Xna.Framework.Graphics;
 
 namespace SexyBiscuit.Engine.Core;
@@ -32,6 +33,23 @@ public class Actor
     // -------------------------------------------------------------------------
     public uint Id { get; } = _nextId++;
     private static uint _nextId = 1;
+
+    // -------------------------------------------------------------------------
+    // Lifespan
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Seconds until the actor destroys itself. Zero or negative means it lives until
+    /// something calls <see cref="Destroy()"/>. Counts down on scaled time.
+    /// </summary>
+    /// <remarks>
+    /// Set this on projectiles, decals and impact effects so cleanup does not need a
+    /// bespoke timer component on every short-lived actor.
+    /// </remarks>
+    public float LifeSpan { get; set; }
+
+    /// <summary>True once <see cref="Destroy()"/> has run and the actor is no longer usable.</summary>
+    public bool IsDestroyed => _destroyed;
 
     // -------------------------------------------------------------------------
     // Internals
@@ -139,6 +157,13 @@ public class Actor
     internal void InternalUpdate(float dt)
     {
         if (!IsActive || _destroyed) return;
+
+        if (LifeSpan > 0f)
+        {
+            LifeSpan -= dt;
+            if (LifeSpan <= 0f) { Destroy(); return; }
+        }
+
         Update(dt);
         foreach (var c in _components.ToArray())
             if (c.Enabled) c.Update(dt);
@@ -172,6 +197,10 @@ public class Actor
     {
         if (_destroyed) return;
         _destroyed = true;
+
+        // Cancel anything this actor started so a coroutine cannot outlive its target.
+        CoroutineRunner.Instance.StopAllFor(this);
+
         OnDestroy();
         foreach (var c in _components.ToArray())
             c.OnDestroy();
@@ -228,11 +257,55 @@ public class Actor
     }
 
     // -------------------------------------------------------------------------
+    // Coroutines
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Starts a coroutine owned by this actor. It is cancelled automatically when the
+    /// actor is destroyed.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// StartCoroutine(Blink());
+    ///
+    /// IEnumerator Blink()
+    /// {
+    ///     while (true)
+    ///     {
+    ///         IsActive = !IsActive;
+    ///         yield return new WaitForSeconds(0.2f);
+    ///     }
+    /// }
+    /// </code>
+    /// </example>
+    public Coroutine StartCoroutine(IEnumerator routine)
+        => CoroutineRunner.Instance.Start(routine, this);
+
+    /// <summary>Cancels a coroutine started by this actor.</summary>
+    public void StopCoroutine(Coroutine? coroutine) => CoroutineRunner.Instance.Stop(coroutine);
+
+    /// <summary>Cancels every coroutine this actor started.</summary>
+    public void StopAllCoroutines() => CoroutineRunner.Instance.StopAllFor(this);
+
+    // -------------------------------------------------------------------------
     // Destroy helper
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Queues the actor for destruction. It is removed at the end of the current frame, so
+    /// iteration in progress over the scene's actors stays valid.
+    /// </summary>
     public void Destroy()
     {
+        if (_destroyed) return;
         Scene?.MarkForDestroy(this);
+    }
+
+    /// <summary>Destroys the actor after <paramref name="delaySeconds"/> of scaled time.</summary>
+    public void Destroy(float delaySeconds)
+    {
+        if (delaySeconds <= 0f) { Destroy(); return; }
+        LifeSpan = delaySeconds;
     }
 
     public override string ToString() => $"Actor[{Id}:{Name}]";
