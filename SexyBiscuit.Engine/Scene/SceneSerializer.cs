@@ -354,7 +354,7 @@ public static class SceneSerializer
 
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
-                foreach (var candidate in SafeGetTypes(assembly))
+                foreach (var candidate in assembly.SafeGetTypes())
                 {
                     if (!string.Equals(candidate.Name, name, StringComparison.Ordinal)) continue;
                     if (!typeof(Component).IsAssignableFrom(candidate)) continue;
@@ -376,19 +376,6 @@ public static class SceneSerializer
 
         _typeCache[name] = found;
         return found;
-    }
-
-    /// <summary>Types from an assembly, tolerating ones that fail to load.</summary>
-    /// <remarks>
-    /// An assembly referencing something absent — Steamworks.NET without the native
-    /// library, say — throws from GetTypes. The partial list on the exception is still
-    /// usable, and one unrelated assembly should not fail a scene load.
-    /// </remarks>
-    private static IEnumerable<Type> SafeGetTypes(System.Reflection.Assembly assembly)
-    {
-        try { return assembly.GetTypes(); }
-        catch (System.Reflection.ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null)!; }
-        catch { return Array.Empty<Type>(); }
     }
 
     // -------------------------------------------------------------------------

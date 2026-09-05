@@ -402,17 +402,10 @@ public sealed class InspectorPanel
             // Lazy-build component type list
             if (_componentTypes == null)
             {
-                _componentTypes = AppDomain.CurrentDomain.GetAssemblies()
-                    .SelectMany(a =>
-                    {
-                        try { return a.GetTypes(); }
-                        catch { return Array.Empty<Type>(); }
-                    })
-                    .Where(t => t.IsClass
-                             && !t.IsAbstract
-                             && typeof(Component).IsAssignableFrom(t)
-                             && t != typeof(Transform)
-                             && t.GetConstructor(Type.EmptyTypes) != null)
+                // Was discarding a whole assembly's types whenever any one of them failed
+                // to load — which the engine's optional Steamworks reference guarantees,
+                // so the list came up empty. ReflectionUtil keeps the ones that loaded.
+                _componentTypes = ReflectionUtil.FindComponentTypes()
                     .OrderBy(t => t.Name)
                     .ToArray();
             }

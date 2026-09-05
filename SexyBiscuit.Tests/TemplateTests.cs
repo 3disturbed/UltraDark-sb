@@ -305,3 +305,154 @@ public class SceneSerializerLeniencyTests
         finally { scene.Destroy(); }
     }
 }
+
+/// <summary>
+/// Covers the components added to close the gap with Unreal's common set.
+/// </summary>
+public class ComponentCoverageTests
+{
+    [Fact]
+    public void TheAddComponentListIsNotEmpty()
+    {
+        // It was. Assembly.GetTypes throws when any one type's dependencies are missing —
+        // the engine's optional Steamworks reference guarantees it — and the editor's
+        // guard discarded the whole assembly rather than keeping what had loaded.
+        var components = ReflectionUtil.FindComponentTypes().ToList();
+
+        Assert.True(components.Count > 40,
+            $"expected the engine's full component set, found {components.Count}");
+
+        Assert.Contains(components, t => t == typeof(MeshRenderer));
+        Assert.Contains(components, t => t == typeof(Light3D));
+
+        // Transform3D is addable — unlike the 2D Transform it is not automatic.
+        Assert.Contains(components, t => t == typeof(Transform3D));
+        Assert.DoesNotContain(components, t => t == typeof(Transform));
+    }
+
+    [Theory]
+    [InlineData(typeof(SpringArm))]
+    [InlineData(typeof(ProjectileMovement))]
+    [InlineData(typeof(RotatingMovement))]
+    [InlineData(typeof(FloatingPawnMovement))]
+    [InlineData(typeof(Spline))]
+    [InlineData(typeof(SplineFollower))]
+    [InlineData(typeof(InstancedMeshRenderer))]
+    [InlineData(typeof(TextRenderer3D))]
+    [InlineData(typeof(Decal3D))]
+    [InlineData(typeof(SkyLight))]
+    [InlineData(typeof(AudioListener3D))]
+    [InlineData(typeof(CameraShake))]
+    public void EachUnrealEquivalentIsPresentAndAttachable(Type componentType)
+    {
+        var actor = new Actor("Host");
+        var component = actor.AddComponentByType(componentType);
+
+        Assert.NotNull(component);
+        Assert.Same(actor, component.Actor);
+        Assert.Contains(ReflectionUtil.FindComponentTypes(), t => t == componentType);
+    }
+
+    [Fact]
+    public void APrimitiveKnowsItsBoundsBeforeItHasEverDrawn()
+    {
+        // Culling and picking both read bounds against a scene that may not have rendered
+        // yet. A plane still carrying the default unit cube, scaled up for a floor,
+        // becomes a box that contains the whole level and swallows every ray.
+        var actor = new Actor("Floor");
+        actor.AddComponent<Transform3D>().LocalScale = new Vector3(30f, 1f, 30f);
+
+        var mesh = actor.AddComponent<MeshRenderer>();
+        mesh.MeshType = MeshPrimitive.Plane;
+
+        Assert.Equal(0f, mesh.LocalBounds.Extents.Y, 4);
+        Assert.Equal(0f, mesh.WorldBounds.Extents.Y, 4);
+        Assert.Equal(15f, mesh.WorldBounds.Extents.X, 3);
+    }
+
+    [Fact]
+    public void ASplineTravelsAtAConstantSpeed()
+    {
+        // Equal steps in the curve parameter cover unequal ground, so anything moving by
+        // parameter speeds up on straights and crawls round corners.
+        var actor = new Actor("Path");
+        var spline = actor.AddComponent<Spline>();
+        spline.Points.AddRange(new[]
+        {
+            new Vector3(0, 0, 0), new Vector3(5, 0, 0),
+            new Vector3(5, 0, 5), new Vector3(0, 0, 5),
+        });
+        spline.Rebuild();
+
+        Assert.True(spline.Length > 14f, $"expected roughly 15 units, measured {spline.Length}");
+
+        // Sample at even distances; each hop should cover roughly the same ground.
+        const int steps = 20;
+        float previousHop = -1f;
+        var previous = spline.GetPointAtDistance(0f);
+
+        for (int i = 1; i <= steps; i++)
+        {
+            var point = spline.GetPointAtDistance(spline.Length * i / steps);
+            float hop = Vector3.Distance(previous, point);
+
+            if (previousHop > 0f)
+                Assert.True(MathF.Abs(hop - previousHop) < 0.25f,
+                    $"step {i} covered {hop:F3} after {previousHop:F3} — not constant speed");
+
+            previousHop = hop;
+            previous = point;
+        }
+    }
+
+    [Fact]
+    public void ASplinePassesThroughItsControlPoints()
+    {
+        // Catmull-Rom rather than Bezier precisely so a waypoint is where you put it.
+        var actor = new Actor("Path");
+        var spline = actor.AddComponent<Spline>();
+        var waypoint = new Vector3(4f, 1f, -2f);
+
+        spline.Points.AddRange(new[] { Vector3.Zero, waypoint, new Vector3(8f, 0f, 0f) });
+        spline.Rebuild();
+
+        // The middle control point sits at t = 0.5 on a three-point open spline.
+        var onCurve = spline.Evaluate(0.5f);
+        Assert.Equal(waypoint.X, onCurve.X, 3);
+        Assert.Equal(waypoint.Y, onCurve.Y, 3);
+        Assert.Equal(waypoint.Z, onCurve.Z, 3);
+    }
+
+    [Fact]
+    public void ProjectileMovementFallsUnderGravity()
+    {
+        var actor = new Actor("Shell");
+        actor.AddComponent<Transform3D>();
+
+        var move = actor.AddComponent<ProjectileMovement>();
+        move.Velocity = new Vector3(10f, 0f, 0f);
+        move.Start();
+
+        for (int i = 0; i < 30; i++) move.Update(1f / 60f);
+
+        var position = actor.GetComponent<Transform3D>()!.Position;
+        Assert.True(position.X > 4f, "should have travelled forward");
+        Assert.True(position.Y < -0.5f, $"should have fallen, but Y is {position.Y}");
+    }
+
+    [Fact]
+    public void RotatingMovementAccumulatesRotation()
+    {
+        var actor = new Actor("Fan");
+        var transform = actor.AddComponent<Transform3D>();
+
+        var spin = actor.AddComponent<RotatingMovement>();
+        spin.RotationRate = new Vector3(0f, 90f, 0f);
+        spin.Start();
+
+        // Half a second at 90 deg/s is 45 degrees.
+        for (int i = 0; i < 30; i++) spin.Update(1f / 60f);
+
+        Assert.Equal(45f, transform.EulerAngles.Y, 0);
+    }
+}

@@ -75,6 +75,24 @@ public static class PrimitiveMesh
         return built;
     }
 
+    /// <summary>
+    /// The object-space bounds of a shape, without needing a graphics device.
+    /// </summary>
+    /// <remarks>
+    /// Bounds have to be known before the first draw. Culling and picking both read them,
+    /// and both run against a scene that may not have rendered yet — a mesh whose bounds
+    /// are still the default unit cube is culled wrongly and, once scaled up, swallows
+    /// every ray cast at the scene. These are analytic, so no buffers are needed to
+    /// answer the question.
+    /// </remarks>
+    public static Bounds GetBounds(MeshPrimitive shape) => shape switch
+    {
+        MeshPrimitive.Plane => new Bounds(Vector3.Zero, new Vector3(1f, 0f, 1f)),
+        MeshPrimitive.Quad  => new Bounds(Vector3.Zero, new Vector3(1f, 1f, 0f)),
+        MeshPrimitive.None  => new Bounds(Vector3.Zero, Vector3.One),
+        _                   => new Bounds(Vector3.Zero, Vector3.One),
+    };
+
     /// <summary>Releases every cached buffer. Call when tearing down a graphics device.</summary>
     public static void ClearCache()
     {

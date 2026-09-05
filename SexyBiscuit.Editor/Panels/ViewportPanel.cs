@@ -403,7 +403,13 @@ public sealed class ViewportPanel
         {
             if (!renderer.Enabled || !renderer.Actor.IsActive) continue;
 
-            float? hit = ray.Intersects(renderer.WorldBounds.ToBoundingBox());
+            // A flat mesh has a zero-thickness box on one axis, which the slab test
+            // handles badly and which is impossible to click accurately anyway. Padding
+            // gives a floor or a billboard something to catch the ray on.
+            var bounds = renderer.WorldBounds;
+            bounds.Extents = XnaVector3.Max(bounds.Extents, new XnaVector3(0.02f));
+
+            float? hit = ray.Intersects(bounds.ToBoundingBox());
             if (hit is not { } distance || distance >= bestDistance) continue;
 
             bestDistance = distance;

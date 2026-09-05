@@ -193,7 +193,7 @@ public sealed class LoadingScreen
 
         foreach (var assembly in assemblies)
         {
-            foreach (var type in SafeGetTypes(assembly))
+            foreach (var type in assembly.SafeGetTypes())
             {
                 if (string.Equals(type.Name, name, StringComparison.Ordinal))
                     return type;
@@ -201,23 +201,6 @@ public sealed class LoadingScreen
         }
 
         return null;
-    }
-
-    /// <summary>Types from an assembly, tolerating ones that fail to load.</summary>
-    private static IEnumerable<Type> SafeGetTypes(System.Reflection.Assembly assembly)
-    {
-        try
-        {
-            return assembly.GetTypes();
-        }
-        catch (System.Reflection.ReflectionTypeLoadException ex)
-        {
-            return ex.Types.Where(t => t != null)!;
-        }
-        catch
-        {
-            return Array.Empty<Type>();
-        }
     }
 
     /// <summary>Begins loading. Call <see cref="Tick"/> each frame afterwards.</summary>

@@ -74,7 +74,11 @@ public sealed class MeshRenderer : Component
         {
             if (_meshType == value) return;
             _meshType = value;
-            _primitive = null;      // rebuilt on the next draw
+            _primitive = null;      // geometry is rebuilt on the next draw
+
+            // Bounds cannot wait for the draw. Culling and picking read them first, and a
+            // scaled-up mesh still carrying the default unit cube swallows every ray.
+            LocalBounds = PrimitiveMesh.GetBounds(value);
         }
     }
     private MeshPrimitive _meshType = MeshPrimitive.None;

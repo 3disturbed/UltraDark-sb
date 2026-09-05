@@ -136,6 +136,7 @@ public sealed class RenderSystem3D : IDisposable
 
     private GraphicsDevice  _gd = null!;
     private RenderStats     _stats;
+    private Color           _effectiveAmbient;
     private bool            _warnedNoShadowEffect;
 
     private RenderTarget2D? _shadowMap;
@@ -183,6 +184,13 @@ public sealed class RenderSystem3D : IDisposable
         var   proj   = camera.GetProjectionMatrix(aspect);
         var   camPos = camera.GetTransform3D().Position;
 
+        // A SkyLight in the scene overrides the renderer's flat ambient. BasicEffect only
+        // takes one colour, so it gets the sky/ground blend; a shader reading SkyColor and
+        // GroundColor separately gets the directional version.
+        _effectiveAmbient = SkyLight.Active is { Enabled: true } sky
+            ? sky.GetAverageAmbient()
+            : AmbientLight;
+
         GatherLights();
         GatherVisible(camera, view, proj, camPos);
 
@@ -228,6 +236,14 @@ public sealed class RenderSystem3D : IDisposable
 
         foreach (var r in _opaque) DrawRenderer(r, view, proj, camPos);
 
+        // Instanced meshes carry their own buffers and draw path.
+        foreach (var instanced in InstancedMeshRenderer.All)
+        {
+            if (!instanced.Enabled || !instanced.Actor.IsActive || instanced.InstanceCount == 0) continue;
+            instanced.Draw(_gd, view, proj);
+            _stats.DrawCalls += instanced.IsHardwareInstanced ? 1 : instanced.InstanceCount;
+        }
+
         // Skinned meshes go through SkinnedEffect and are not part of the material path.
         foreach (var skin in SkinnedMeshRenderer.All)
         {
@@ -243,6 +259,15 @@ public sealed class RenderSystem3D : IDisposable
         _gd.BlendState        = BlendState.AlphaBlend;
 
         foreach (var r in _transparent) DrawRenderer(r, view, proj, camPos);
+
+        // Decals sit on surfaces, so they draw before particles but after opaque
+        // geometry — depth-read keeps them behind anything in front of the wall.
+        foreach (var decal in Decal3D.All)
+        {
+            if (!decal.Enabled || !decal.Actor.IsActive) continue;
+            decal.Draw(_gd, view, proj);
+            _stats.DrawCalls++;
+        }
 
         // Particles are always transparent and draw last, over everything else.
         foreach (var emitter in ParticleSystem3D.All)
@@ -381,7 +406,14 @@ public sealed class RenderSystem3D : IDisposable
         SetIfPresent(fx, "WorldInverseTranspose", Matrix.Transpose(Matrix.Invert(world)));
 
         fx.Parameters["CameraPosition"]?.SetValue(camPos);
-        fx.Parameters["AmbientColor"]?.SetValue(AmbientLight.ToVector3());
+        fx.Parameters["AmbientColor"]?.SetValue(_effectiveAmbient.ToVector3());
+
+        if (SkyLight.Active is { Enabled: true } sky)
+        {
+            fx.Parameters["SkyColor"]?.SetValue(sky.SkyColor.ToVector3() * sky.Intensity);
+            fx.Parameters["GroundColor"]?.SetValue(sky.GroundColor.ToVector3() * sky.Intensity);
+            if (sky.Cubemap != null) fx.Parameters["SkyCubemap"]?.SetValue(sky.Cubemap);
+        }
         fx.Parameters["LightCount"]?.SetValue(lightCount);
 
         if (lightCount > 0)
@@ -442,7 +474,7 @@ public sealed class RenderSystem3D : IDisposable
         fx.SpecularPower = MathHelper.Lerp(64f, 2f, MathHelper.Clamp(material.Roughness, 0f, 1f));
         fx.SpecularColor = Vector3.One * (1f - MathHelper.Clamp(material.Roughness, 0f, 1f));
 
-        fx.AmbientLightColor = AmbientLight.ToVector3();
+        fx.AmbientLightColor = _effectiveAmbient.ToVector3();
         fx.LightingEnabled   = true;
 
         // BasicEffect exposes exactly three directional lights.

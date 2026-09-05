@@ -989,13 +989,18 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private void RecreateViewportTarget()
     {
         _viewportTarget?.Dispose();
+
+        // Depth24, not None. Without a depth buffer the 3D pass has no depth test at all:
+        // triangles land in submission order, the far side of a mesh paints over the near
+        // side, and solid geometry renders inside-out — which reads as the perspective
+        // being inverted rather than as a missing depth buffer.
         _viewportTarget = new RenderTarget2D(
             GraphicsDevice,
             _viewportWidth,
             _viewportHeight,
             false,
             SurfaceFormat.Color,
-            DepthFormat.None);
+            DepthFormat.Depth24);
     }
 
     public void ResizeViewport(int width, int height)
