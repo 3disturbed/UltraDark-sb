@@ -170,7 +170,8 @@ public sealed class GameCodeHost : IDisposable
         if (Project == null)
         {
             ConsoleLog.Add("This project has no C# project yet. Use Project > Add C# Project, or let the assistant call create_code_project.", LogLevel.Info);
-            if (Loader.Current != null) _ = ReloadAsync(build: false, unloadOnly: true, reason: "project without code opened");
+            if (Loader.Current != null)
+                _ = ReloadAsync(build: false, unloadOnly: true, reason: "project without code opened").ContinueWith(ReportBackgroundReload, TaskScheduler.Default);
             return;
         }
 
@@ -179,7 +180,24 @@ public sealed class GameCodeHost : IDisposable
 
         // Build and load so the scene's project components resolve; the reload round-trips the
         // scene, turning the placeholders the loader just created into real components.
-        _ = ReloadAsync(build: true, reason: "project opened");
+        _ = ReloadAsync(build: true, reason: "project opened").ContinueWith(ReportBackgroundReload, TaskScheduler.Default);
+    }
+
+    /// <summary>Why the last automatic load failed, for the C# Project panel; null after a success.</summary>
+    public string? LastLoadError { get; private set; }
+
+    // A reload nobody awaits must still tell the user why the assembly is not loaded.
+    private void ReportBackgroundReload(Task<ReloadResult> task)
+    {
+        if (task.IsFaulted)
+        {
+            LastLoadError = task.Exception!.GetBaseException().Message;
+            ConsoleLog.Add("Game code did not load: " + LastLoadError, LogLevel.Error);
+        }
+        else if (task.IsCompletedSuccessfully)
+        {
+            LastLoadError = null;
+        }
     }
 
     /// <summary>Creates the C# project for the open SexyBiscuit project. Existing files are kept.</summary>
@@ -247,12 +265,11 @@ public sealed class GameCodeHost : IDisposable
                 };
                 var result = await runner.BuildAsync(request, progress, linked.Token).ConfigureAwait(false);
 
-                // No engine output to compile against yet (a fresh checkout): let MSBuild build it once.
+                // The game compiles against this editor's own SexyBiscuit.Engine.dll (pinned through
+                // SexyBiscuit.props), so a missing reference means the props are stale, not that the
+                // engine needs building; building the engine here would overwrite the running editor.
                 if (!result.Success && result.Diagnostics.Any(d => d.Code is "CS0006" or "MSB3202" or "MSB4025"))
-                {
-                    job.AddLine("engine output missing; building project references once");
-                    result = await runner.BuildAsync(request with { BuildProjectReferences = true }, progress, linked.Token).ConfigureAwait(false);
-                }
+                    job.AddLine($"the engine reference could not be resolved; expected {Path.Combine(AppContext.BaseDirectory, "SexyBiscuit.Engine.dll")}. Reopen the project to rewrite {CodeProjectGenerator.PropsFileName}.");
 
                 job.Result = result;
                 job.State  = result.Success ? BuildJobState.Succeeded : result.TimedOut ? BuildJobState.TimedOut : result.Cancelled ? BuildJobState.Cancelled : BuildJobState.Failed;
@@ -346,7 +363,8 @@ public sealed class GameCodeHost : IDisposable
                 if (mvid.HasValue && mvid.Value != AssemblyIdentity.RunningEngineMvid)
                     throw new McpToolException(
                         "The game was compiled against a different engine build than this editor is running.",
-                        "Call rebuild_engine_and_restart to bring the editor up to date, or pass allow_engine_mismatch=true if the engine change cannot affect the game.");
+                        "Its bin folder holds a SexyBiscuit.Engine.dll from another build. Rebuild the game from the editor (build_project) so it compiles against this editor's engine, " +
+                        "call rebuild_engine_and_restart if you changed engine source, or pass allow_engine_mismatch=true if the difference cannot affect the game.");
             }
         }
 
@@ -357,6 +375,7 @@ public sealed class GameCodeHost : IDisposable
         {
             var result = await _mcp.Dispatcher.InvokeAsync(() => SwapOnMainThread(dllPath, stopPlayMode), cancellation).ConfigureAwait(false);
             if (job != null) job.Reload = result;
+            if (result.Reloaded) LastLoadError = null;
             tcs.TrySetResult(result);
             return result;
         }

@@ -84,7 +84,8 @@ public sealed record RelaunchPlan(
     string StagingDll,
     string WorkingDirectory,
     string ResumeFile,
-    string LogFile);
+    string LogFile,
+    IReadOnlyList<string>? ExtraArguments = null);
 
 /// <summary>
 /// Renders the detached script that waits for the editor to exit, rebuilds it in place (the
@@ -104,7 +105,7 @@ public static class RelaunchScript
           echo "in-place build failed; starting the staged build instead"
           DLL={Sh(plan.StagingDll)}
         fi
-        cd {Sh(plan.WorkingDirectory)} && exec {Sh(plan.DotnetPath)} "$DLL" --resume {Sh(plan.ResumeFile)}
+        cd {Sh(plan.WorkingDirectory)} && exec {Sh(plan.DotnetPath)} "$DLL" --resume {Sh(plan.ResumeFile)}{ShExtras(plan)}
 
         """;
 
@@ -121,10 +122,17 @@ public static class RelaunchScript
           $dll = {{Ps(plan.StagingDll)}}
         }
         Set-Location {{Ps(plan.WorkingDirectory)}}
-        Start-Process -FilePath {{Ps(plan.DotnetPath)}} -ArgumentList @($dll, '--resume', {{Ps(plan.ResumeFile)}}) -WorkingDirectory {{Ps(plan.WorkingDirectory)}}
+        Start-Process -FilePath {{Ps(plan.DotnetPath)}} -ArgumentList @($dll, '--resume', {{Ps(plan.ResumeFile)}}{{PsExtras(plan)}}) -WorkingDirectory {{Ps(plan.WorkingDirectory)}}
         Stop-Transcript | Out-Null
 
         """;
+
+    // Flags the restarted editor must keep (--no-assistant, --mcp-port …); the resume file covers the rest.
+    private static string ShExtras(RelaunchPlan plan)
+        => plan.ExtraArguments is { Count: > 0 } extras ? string.Concat(extras.Select(a => " " + Sh(a))) : "";
+
+    private static string PsExtras(RelaunchPlan plan)
+        => plan.ExtraArguments is { Count: > 0 } extras ? string.Concat(extras.Select(a => ", " + Ps(a))) : "";
 
     /// <summary>Single-quoted for /bin/sh: the only special character inside is the quote itself.</summary>
     public static string Sh(string value) => "'" + value.Replace("'", "'\\''") + "'";

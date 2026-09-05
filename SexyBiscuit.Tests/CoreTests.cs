@@ -412,3 +412,23 @@ public class ScenePlumbingTests
         }
     }
 }
+
+public class LayerDestroyTests
+{
+    [Fact]
+    public void DestroyingASceneDestroysActorsStillPendingSoTheirRenderersUnregister()
+    {
+        // Why: the editor replaces its start-up scene before the first frame flushes it. Pending
+        // actors have already run Awake (MeshRenderer registers itself there); dropping them
+        // without OnDestroy left phantom meshes drawing in the viewport for the whole session.
+        var scene = new Scene("Pending");
+        var actor = new Actor("Ghost");
+        var mesh  = actor.AddComponent<SexyBiscuit.Engine.Rendering.MeshRenderer>();
+        scene.AddActor(actor);                       // queued, never flushed
+        Assert.Contains(mesh, SexyBiscuit.Engine.Rendering.MeshRenderer.All);
+
+        scene.Destroy();
+
+        Assert.DoesNotContain(mesh, SexyBiscuit.Engine.Rendering.MeshRenderer.All);
+    }
+}

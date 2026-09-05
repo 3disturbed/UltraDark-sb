@@ -212,7 +212,8 @@ public sealed class EditorRestart
             StagingDll:       Path.Combine(staging, Path.GetFileName(editorDll)),
             WorkingDirectory: Environment.CurrentDirectory,
             ResumeFile:       resumeFile,
-            LogFile:          Path.Combine(appData, "relaunch.log"));
+            LogFile:          Path.Combine(appData, "relaunch.log"),
+            ExtraArguments:   app.Options.RelaunchArguments());
 
         ProcessStartInfo psi;
         if (OperatingSystem.IsWindows())

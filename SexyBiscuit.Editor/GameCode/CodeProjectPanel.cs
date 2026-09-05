@@ -84,6 +84,12 @@ public sealed class CodeProjectPanel
         if (types == null)
         {
             ImGui.TextDisabled("Assembly: not loaded");
+            if (_code.LastLoadError != null)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.55f, 0.2f, 1f));
+                ImGui.TextWrapped(_code.LastLoadError);
+                ImGui.PopStyleColor();
+            }
         }
         else
         {

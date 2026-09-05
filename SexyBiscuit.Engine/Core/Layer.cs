@@ -170,12 +170,20 @@ public class Layer
             a.InternalDraw(sb);
     }
 
-    /// <summary>Destroys every actor in the layer and clears its queues.</summary>
+    /// <summary>Destroys every actor in the layer, queued ones included, and clears its queues.</summary>
     public void Destroy()
     {
         // Snapshot: InternalDestroy runs OnDestroy, which can touch the actor list.
         foreach (var a in _actors.ToArray())
             a.InternalDestroy();
+
+        // Actors still waiting to be added have already run Awake, which is where components
+        // register themselves (a MeshRenderer in MeshRenderer.All). Dropping them without
+        // OnDestroy leaves phantom meshes drawing for the rest of the session — exactly what
+        // happened when the editor replaced its start-up scene before the first frame flushed it.
+        foreach (var a in _pendingAdd.ToArray())
+            a.InternalDestroy();
+
         _actors.Clear();
         _pendingAdd.Clear();
         _pendingRemove.Clear();

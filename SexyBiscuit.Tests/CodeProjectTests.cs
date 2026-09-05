@@ -77,6 +77,26 @@ public class CodeProjectGeneratorTests
         => Assert.Equal(expected, CodeProjectGenerator.SanitiseIdentifier(input));
 
     [Fact]
+    public void RenderProps_PinsTheEngineReferenceToTheEditorBinary()
+    {
+        // Why: an engine built separately (with -warnaserror, say) has a different build id, so a game
+        // compiled against the engine project's own output fails the editor's MVID check. Pinning the
+        // reference's OutDir to the editor's bin makes the game compile against the running engine,
+        // and BuildProjectReferences=false keeps that build from ever overwriting it.
+        string props = CodeProjectGenerator.RenderProps(new EngineLocation("/repo/SexyBiscuit.Engine/SexyBiscuit.Engine.csproj", "/repo/SexyBiscuit.Editor/bin/Debug/net8.0", Guid.NewGuid()));
+
+        Assert.Contains("SexyBiscuitPinEngineReference", props);
+        Assert.Contains("BeforeTargets=\"AssignProjectConfiguration;ResolveProjectReferences\"", props);
+        Assert.Contains("<AdditionalProperties>OutDir=$(SexyBiscuitEngineDir)/</AdditionalProperties>", props);
+        Assert.Contains("'%(Filename)%(Extension)' == 'SexyBiscuit.Engine.csproj'", props);
+        Assert.Contains("<BuildProjectReferences>false</BuildProjectReferences>", props);
+
+        // Without an engine directory nothing is pinned, so CI with SEXYBISCUIT_ENGINE still builds the engine.
+        string ci = CodeProjectGenerator.RenderProps(new EngineLocation("/repo/SexyBiscuit.Engine/SexyBiscuit.Engine.csproj", null, null));
+        Assert.Contains("'$(SexyBiscuitEngineDir)' != ''", ci);
+    }
+
+    [Fact]
     public void Generate_WritesCsprojPropsGitignoreAndStartersOnce()
     {
         string root = TempDir("gen");
@@ -317,6 +337,21 @@ public class RelaunchTests
         Assert.Equal("abc", read.AssistantSessionId);
         Assert.False(File.Exists(path));
         Assert.Null(RelaunchStateFile.TryReadAndDelete(path));
+    }
+
+    [Fact]
+    public void RelaunchScript_CarriesLaunchFlagsAfterResume()
+    {
+        // Why: an editor started with --no-assistant must come back the same way after it rebuilds
+        // itself, or the restart quietly changes who is driving the Assistant panel.
+        var plan = new RelaunchPlan(1, "/dotnet", "/repo", "/repo/Editor.csproj", "Debug", "/repo/bin/Editor.dll", "/repo/bin/staging/Editor.dll",
+            "/work", "/resume.json", "/log.txt", new[] { "--no-assistant", "--mcp-port", "7340" });
+
+        Assert.Contains("--resume '/resume.json' '--no-assistant' '--mcp-port' '7340'", RelaunchScript.RenderSh(plan));
+        Assert.Contains("'--resume', '/resume.json', '--no-assistant', '--mcp-port', '7340')", RelaunchScript.RenderPowerShell(plan));
+
+        var bare = plan with { ExtraArguments = null };
+        Assert.EndsWith("--resume '/resume.json'", RelaunchScript.RenderSh(bare).TrimEnd());
     }
 
     [Fact]

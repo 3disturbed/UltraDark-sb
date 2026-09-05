@@ -47,6 +47,19 @@ public sealed class LaunchOptions
 
     public List<string> Unknown { get; } = new();
 
+    /// <summary>The flags a self-restart must carry over; the resume file replaces --project and --scene.</summary>
+    public List<string> RelaunchArguments()
+    {
+        var args = new List<string>();
+        if (NoAssistant) args.Add("--no-assistant");
+        if (McpPort is { } port)
+        {
+            args.Add("--mcp-port");
+            args.Add(port.ToString());
+        }
+        return args;
+    }
+
     public static LaunchOptions Parse(string[] args)
     {
         var options = new LaunchOptions();

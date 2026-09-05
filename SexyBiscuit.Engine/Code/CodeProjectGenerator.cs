@@ -198,6 +198,21 @@ public static class CodeProjectGenerator
               <PropertyGroup Condition="'$(SEXYBISCUIT_ENGINE)' != '' And '$(SexyBiscuitEngineProject)' == ''">
                 <SexyBiscuitEngineProject>$(SEXYBISCUIT_ENGINE)/SexyBiscuit.Engine/SexyBiscuit.Engine.csproj</SexyBiscuitEngineProject>
               </PropertyGroup>
+              <!-- The game compiles against the engine binary the editor runs, never against the engine
+                   project's own output: an engine built separately (with -warnaserror, say) has a different
+                   build id, and the editor refuses to load a game compiled against it. The engine is therefore
+                   never built through this project; the editor's build is the engine. -->
+              <PropertyGroup Condition="'$(SexyBiscuitEngineDir)' != '' And '$(BuildProjectReferences)' == ''">
+                <BuildProjectReferences>false</BuildProjectReferences>
+              </PropertyGroup>
+              <Target Name="SexyBiscuitPinEngineReference" BeforeTargets="AssignProjectConfiguration;ResolveProjectReferences"
+                      Condition="'$(SexyBiscuitEngineDir)' != '' And Exists('$(SexyBiscuitEngineDir)/SexyBiscuit.Engine.dll')">
+                <ItemGroup>
+                  <ProjectReference Condition="'%(Filename)%(Extension)' == 'SexyBiscuit.Engine.csproj'">
+                    <AdditionalProperties>OutDir=$(SexyBiscuitEngineDir)/</AdditionalProperties>
+                  </ProjectReference>
+                </ItemGroup>
+              </Target>
             </Project>
 
             """;

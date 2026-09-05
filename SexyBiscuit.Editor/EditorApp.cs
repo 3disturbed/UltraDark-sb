@@ -1346,6 +1346,9 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     /// <summary>The assistant host, when it exists.</summary>
     public AssistantHost? Assistant => _assistant;
 
+    /// <summary>How this editor was launched, so a self-restart can launch the same way.</summary>
+    public LaunchOptions Options => _options;
+
     /// <summary>Raised after the editor resumed a project and scene following a self-restart.</summary>
     public event Action<RelaunchState>? Resumed;
 
