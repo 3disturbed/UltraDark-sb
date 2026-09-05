@@ -13,9 +13,29 @@ An in-house, full-ownership game engine built on MonoGame. No vendor lock-in. No
 - **Full ownership** — built on MonoGame, every system above it is ours
 - **Actor/Component architecture** — Unity-familiar but fully under our control
 - **JavaScript scripting** — attach `.js` files to any Actor; no compile step for gameplay logic
-- **No Content Pipeline** — load raw PNG, OGG, TTF, FBX at runtime; no `.xnb` files ever
+- **Almost no Content Pipeline** — PNG, OGG, TTF and FBX all load raw at runtime. Only
+  custom shaders need `mgcb`, and the engine runs without them (see [Shaders](SexyBiscuit.Engine/Shaders/README.md))
 - **Multiplayer first** — replication and networking designed in from day one, not bolted on
 - **2D and 3D first-class** — neither is a second-class citizen or an afterthought
+
+---
+
+## Documentation
+
+Three layers, depending on what you need:
+
+| | For |
+|---|---|
+| **[Wiki](wiki/README.md)** | Reference — what each class does, written against the source |
+| **[Tutorials](tutorials/README.md)** | A guided path from an empty window to a shipped game |
+| This README | The tour: what the engine contains and how the pieces relate |
+
+Start with [Getting Started](wiki/01-getting-started.md), then read
+[The Game Loop](wiki/03-game-loop.md) before writing a game — it covers what the engine
+pumps for you and what your subclass is expected to wire up.
+
+Also: [Shaders](SexyBiscuit.Engine/Shaders/README.md) for building the built-in HLSL
+effects, and [CONTRIBUTING](CONTRIBUTING.md) for build, test and style expectations.
 
 ---
 
@@ -41,6 +61,10 @@ An in-house, full-ownership game engine built on MonoGame. No vendor lock-in. No
 18. [Steam Integration (Steamworks.NET)](#18-steam-integration-steamworksnet)
 19. [Demo Game — Biscuit Chronicles](#19-demo-game--biscuit-chronicles)
 20. [Project Templates](#20-project-templates)
+21. [Gameplay Framework](#21-gameplay-framework)
+22. [AI & Navigation](#22-ai--navigation)
+23. [Localisation](#23-localisation)
+24. [Testing & CI](#24-testing--ci)
 
 ---
 
@@ -216,17 +240,23 @@ Built on MonoGame's `SpriteBatch`:
 - Blend mode per emitter (additive, alpha, multiply)
 
 ### 2D Lighting
-Normal-map based deferred lighting pipeline (toggleable per scene):
-- **Point lights** — position, radius, colour, intensity, falloff curve
-- **Ambient** — base scene colour
-- **Shadow casting** — shadow mesh generated from occluder polygons
-- Normal maps assigned per sprite for surface detail under lighting
-- All lighting computed on a dedicated render target and composited
+`Lighting2D` renders every `Light2D` into an off-screen light map and multiplies it over
+the scene:
+- **Point lights** — position, radius, colour, intensity, falloff exponent
+- **Spot lights** — a cone aimed along the transform's rotation
+- **Global** — uniform over the screen, ignoring position
+- **Ambient** — the darkness floor; black means unlit areas go fully black
+- **Occluders** — `ShadowCaster2D` marks a convex polygon as blocking light
+- `Downsample` trades light-map resolution for fill rate, which also softens light edges
+
+Falloff is baked into a generated radial texture rather than computed per pixel, so the
+pipeline needs no content pipeline at all. Supply `NormalMapEffect` and `SceneNormalMap`
+for normal-mapped surface detail.
 
 ### Post Processing
 Configurable render target chain per camera:
 - **Bloom** — threshold, intensity, scatter
-- **CRT Scanline** — line spacing, intensity
+- **CRT Scanline** — line spacing, intensity, optional barrel curvature
 - **Vignette** — radius, softness, colour
 - **Colour Grading** — lift/gamma/gain, saturation, contrast
 - Custom pass — attach any `.fx` file as a post-processing step
@@ -237,9 +267,15 @@ Configurable render target chain per camera:
 
 3D is a first-class citizen alongside 2D. 2D and 3D Actors coexist in the same scene.
 
+### Render pipeline
+`RenderSystem3D` runs each frame before the 2D pass, so sprites and UI composite over the
+3D scene. It culls against the camera frustum, sorts opaque front-to-back and transparent
+back-to-front, picks the most influential lights per object, and reports what it submitted
+through `Renderer3D.Stats`. See the [3D rendering wiki page](wiki/05-rendering-3d.md).
+
 ### 3D Scene
 - 3D Actors use a `Transform3D` component — `Vector3` position, `Quaternion` rotation, `Vector3` scale
-- `PerspectiveCamera` and `OrthographicCamera` components
+- `Camera3D` covers both perspective and orthographic; tag an actor `MainCamera3D` to make it the default
 - Scene can mix 2D layers (UI, HUD) composited over a 3D viewport
 
 ### Mesh Renderer
@@ -256,7 +292,9 @@ PBR-lite material pipeline:
 - **Roughness** — roughness factor (float) or texture channel
 - **Emissive** — emissive colour/texture for self-illuminated surfaces
 - Custom HLSL `.fx` per material — override the entire shading model if needed
-- Material assets stored as `.mat.json` files; shareable across meshes
+- `StandardPBR.fx` ships with the engine and implements the full metallic/roughness model;
+  with no shader assigned the renderer falls back to MonoGame's `BasicEffect`, which gives
+  you three directional lights and textures with no content pipeline at all
 
 ### Lighting (3D)
 | Light Type | Properties |
@@ -266,8 +304,10 @@ PBR-lite material pipeline:
 | Spot | Position, direction, inner/outer angle, range, colour |
 | Ambient | Colour, intensity — scene-wide base light |
 
-- Shadow maps — depth-buffer shadow mapping per directional/spot light; configurable resolution
-- Light component added to any Actor; scene light limit configurable in project settings
+- Shadow maps — a depth pass for the primary directional caster, exposed to your shader as
+  `ShadowMap` and `LightViewProjection`. Needs the compiled `ShadowDepth.fx`; without it
+  the pass is skipped and a warning is logged once
+- Light component added to any Actor; `Renderer3D.MaxLightsPerObject` caps how many bind per draw
 
 ### Skybox
 - Cubemap skybox — assign 6-face cubemap texture
@@ -279,10 +319,19 @@ PBR-lite material pipeline:
 - Smooth transition or hard-cut per group
 - Auto-LOD generation tool in editor (planned)
 
+### Skinned Meshes
+`SkinnedMeshRenderer` deforms a rigged mesh from a `SkeletalAnimator`'s bone palette, via
+MonoGame's `SkinnedEffect` — up to 72 bones and 4 weights per vertex. A mesh needing more
+is rejected at load with a clear message rather than rendering wrong.
+
 ### 3D Particle System
-- Billboard particles — always face camera; texture + colour gradient + size curve
-- Mesh particles — render a mesh per particle; GPU instancing for high counts
-- Works with all emitter properties from the 2D particle system
+`ParticleSystem3D`:
+- Billboard particles — camera-facing quads, all drawn in a single call from one dynamic
+  vertex buffer; thousands of particles cost one draw
+- Vertical billboards — face the camera but keep an upright axis, for smoke and fire
+- Mesh particles — render a mesh per particle
+- Point, sphere, box and cone emission shapes; gravity, drag, spin, size and colour curves
+- Fixed-size pool, so a long-running emitter allocates nothing per frame
 
 ### 3D Camera Controllers (built-in base classes)
 - `FlyCamController` — free-look WASD + mouse; configurable speed and sensitivity
@@ -658,8 +707,10 @@ Tween.Sequence()
 
 Full easing library: Linear, InOut variants of Quad, Cubic, Quart, Quint, Sine, Expo, Circ, Back, Bounce, Elastic, Spring.
 
-### Spine (Optional)
-`SpineAnimator` component — Spine 2D skeletal runtime integration stub. Drop in the Spine runtime library to activate.
+### Spine (not implemented)
+Spine 2D runtime integration is not in the engine. Spine's runtime is separately licensed,
+so it is left to the game project: implement a `Component` that owns a Spine skeleton and
+draws it in `Draw(SpriteBatch)`.
 
 ---
 
@@ -1314,6 +1365,135 @@ MyGame/
 
 ---
 
+## 21. Gameplay Framework
+
+The layer above actors and components — who is playing, what body they control, what the
+rules are. See the [gameplay framework wiki page](wiki/22-gameplay-framework.md).
+
+```
+GameInstance          one per process — survives every level load
+ └── Subsystems       session-scoped services
+
+Scene
+ ├── GameMode         the rules. Spawns players, decides when the match ends.
+ │    └── GameState   the facts. Elapsed time, player list, match phase.
+ ├── PlayerController one per player — reads input, owns the camera
+ │    └── PlayerState that player's score, name, team
+ └── Pawn / Character the body a controller possesses
+```
+
+The controller is not the body: it outlives the pawn it drives, which is what lets a
+player respawn into a fresh body while keeping their score, bindings and camera. The mode
+is not the state: the mode holds rules and lives on the server, the state holds facts every
+client reads.
+
+| Type | Role |
+|---|---|
+| `GameInstance` | Session-wide state. Save data, profile, matchmaking. Survives level loads. |
+| `GameInstanceSubsystem` | A singleton service for the session, created on first request |
+| `WorldSubsystem` | The same, scoped to the scene and torn down with it |
+| `GameMode` | Rules: spawning, respawn delay, score and time limits, win conditions |
+| `GameState` | Replicated match facts: elapsed time, player list, phase |
+| `PlayerController` | Turns input into pawn intent; owns the view camera |
+| `PlayerState` | Per-player score, name, team, ping — survives death |
+| `Pawn` | A possessable body |
+| `Character` | A pawn that walks, wrapping `CharacterController3D` |
+| `PlayerStart` | Marks a spawn point; the mode picks the one furthest from live players |
+
+### Frame services
+
+| Service | Use |
+|---|---|
+| `Time` | `DeltaTime`, `UnscaledDeltaTime`, `TimeScale`, `Fps`, frame count |
+| `TimerManager` | `SetTimer(delay, cb, looping, firstDelay, useUnscaledTime)` |
+| `CoroutineRunner` | `IEnumerator` sequences with `WaitForSeconds` / `WaitUntil` / `WaitWhile` |
+| `ObjectPool<T>` / `ActorPool` | Allocation-free spawning for bullets and effects |
+| `SBEvent` / `SBEvent<T>` | Multicast delegates safe to mutate mid-broadcast |
+| `SBMath` | Framerate-independent `Damp`, angle wrapping, remapping, seeded random |
+| `Bounds` | AABB with conservative transform, used for culling |
+
+```csharp
+Time.TimeScale = 0f;                                  // pause; input still runs
+SBEngine.Instance.Timers.SetTimer(3f, Respawn);
+StartCoroutine(FadeOut());                            // cancelled if the actor dies
+actor.LifeSpan = 2f;                                  // self-destructing projectile
+```
+
+---
+
+## 22. AI & Navigation
+
+See the [AI wiki page](wiki/23-ai.md).
+
+### Blackboard
+Typed key-value state shared by a behaviour tree's nodes. `TryGetPosition` accepts either
+a `Vector3` or an `Actor` under the same key, so one node handles both a fixed waypoint
+and a moving target.
+
+### Behaviour trees
+
+| Category | Nodes |
+|---|---|
+| Composites | `Sequence`, `Selector`, `Parallel` |
+| Decorators | `Inverter`, `Succeeder`, `Repeater`, `Cooldown`, `Condition` |
+| Leaves | `ActionNode`, `ConditionNode`, `WaitNode`, `MoveToNode` |
+
+Composites remember which child is running between ticks, so a long-running child does not
+re-run its siblings every frame.
+
+### AIController
+Possesses a pawn and drives it from a tree. `CanSee(actor)` checks range, then field of
+view, then raycasts from eye height to confirm nothing is in the way.
+
+### Nav mesh
+`NavMesh.Build(vertices, indices)` filters unwalkable slopes, welds coincident vertices so
+separately authored floor pieces connect, normalises winding, and builds edge adjacency.
+
+Pathfinding is A* over triangle adjacency to find the corridor, then the funnel algorithm
+to pull the path taut against the corridor's edges — without that second step, paths
+visibly zig-zag between triangle centres.
+
+`NavMeshAgent` follows the result, optionally pushing movement through a `Character` so
+collision and gravity still apply. Repathing is on a timer rather than per frame.
+
+---
+
+## 23. Localisation
+
+`Loc` loads one flat JSON table per language and switches between them at runtime.
+
+```csharp
+Loc.LoadDirectory("Assets/Locales");
+Loc.SetLanguageFromSystem();
+
+label.Text = Loc.Get("ui.menu.start");
+hud.Text   = Loc.Format("hud.score", ("score", 1200));
+```
+
+Placeholders are named (`{score}`) rather than positional, because translators reorder
+values and `{0}` tells them nothing about what a slot holds. A key missing everywhere
+returns the key itself, so an untranslated string is visible on screen rather than blank.
+
+See the [localization wiki page](wiki/24-localization.md).
+
+---
+
+## 24. Testing & CI
+
+```bash
+dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj
+```
+
+`SexyBiscuit.Tests` is an xunit suite covering the logic that can be tested without a GPU:
+maths and damping, bounds and transform hierarchies, actor lifecycle, timers, coroutines,
+pooling, events, possession, subsystems, blackboards, behaviour trees, nav mesh building
+and pathfinding, scene serialization round-trips, and localisation.
+
+[CI](.github/workflows/ci.yml) builds and tests on Windows, macOS and Linux, and builds
+the engine a second time with `-warnaserror` to keep it warning-free.
+
+---
+
 ## Dependency Summary
 
 | System | Library |
@@ -1330,9 +1510,15 @@ MyGame/
 | Steam integration | Steamworks.NET |
 | Editor UI | ImGui.NET |
 | JSON | System.Text.Json |
+| Tests | xunit |
 
 ---
 
 ## Licence
 
-SexyBiscuit Engine is proprietary and owned entirely by its authors. All rights reserved. No third-party licensing, no runtime fees, no restrictions on commercial use of games built with it.
+MIT — see [LICENSE](LICENSE). No runtime fees, no restrictions on commercial use of games
+built with it.
+
+Third-party dependencies carry their own licences; see the dependency table above. Note
+that Steamworks.NET requires a Steamworks partner agreement to ship, and Spine (if you add
+it) is separately licensed by Esoteric Software.
