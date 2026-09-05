@@ -370,7 +370,9 @@ await AssetManager.LoadAsync<Texture2D>("Sprites/world.png", progress =>
 });
 ```
 - Background thread loading; callback on main thread
-- `LoadingScreen` helper — show progress bar while batch-loading a scene's asset manifest
+- `LoadingScreen` helper — batch-loads an asset list or a `Type|path` manifest a few items
+  per frame, reporting weighted progress on the game thread so the bar keeps animating and
+  the window stays responsive
 
 ### Hot Reload (Dev Mode)
 `FileSystemWatcher` monitors the asset directory. On change:
@@ -835,12 +837,21 @@ LanDiscovery.Discover(port, onFound: server => { });    // client side
 ## 14. Serialisation & Save System
 
 ### JSON Serialiser
-`SBSerializer` — System.Text.Json backed, extended with engine type converters:
+`SceneSerializer` (in `SexyBiscuit.Engine.Scene`) — System.Text.Json backed, extended with
+engine type converters:
 ```csharp
-string json = SBSerializer.Serialize(myActor);
-MyActor actor = SBSerializer.Deserialize<MyActor>(json);
+string json  = SceneSerializer.Serialize(scene);
+Scene  scene = SceneSerializer.Deserialize(json);
+
+SceneSerializer.SaveToFile(scene, "Assets/Scenes/Level1.json");
 ```
-Handles circular references, polymorphic component lists, Vector2/3, Color, Quaternion.
+Component state is discovered by reflection over public read/write properties whose type
+round-trips: primitives, string, enum, `Vector2`, `Vector3`, `Vector4`, `Quaternion`,
+`Color` and `Nullable<T>` of any of those. GPU types (`Texture2D`, `Effect`) and
+collections are skipped on purpose — see
+[Scenes & Prefabs](wiki/12-scenes-prefabs.md) for why and what to do instead.
+
+Single actors serialise the same way through `Prefab`.
 
 ### Save Slots
 ```csharp
@@ -1146,7 +1157,9 @@ SteamUserStats.SetStat("stat_playtime_seconds", (float)totalPlaytime.TotalSecond
 SteamUserStats.StoreStats();
 ```
 
-`AchievementManager` — define all achievements in `Achievements.json`; wrapper auto-handles `StoreStats` batching.
+The engine's wrapper is `SteamAchievements` (static, in `SexyBiscuit.Engine.Steam`):
+`Unlock`, `SetProgress`, `SetStat`, `GetStatInt`/`GetStatFloat` and `RequestStats`, all
+no-ops when Steam is not initialised so the same code runs outside Steam.
 
 ### Leaderboards
 ```csharp
@@ -1159,7 +1172,9 @@ var entries = await SteamUserStats.DownloadLeaderboardEntries(board,
     LeaderboardDataRequest.GlobalAroundUser, rangeStart: -4, rangeEnd: 5);
 ```
 
-`LeaderboardPanel` UI widget — pre-built panel that takes a leaderboard handle and renders entries with avatars, ranks, and scores.
+Leaderboard **UI** is left to the game: rendering entries with avatars, ranks and scores
+is a presentation decision, and every game wants a different one. Build it from
+`ScrollView` plus `Label`, driven by the entries Steamworks returns.
 
 ### Steam Cloud
 ```csharp
@@ -1273,7 +1288,7 @@ A third-person RPG with pet capture and Final Fantasy ATB combat. Ships with the
 | Save System | Full party + world state; auto-sync to Steam Cloud |
 | Steam Lobby | Host/Join/Invite via Steam; lobby browser; rich presence showing current area |
 | Replication | Player positions, encounter states, battle outcomes via `[Replicated]` |
-| Achievements | 10 achievements wired to AchievementManager |
+| Achievements | 10 achievements wired to `SteamAchievements` |
 | Workshop | Demo map published as a Workshop item; auto-mounted on startup if subscribed |
 | Tweening | Damage numbers float upward and fade; UI screen transitions |
 | World-space UI | HP bars above wild pets; floating capture text |
