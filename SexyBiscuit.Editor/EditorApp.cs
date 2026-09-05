@@ -884,18 +884,24 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     {
         if (EditorState.IsPlaying) return;
 
-        // Snapshot current scene
-        if (_engine?.SceneManager.ActiveScene != null)
+        var scene = _engine?.SceneManager.ActiveScene;
+        if (scene == null) return;
+
+        // Everything queued has to be in the scene before it is snapshotted, or anything
+        // placed since the last frame is missing from the state Stop restores.
+        scene.FlushPendingActors();
+
+        try
         {
-            try
-            {
-                _sceneSnapshot = SceneSerializer.Serialize(_engine.SceneManager.ActiveScene);
-            }
-            catch (Exception ex)
-            {
-                ConsoleLog.Add($"Scene snapshot failed: {ex.Message}", LogLevel.Warning);
-                _sceneSnapshot = null;
-            }
+            _sceneSnapshot = SceneSerializer.Serialize(scene);
+        }
+        catch (Exception ex)
+        {
+            // Without a snapshot, Stop cannot restore. Say so rather than letting the
+            // user discover it after they have played through their level.
+            ConsoleLog.Add($"Scene snapshot failed — Stop will not restore this scene: {ex.Message}",
+                LogLevel.Warning);
+            _sceneSnapshot = null;
         }
 
         EditorState.IsPlaying    = true;
@@ -917,20 +923,32 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         EditorState.IsPlaying    = false;
         EditorState.IsPlayPaused = false;
 
-        // Restore scene snapshot
+        // Play mode is free to change global state, and none of it belongs to the scene,
+        // so restoring the snapshot alone would leave the editor in whatever state the
+        // game left behind — a paused TimeScale being the one you notice immediately.
+        Time.TimeScale = 1f;
+        _engine?.Timers.ClearAll();
+        _engine?.Coroutines.StopAll();
+
         if (_sceneSnapshot != null && _engine != null)
         {
             try
             {
                 var restored = SceneSerializer.Deserialize(_sceneSnapshot);
-                // Replace active scene via CreateScene path (unloads old, sets new)
-                _engine.SceneManager.CreateScene(restored.Name);
+
+                // AdoptScene, not CreateScene. CreateScene makes a new EMPTY scene with
+                // that name and throws the deserialised one away, so Stop wiped the level
+                // instead of restoring it.
+                _engine.SceneManager.AdoptScene(restored);
+                restored.FlushPendingActors();
+
                 ConsoleLog.Add("Scene restored from snapshot.", LogLevel.Info);
             }
             catch (Exception ex)
             {
                 ConsoleLog.Add($"Scene restore failed: {ex.Message}", LogLevel.Error);
             }
+
             _sceneSnapshot = null;
         }
 

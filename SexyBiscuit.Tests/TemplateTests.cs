@@ -456,3 +456,144 @@ public class ComponentCoverageTests
         Assert.Equal(45f, transform.EulerAngles.Y, 0);
     }
 }
+
+/// <summary>
+/// Covers the snapshot/restore cycle the editor's Play and Stop buttons rely on.
+/// </summary>
+/// <remarks>
+/// Stop used to deserialise the snapshot and then discard it, calling CreateScene with
+/// only its name — which makes a new empty scene. Pressing Stop wiped the level.
+/// </remarks>
+public class PlayModeSnapshotTests
+{
+    [Fact]
+    public void ASnapshotRestoresEveryActorAndItsMaterials()
+    {
+        var original = SceneTemplates.CreateDefault3D("Level");
+        original.FlushPendingActors();
+
+        string snapshot = SceneSerializer.Serialize(original);
+
+        // Simulate play mode wrecking the scene.
+        original.FindByName("Cube")!.Destroy();
+        original.FlushPendingActors();
+        Assert.Null(original.FindByName("Cube"));
+        original.Destroy();
+
+        var restored = SceneSerializer.Deserialize(snapshot);
+        restored.FlushPendingActors();
+
+        try
+        {
+            var cube = restored.FindByName("Cube");
+            Assert.NotNull(cube);
+
+            var mesh = cube!.GetComponent<MeshRenderer>();
+            Assert.NotNull(mesh);
+            Assert.Equal(MeshPrimitive.Cube, mesh!.MeshType);
+
+            // Materials are a List<Material3D>. Collections used to be skipped wholesale,
+            // so a restored scene came back with every object untextured.
+            Assert.Single(mesh.Materials);
+            Assert.Equal(new Color(214, 92, 76), mesh.Materials[0].AlbedoColor);
+        }
+        finally
+        {
+            restored.Destroy();
+        }
+    }
+
+    [Fact]
+    public void MaterialAssetPathsSurviveASnapshot()
+    {
+        var scene = new Engine.Core.Scene("Textured");
+        var actor = scene.AddActor(new Actor("Crate"));
+        actor.AddComponent<Transform3D>();
+
+        var mesh = actor.AddComponent<MeshRenderer>();
+        mesh.MeshType = MeshPrimitive.Cube;
+        mesh.Materials.Add(new Material3D
+        {
+            AlbedoMapPath = "Assets/crate_albedo.png",
+            NormalMapPath = "Assets/crate_normal.png",
+            Roughness     = 0.35f,
+            Metallic      = 0.8f,
+        });
+        scene.FlushPendingActors();
+
+        var restored = SceneSerializer.Deserialize(SceneSerializer.Serialize(scene));
+        restored.FlushPendingActors();
+
+        try
+        {
+            var material = restored.FindByName("Crate")!.GetComponent<MeshRenderer>()!.Materials.Single();
+
+            // The texture itself is a GPU handle and cannot round-trip; the path can, and
+            // is what lets a loader rebuild it.
+            Assert.Equal("Assets/crate_albedo.png", material.AlbedoMapPath);
+            Assert.Equal("Assets/crate_normal.png", material.NormalMapPath);
+            Assert.Equal(0.35f, material.Roughness, 4);
+            Assert.Equal(0.8f, material.Metallic, 4);
+        }
+        finally
+        {
+            scene.Destroy();
+            restored.Destroy();
+        }
+    }
+
+    [Fact]
+    public void AListOfVectorsSurvivesASnapshot()
+    {
+        // Spline.Points is a get-only List<Vector3>: excluded twice over before, once for
+        // being a collection and once for having no setter.
+        var scene = new Engine.Core.Scene("Path");
+        var actor = scene.AddActor(new Actor("Route"));
+        var spline = actor.AddComponent<Spline>();
+        spline.Points.AddRange(new[] { Vector3.Zero, new Vector3(3, 0, 0), new Vector3(3, 0, 4) });
+        spline.LoopMode = SplineLoopMode.Loop;
+        scene.FlushPendingActors();
+
+        var restored = SceneSerializer.Deserialize(SceneSerializer.Serialize(scene));
+        restored.FlushPendingActors();
+
+        try
+        {
+            var copy = restored.FindByName("Route")!.GetComponent<Spline>();
+            Assert.NotNull(copy);
+            Assert.Equal(3, copy!.Points.Count);
+            Assert.Equal(new Vector3(3, 0, 4), copy.Points[2]);
+            Assert.Equal(SplineLoopMode.Loop, copy.LoopMode);
+        }
+        finally
+        {
+            scene.Destroy();
+            restored.Destroy();
+        }
+    }
+
+    [Fact]
+    public void RestoringTwiceInARowIsStable()
+    {
+        // Play, stop, play, stop. Each cycle must produce the same scene, not accumulate
+        // or lose content.
+        var scene = SceneTemplates.CreateDefault3D("Cycle");
+        scene.FlushPendingActors();
+
+        int Count(Engine.Core.Scene s) => s.Layers.SelectMany(l => l.Actors).Count();
+        int expected = Count(scene);
+
+        for (int cycle = 0; cycle < 3; cycle++)
+        {
+            string snapshot = SceneSerializer.Serialize(scene);
+            scene.Destroy();
+
+            scene = SceneSerializer.Deserialize(snapshot);
+            scene.FlushPendingActors();
+
+            Assert.Equal(expected, Count(scene));
+        }
+
+        scene.Destroy();
+    }
+}

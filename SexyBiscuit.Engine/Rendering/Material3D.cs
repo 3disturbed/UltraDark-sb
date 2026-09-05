@@ -27,6 +27,66 @@ public sealed class Material3D
     public float EmissiveIntensity { get; set; } = 0f;
 
     // -------------------------------------------------------------------------
+    // Asset paths
+    // -------------------------------------------------------------------------
+
+    /// <summary>Asset path the albedo map was loaded from, recorded so it can be reloaded.</summary>
+    /// <remarks>
+    /// A scene file cannot store a <see cref="Texture2D"/> — it is a GPU resource. It
+    /// stores the path and the loader rebuilds it. Without somewhere to keep that path a
+    /// material's textures are simply lost on save, which is what used to happen.
+    /// </remarks>
+    public string? AlbedoMapPath { get; set; }
+
+    /// <inheritdoc cref="AlbedoMapPath"/>
+    public string? NormalMapPath { get; set; }
+
+    /// <inheritdoc cref="AlbedoMapPath"/>
+    public string? MetallicMapPath { get; set; }
+
+    /// <inheritdoc cref="AlbedoMapPath"/>
+    public string? RoughnessMapPath { get; set; }
+
+    /// <inheritdoc cref="AlbedoMapPath"/>
+    public string? EmissiveMapPath { get; set; }
+
+    /// <summary>Name of the compiled effect to load for <see cref="Shader"/>, if any.</summary>
+    public string? ShaderPath { get; set; }
+
+    /// <summary>
+    /// Loads every texture named by the path properties through an asset manager.
+    /// </summary>
+    /// <remarks>
+    /// Called after a scene loads. Separate from deserialisation because loading needs a
+    /// graphics device, and a scene is deserialised long before one is in reach.
+    /// </remarks>
+    public void ResolveTextures(Assets.AssetManager assets)
+    {
+        ArgumentNullException.ThrowIfNull(assets);
+
+        AlbedoMap    = Load(AlbedoMapPath)    ?? AlbedoMap;
+        NormalMap    = Load(NormalMapPath)    ?? NormalMap;
+        MetallicMap  = Load(MetallicMapPath)  ?? MetallicMap;
+        RoughnessMap = Load(RoughnessMapPath) ?? RoughnessMap;
+        EmissiveMap  = Load(EmissiveMapPath)  ?? EmissiveMap;
+
+        Texture2D? Load(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return null;
+
+            try
+            {
+                return assets.Load<Texture2D>(path);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[Material3D] Could not load '{path}': {ex.Message}");
+                return null;
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Custom HLSL effect — null means use the renderer's default
     // -------------------------------------------------------------------------
     public Effect? Shader { get; set; }

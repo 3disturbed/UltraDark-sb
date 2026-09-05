@@ -48,6 +48,7 @@ public static class SceneSerializer
         opts.Converters.Add(new Vector4JsonConverter());
         opts.Converters.Add(new QuaternionJsonConverter());
         opts.Converters.Add(new ColorJsonConverter());
+        opts.Converters.Add(new Material3DJsonConverter());
         return opts;
     }
 
@@ -288,7 +289,7 @@ public static class SceneSerializer
                         continue;
                     }
 
-                    if (!prop.CanWrite)
+                    if (!prop.CanWrite && !IsFillableCollection(prop.PropertyType))
                     {
                         Console.Error.WriteLine(
                             $"[SceneSerializer] '{type.Name}.{propName}' is read-only. Ignored.");
@@ -298,8 +299,19 @@ public static class SceneSerializer
                     try
                     {
                         object? value = DeserializeValue(element, prop.PropertyType, _options);
-                        if (value is not null)
+                        if (value is null) continue;
+
+                        if (prop.CanWrite)
+                        {
                             prop.SetValue(component, value);
+                        }
+                        else if (prop.GetValue(component) is System.Collections.IList target
+                              && value is System.Collections.IEnumerable source)
+                        {
+                            // Get-only list: replace its contents rather than the list.
+                            target.Clear();
+                            foreach (var item in source) target.Add(item);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -397,8 +409,21 @@ public static class SceneSerializer
     {
         return type
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && p.CanWrite && IsSerializableType(p.PropertyType));
+            .Where(p => p.CanRead
+                     && (p.CanWrite || IsFillableCollection(p.PropertyType))
+                     && IsSerializableType(p.PropertyType));
     }
+
+    /// <summary>
+    /// True for a List&lt;T&gt; that can be populated through its own instance.
+    /// </summary>
+    /// <remarks>
+    /// Components routinely expose a collection as get-only and expect callers to add to
+    /// it — <c>public List&lt;Material3D&gt; Materials { get; } = new();</c>. Requiring a
+    /// setter would skip exactly those.
+    /// </remarks>
+    private static bool IsFillableCollection(Type t)
+        => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(List<>);
 
     private static readonly HashSet<Type> _serializableTypes = new()
     {
@@ -420,15 +445,34 @@ public static class SceneSerializer
         typeof(Vector4),
         typeof(Quaternion),
         typeof(Color),
+        typeof(Rendering.Material3D),
     };
 
+    /// <summary>
+    /// True when a property's type can be written to JSON and read back faithfully.
+    /// </summary>
+    /// <remarks>
+    /// Lists and arrays of a supported element type are included. They were excluded
+    /// wholesale before, which silently dropped a MeshRenderer's Materials and a Spline's
+    /// Points — the two most visible pieces of a scene's content. The general worry about
+    /// collections was polymorphic or unconstructible elements; restricting to a supported
+    /// element type rules that out.
+    /// </remarks>
     private static bool IsSerializableType(Type t)
     {
         if (_serializableTypes.Contains(t)) return true;
         if (t.IsEnum) return true;
+
         // Nullable<T> where T is serialisable
         if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Nullable<>))
             return IsSerializableType(t.GetGenericArguments()[0]);
+
+        if (t.IsArray)
+            return t.GetElementType() is { } element && IsSerializableType(element);
+
+        if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(List<>))
+            return IsSerializableType(t.GetGenericArguments()[0]);
+
         return false;
     }
 
@@ -443,6 +487,84 @@ public static class SceneSerializer
         // Unwrap nullable
         Type underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
         return JsonSerializer.Deserialize(element.GetRawText(), underlying, opts);
+    }
+}
+
+/// <summary>
+/// Writes a <see cref="Rendering.Material3D"/> as its portable properties.
+/// </summary>
+/// <remarks>
+/// A material mixes plain values with GPU handles. Reflection over the whole type would
+/// try to serialise <c>Texture2D</c> and <c>Effect</c>, which cannot round-trip, so the
+/// type was excluded entirely and every material was lost on save. This writes the
+/// scalars and the asset paths, and leaves rebuilding the GPU side to
+/// <see cref="Rendering.Material3D.ResolveTextures"/> once a device exists.
+/// </remarks>
+public sealed class Material3DJsonConverter : JsonConverter<Rendering.Material3D>
+{
+    public override Rendering.Material3D Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var material = new Rendering.Material3D();
+        if (reader.TokenType != JsonTokenType.StartObject) return material;
+
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            if (reader.TokenType != JsonTokenType.PropertyName) continue;
+
+            string name = reader.GetString() ?? "";
+            reader.Read();
+
+            switch (name)
+            {
+                case "albedoColor":       material.AlbedoColor       = ReadColour(ref reader); break;
+                case "metallic":          material.Metallic          = reader.GetSingle(); break;
+                case "roughness":         material.Roughness         = reader.GetSingle(); break;
+                case "emissiveIntensity": material.EmissiveIntensity = reader.GetSingle(); break;
+                case "albedoMap":         material.AlbedoMapPath     = reader.GetString(); break;
+                case "normalMap":         material.NormalMapPath     = reader.GetString(); break;
+                case "metallicMap":       material.MetallicMapPath   = reader.GetString(); break;
+                case "roughnessMap":      material.RoughnessMapPath  = reader.GetString(); break;
+                case "emissiveMap":       material.EmissiveMapPath   = reader.GetString(); break;
+                case "shader":            material.ShaderPath        = reader.GetString(); break;
+                default:                  reader.Skip(); break;
+            }
+        }
+
+        return material;
+    }
+
+    private static Color ReadColour(ref Utf8JsonReader reader)
+    {
+        string hex = (reader.GetString() ?? "#FFFFFFFF").TrimStart('#');
+        if (hex.Length < 6) return Color.White;
+
+        byte Channel(int i) => Convert.ToByte(hex.Substring(i, 2), 16);
+        return new Color(Channel(0), Channel(2), Channel(4), hex.Length >= 8 ? Channel(6) : (byte)255);
+    }
+
+    public override void Write(Utf8JsonWriter writer, Rendering.Material3D value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+
+        var c = value.AlbedoColor;
+        writer.WriteString("albedoColor", $"#{c.R:X2}{c.G:X2}{c.B:X2}{c.A:X2}");
+        writer.WriteNumber("metallic",          value.Metallic);
+        writer.WriteNumber("roughness",         value.Roughness);
+        writer.WriteNumber("emissiveIntensity", value.EmissiveIntensity);
+
+        WriteIfSet("albedoMap",    value.AlbedoMapPath);
+        WriteIfSet("normalMap",    value.NormalMapPath);
+        WriteIfSet("metallicMap",  value.MetallicMapPath);
+        WriteIfSet("roughnessMap", value.RoughnessMapPath);
+        WriteIfSet("emissiveMap",  value.EmissiveMapPath);
+        WriteIfSet("shader",       value.ShaderPath);
+
+        writer.WriteEndObject();
+
+        void WriteIfSet(string name, string? path)
+        {
+            if (!string.IsNullOrWhiteSpace(path)) writer.WriteString(name, path);
+        }
     }
 }
 
