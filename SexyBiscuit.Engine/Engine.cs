@@ -6,6 +6,8 @@ using SexyBiscuit.Engine.Input;
 using SexyBiscuit.Engine.Audio;
 using SexyBiscuit.Engine.Gameplay;
 using SexyBiscuit.Engine.Rendering;
+using SexyBiscuit.Engine.Physics;
+using SexyBiscuit.Engine.Animation;
 
 namespace SexyBiscuit.Engine;
 
@@ -144,6 +146,11 @@ public class SBEngine : Game
         int steps = 0;
         while (_fixedAccumulator >= step && steps < Config.MaxFixedStepsPerFrame)
         {
+            // Physics steps before FixedUpdate so components see the results of the
+            // step they are reacting to, not the previous one.
+            if (Config.EnablePhysics2D) PhysicsSystem2D.Instance.FixedStep(step);
+            if (Config.EnablePhysics3D) PhysicsSystem3D.Instance.FixedStep(step);
+
             SceneManager.FixedUpdate(step);
             _fixedAccumulator -= step;
             steps++;
@@ -153,6 +160,7 @@ public class SBEngine : Game
 
         SceneManager.Update(dt);
 
+        Tween.UpdateAll(dt);
         Timers.Tick(dt, unscaledDt);
         Coroutines.Tick(dt, unscaledDt);
 
@@ -220,6 +228,18 @@ public class EngineConfig
     /// to skip the culling and light-gathering work entirely.
     /// </summary>
     public bool Enable3D { get; set; } = true;
+
+    /// <summary>
+    /// Steps the Aether 2D simulation on each fixed update. Turn off in a 3D-only game so
+    /// the 2D world is never created or stepped.
+    /// </summary>
+    public bool EnablePhysics2D { get; set; } = true;
+
+    /// <summary>
+    /// Steps the Bepu 3D simulation on each fixed update. Turn off in a 2D-only game so
+    /// the 3D simulation is never created or stepped.
+    /// </summary>
+    public bool EnablePhysics3D { get; set; } = true;
 
     /// <summary>
     /// Maximum fixed-update steps executed in a single frame. Caps the catch-up work after a
