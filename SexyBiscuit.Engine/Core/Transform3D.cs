@@ -52,7 +52,10 @@ public sealed class Transform3D : Component
         get { Recalculate(); return _worldPosition; }
         set
         {
-            _localPosition = _parent == null ? value : InverseTransformPoint(value);
+            // The world point must be expressed in the PARENT's space to become a local
+            // offset. Inverting through this transform would be circular — it would use
+            // the very position being assigned.
+            _localPosition = _parent == null ? value : _parent.InverseTransformPoint(value);
             _dirty = true;
         }
     }

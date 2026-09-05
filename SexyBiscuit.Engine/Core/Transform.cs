@@ -46,10 +46,10 @@ public sealed class Transform : Component
         get { Recalculate(); return _worldPosition; }
         set
         {
-            if (_parent == null)
-                _localPosition = value;
-            else
-                _localPosition = InverseTransformPoint(value);
+            // The world point must be expressed in the PARENT's space to become a local
+            // offset. Inverting through this transform would be circular — it would use
+            // the very position being assigned.
+            _localPosition = _parent == null ? value : _parent.InverseTransformPoint(value);
             _dirty = true;
         }
     }
