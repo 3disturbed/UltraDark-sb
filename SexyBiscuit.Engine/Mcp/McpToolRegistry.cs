@@ -69,8 +69,8 @@ public sealed class McpToolRegistry
     /// <summary>Raised after registrations change (coalesced while suspended). Any thread.</summary>
     public event Action? ToolsChanged;
 
-    /// <summary>Runs on the main thread before a mutating tool: the undo snapshot.</summary>
-    public Action<McpToolDescriptor, McpCallContext>? BeforeMutation { get; set; }
+    /// <summary>Runs on the main thread before a mutating tool, with its arguments: the undo snapshot.</summary>
+    public Action<McpToolDescriptor, JsonElement?, McpCallContext>? BeforeMutation { get; set; }
 
     /// <summary>Runs on the main thread after every tool: flush pending actors, mark dirty.</summary>
     public Action<McpToolDescriptor, McpCallContext, McpToolResult>? AfterInvoke { get; set; }
@@ -281,7 +281,7 @@ public sealed class McpToolRegistry
         // so no other tool can interleave and the change is drawn immediately.
         var outcome = await Dispatcher.InvokeAsync(() =>
         {
-            if (descriptor.Mutating) BeforeMutation?.Invoke(descriptor, context);
+            if (descriptor.Mutating) BeforeMutation?.Invoke(descriptor, arguments, context);
 
             object? returned = descriptor.Method.Invoke(descriptor.Target, args);
             if (returned is Task pending) return (object?)pending;

@@ -435,7 +435,13 @@ public sealed class ViewportPanel
     /// <summary>Moves the editor camera to look at the selected actor from a short distance.</summary>
     private static void FrameSelection(Transform3D cameraTransform)
     {
-        var target = EditorState.SelectedActor?.GetComponent<Transform3D>();
+        if (EditorState.SelectedActor is { } selected) FrameActor(cameraTransform, selected);
+    }
+
+    /// <summary>Moves the editor camera to look at an actor from a short distance. Shared with the focus_actor tool.</summary>
+    public static void FrameActor(Transform3D cameraTransform, Actor actor)
+    {
+        var target = actor.GetComponent<Transform3D>();
         if (target == null) return;
 
         // Back off along the camera's current direction so framing does not also reorient.

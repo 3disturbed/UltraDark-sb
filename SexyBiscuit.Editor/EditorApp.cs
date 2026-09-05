@@ -2,6 +2,7 @@ using ImGuiNET;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using SexyBiscuit.Editor.Assistant;
 using SexyBiscuit.Editor.Panels;
 using SexyBiscuit.Engine;
 using SexyBiscuit.Engine.AI;
@@ -59,6 +60,15 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private GitPanel           _git           = null!;
     private ProjectManagerPanel _projectManager = null!;
     private PlaceActorsPanel   _placeActors   = null!;
+
+    // The MCP server Claude drives the editor through. Started with the editor, before any
+    // project opens, so an external Claude Code connects inside its start-up budget.
+    private McpHost? _mcp;
+
+    // Frames still to simulate while paused (step_frame).
+    private int _pendingSteps;
+
+    private string? _lastTitle;
 
     // The editor's own 3D camera. Lives outside the scene so it is not saved with it
     // and is not destroyed when the scene is replaced.
@@ -153,6 +163,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         System.Diagnostics.Trace.Listeners.Add(new EditorTraceListener());
         ConsoleLog.Add("SexyBiscuit Editor initialized.", LogLevel.Info);
 
+        _mcp = new McpHost(AssistantSettings.Load());
+        _mcp.Start();
+        EditorState.OnProjectOpened += root => _mcp?.OnProjectOpened(root);
+
 
     }
 
@@ -166,6 +180,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     // -------------------------------------------------------------------------
     protected override void Update(GameTime gameTime)
     {
+        // Tool calls queued by the MCP server run here, first, so anything they spawn is
+        // flushed into the layers below and drawn this same frame.
+        _mcp?.Drain();
+
         var keys = Keyboard.GetState();
 
         // Play / Pause / Stop hotkeys
@@ -173,7 +191,19 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         if (KeyJustPressed(keys, Keys.F6))  TogglePause();
         if (KeyJustPressed(keys, Keys.F7))  ExitPlayMode();
 
+        // Undo / Redo for scene edits. Not while a text field has focus — MonoGame's keyboard
+        // state is global, and Ctrl+Z in the rename box must stay a text-edit undo.
+        bool control = keys.IsKeyDown(Keys.LeftControl) || keys.IsKeyDown(Keys.RightControl)
+                    || keys.IsKeyDown(Keys.LeftWindows) || keys.IsKeyDown(Keys.RightWindows);
+        if (control && !ImGui.GetIO().WantTextInput)
+        {
+            bool shift = keys.IsKeyDown(Keys.LeftShift) || keys.IsKeyDown(Keys.RightShift);
+            if (KeyJustPressed(keys, Keys.Z)) { if (shift) RedoSceneEdit(); else UndoSceneEdit(); }
+            if (KeyJustPressed(keys, Keys.Y)) RedoSceneEdit();
+        }
+
         _prevKeys = keys;
+        UpdateWindowTitle();
 
         // Apply queued spawns and destroys every frame, playing or not. Layer.AddActor
         // only queues, and the queue is normally drained by Scene.Update — which the
@@ -191,6 +221,12 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             // Input goes to the game only while playing, so editor shortcuts and the
             // game's own bindings never fight over the same keys.
             _engine?.Tick(dt, pumpInput: true);
+        }
+        else if (EditorState.IsPlaying && EditorState.IsPlayPaused && _pendingSteps > 0 && _engineInitialized)
+        {
+            // Single-stepping: one fixed frame per editor frame, so each step is visible.
+            _pendingSteps--;
+            _engine?.Tick(1f / 60f, pumpInput: false);
         }
 
         base.Update(gameTime);
@@ -230,6 +266,9 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             GraphicsDevice.SetRenderTarget(null);
         }
 
+        // Screenshots asked for by tools, taken from the same target the viewport shows.
+        _mcp?.Capture.ServiceScene(GraphicsDevice, _viewportTarget, _spriteBatch, _engine, _engine?.SceneManager.ActiveScene);
+
         // Main backbuffer — ImGui
         GraphicsDevice.Clear(new Color(30, 30, 30));
 
@@ -240,6 +279,9 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         DrawPanels();
 
         _imGui.Render();
+
+        // Whole-window captures need the panels drawn first.
+        _mcp?.Capture.ServiceBackBuffer(GraphicsDevice);
 
         base.Draw(gameTime);
     }
@@ -257,6 +299,9 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             {
                 _engine?.SceneManager.AdoptScene(SceneTemplates.CreateDefault3D("Untitled"));
                 EditorState.SelectActor(null);
+                EditorState.CurrentScenePath = null;
+                EditorState.SceneDirty       = false;
+                _mcp?.Undo.Clear();
                 ConsoleLog.Add("New scene created.", LogLevel.Info);
             }
             if (ImGui.MenuItem("Open Scene..."))
@@ -267,6 +312,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             {
                 SaveCurrentScene();
             }
+            if (ImGui.MenuItem("Save Scene As..."))
+            {
+                SaveCurrentSceneAs();
+            }
             ImGui.Separator();
             if (ImGui.MenuItem("Exit"))
                 Exit();
@@ -276,8 +325,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         if (ImGui.BeginMenu("Edit"))
         {
-            if (ImGui.MenuItem("Undo", "Ctrl+Z")) { /* future */ }
-            if (ImGui.MenuItem("Redo", "Ctrl+Y")) { /* future */ }
+            string undoLabel = _mcp?.Undo.UndoLabels.LastOrDefault() is { } u ? $"Undo {u}" : "Undo";
+            string redoLabel = _mcp?.Undo.RedoLabels.LastOrDefault() is { } r ? $"Redo {r}" : "Redo";
+            if (ImGui.MenuItem(undoLabel, "Ctrl+Z", false, _mcp?.Undo.UndoCount > 0)) UndoSceneEdit();
+            if (ImGui.MenuItem(redoLabel, "Ctrl+Y", false, _mcp?.Undo.RedoCount > 0)) RedoSceneEdit();
             ImGui.EndMenu();
         }
 
@@ -585,6 +636,12 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     /// <summary>The editor camera's transform, for viewport navigation.</summary>
     public Transform3D? EditorCameraTransform => _editorCameraTransform;
 
+    /// <summary>The editor's own camera component.</summary>
+    public Camera3D? EditorCamera3D => _editorCamera3D;
+
+    /// <summary>The MCP server, when it started.</summary>
+    public McpHost? Mcp => _mcp;
+
     private void CreateEditorCamera()
     {
         _editorCamera          = new Actor("(Editor Camera)");
@@ -880,7 +937,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     // -------------------------------------------------------------------------
     // Play mode
     // -------------------------------------------------------------------------
-    private void EnterPlayMode()
+    public void EnterPlayMode()
     {
         if (EditorState.IsPlaying) return;
 
@@ -909,16 +966,31 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         ConsoleLog.Add("Play mode started (F7 to stop).", LogLevel.Info);
     }
 
-    private void TogglePause()
+    public void TogglePause()
     {
         if (!EditorState.IsPlaying) return;
-        EditorState.IsPlayPaused = !EditorState.IsPlayPaused;
-        ConsoleLog.Add(EditorState.IsPlayPaused ? "Paused." : "Resumed.", LogLevel.Info);
+        SetPaused(!EditorState.IsPlayPaused);
     }
 
-    private void ExitPlayMode()
+    public void SetPaused(bool paused)
+    {
+        if (!EditorState.IsPlaying || EditorState.IsPlayPaused == paused) return;
+        EditorState.IsPlayPaused = paused;
+        _pendingSteps = 0;
+        ConsoleLog.Add(paused ? "Paused." : "Resumed.", LogLevel.Info);
+    }
+
+    /// <summary>Queues fixed-step frames to simulate while paused, one per editor frame.</summary>
+    public void StepFrames(int frames)
+    {
+        if (!EditorState.IsPlaying || !EditorState.IsPlayPaused) return;
+        _pendingSteps = Math.Max(0, frames);
+    }
+
+    public void ExitPlayMode()
     {
         if (!EditorState.IsPlaying) return;
+        _pendingSteps = 0;
 
         EditorState.IsPlaying    = false;
         EditorState.IsPlayPaused = false;
@@ -967,7 +1039,11 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             {
                 var loaded = SceneSerializer.LoadFromFile(path);
                 _engine?.SceneManager.AdoptScene(loaded);
+                loaded.FlushPendingActors();
                 EditorState.SelectActor(null);
+                EditorState.CurrentScenePath = RelativeToProject(path);
+                EditorState.SceneDirty       = false;
+                _mcp?.Undo.Clear();
                 ConsoleLog.Add($"Opened: {path}", LogLevel.Info);
             }
             catch (Exception ex)
@@ -977,6 +1053,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         });
     }
 
+    /// <summary>Saves to the scene's known path, or asks for one the first time.</summary>
     private void SaveCurrentScene()
     {
         var scene = _engine?.SceneManager.ActiveScene;
@@ -986,19 +1063,87 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             return;
         }
 
-        FileDialog.SaveFile("Save Scene", EditorState.ProjectPath, new[] { ".scene", ".json" },
-            scene.Name + ".scene", path =>
+        if (string.IsNullOrEmpty(EditorState.CurrentScenePath))
         {
-            try
-            {
-                SceneSerializer.SaveToFile(scene, path);
-                ConsoleLog.Add($"Scene saved: {path}", LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                ConsoleLog.Add($"Failed to save scene: {ex.Message}", LogLevel.Error);
-            }
-        });
+            SaveCurrentSceneAs();
+            return;
+        }
+
+        string full = Path.IsPathRooted(EditorState.CurrentScenePath)
+            ? EditorState.CurrentScenePath
+            : Path.Combine(EditorState.ProjectPath, EditorState.CurrentScenePath);
+        SaveSceneTo(scene, full);
+    }
+
+    private void SaveCurrentSceneAs()
+    {
+        var scene = _engine?.SceneManager.ActiveScene;
+        if (scene == null)
+        {
+            ConsoleLog.Add("No active scene to save.", LogLevel.Warning);
+            return;
+        }
+
+        string startDir = Directory.Exists(Path.Combine(EditorState.ProjectPath, "Scenes"))
+            ? Path.Combine(EditorState.ProjectPath, "Scenes")
+            : EditorState.ProjectPath;
+
+        FileDialog.SaveFile("Save Scene", startDir, new[] { ".scene", ".json" },
+            scene.Name + ".scene", path => SaveSceneTo(scene, path));
+    }
+
+    private void SaveSceneTo(Scene scene, string path)
+    {
+        try
+        {
+            scene.FlushPendingActors();
+            SceneSerializer.SaveToFile(scene, path);
+            EditorState.CurrentScenePath = RelativeToProject(path);
+            EditorState.SceneDirty       = false;
+            ConsoleLog.Add($"Scene saved: {path}", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Add($"Failed to save scene: {ex.Message}", LogLevel.Error);
+        }
+    }
+
+    private static string RelativeToProject(string path)
+    {
+        string full = Path.GetFullPath(path);
+        string root = Path.GetFullPath(EditorState.ProjectPath);
+        string relative = Path.GetRelativePath(root, full);
+        return relative.StartsWith("..", StringComparison.Ordinal) ? full : relative.Replace('\\', '/');
+    }
+
+    private void UndoSceneEdit()
+    {
+        if (_mcp == null || EditorState.IsPlaying) return;
+        if (_mcp.Undo.Undo(out var label)) ConsoleLog.Add($"Undid {label}.", LogLevel.Info);
+    }
+
+    private void RedoSceneEdit()
+    {
+        if (_mcp == null || EditorState.IsPlaying) return;
+        if (_mcp.Undo.Redo(out var label)) ConsoleLog.Add($"Redid {label}.", LogLevel.Info);
+    }
+
+    /// <summary>Scene name and an asterisk for unsaved changes, the way every editor does it.</summary>
+    private void UpdateWindowTitle()
+    {
+        string scene = _engine?.SceneManager.ActiveScene?.Name ?? "";
+        string title = $"SexyBiscuit Engine — Editor — {scene}{(EditorState.SceneDirty ? " *" : "")}";
+        if (title == _lastTitle) return;
+
+        Window.Title = title;
+        _lastTitle   = title;
+    }
+
+    protected override void OnExiting(object sender, EventArgs args)
+    {
+        _mcp?.Stop();
+        _mcp = null;
+        base.OnExiting(sender, args);
     }
 
     // -------------------------------------------------------------------------

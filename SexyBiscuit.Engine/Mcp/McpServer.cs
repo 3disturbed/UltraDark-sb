@@ -295,6 +295,27 @@ public sealed class McpServer
         return true;
     }
 
+    /// <summary>Cancels every in-flight request — the editor's Stop button. Returns how many were running.</summary>
+    public int CancelAll()
+    {
+        List<CancellationTokenSource> running;
+        lock (_lock) running = _inFlight.Values.ToList();
+
+        int cancelled = 0;
+        foreach (var cts in running)
+        {
+            try
+            {
+                cts.Cancel();
+                cancelled++;
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+        return cancelled;
+    }
+
     /// <summary>Registers a request's cancellation source for the duration of the returned scope.</summary>
     public IDisposable TrackRequest(string requestIdKey, CancellationTokenSource cts)
     {

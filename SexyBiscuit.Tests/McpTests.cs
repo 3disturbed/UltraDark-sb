@@ -637,7 +637,7 @@ public class McpRegistryTests
     {
         var registry = NewRegistry(out _);
         int snapshots = 0;
-        registry.BeforeMutation = (_, _) => snapshots++;
+        registry.BeforeMutation = (_, _, _) => snapshots++;
 
         await registry.InvokeAsync("mutate", Args(new { name = "Cube" }), McpCallContext.None);
         await registry.InvokeAsync("echo", Args(new { text = "x" }), McpCallContext.None);
