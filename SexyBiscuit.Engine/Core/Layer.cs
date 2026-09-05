@@ -84,7 +84,7 @@ public class Layer
     /// mutate the list mid-enumeration. Anything queued during the flush lands on the
     /// next frame, which matches the documented "added at the start of the next Update".
     /// </remarks>
-    internal void FlushPending()
+    public void FlushPending()
     {
         if (_pendingAdd.Count > 0)
         {

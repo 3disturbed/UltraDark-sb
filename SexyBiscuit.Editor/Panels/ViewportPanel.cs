@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework.Input;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.Rendering;
 using XnaButtonState = Microsoft.Xna.Framework.Input.ButtonState;
+using XnaMatrix = Microsoft.Xna.Framework.Matrix;
 using XnaVector3 = Microsoft.Xna.Framework.Vector3;
 
 namespace SexyBiscuit.Editor.Panels;
@@ -112,7 +113,15 @@ public sealed class ViewportPanel
             // pick a different actor or fly the camera.
             bool gizmoBusy = _gizmo3D.Draw(selected, camera, _vpMin, availSize, mouse);
 
-            if (hovered && !gizmoBusy) Handle3DInput(camera, mouse);
+            if (hovered && !gizmoBusy)
+            {
+                Handle3DInput(camera, mouse);
+
+                // Selection only on the press, and only when the gizmo did not take it —
+                // otherwise finishing a handle drag over another object reselects it.
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    Pick3D(camera, availSize, mouse);
+            }
 
             DrawViewportHud(camera);
         }
@@ -348,6 +357,73 @@ public sealed class ViewportPanel
             if (ImGui.IsKeyPressed(ImGuiKey.R)) EditorState.GizmoMode = GizmoMode.Scale;
             if (ImGui.IsKeyPressed(ImGuiKey.F)) FrameSelection(transform);
         }
+    }
+
+    /// <summary>
+    /// Selects the actor under the cursor by casting a ray through the viewport.
+    /// </summary>
+    /// <remarks>
+    /// Tests against each renderer's world bounds rather than its triangles. Bounds are
+    /// already maintained for frustum culling, they are cheap to intersect, and for
+    /// clicking on objects in an editor the difference is rarely noticeable — the nearest
+    /// hit along the ray wins, so overlapping bounds still resolve sensibly.
+    ///
+    /// The unprojection is done here rather than through Camera3D.ScreenToWorldRay
+    /// because that one uses the device viewport, and the editor's viewport is a sub-rect
+    /// of the window inside an ImGui panel.
+    /// </remarks>
+    private void Pick3D(Camera3D camera, Vector2 viewportSize, Vector2 mouse)
+    {
+        if (viewportSize.X < 1f || viewportSize.Y < 1f) return;
+
+        var scene = EditorApp.Instance.Engine?.SceneManager.ActiveScene;
+        if (scene == null) return;
+
+        var view = camera.GetViewMatrix();
+        var proj = camera.GetProjectionMatrix(viewportSize.X / viewportSize.Y);
+
+        var invViewProj = XnaMatrix.Invert(view * proj);
+
+        // Cursor to normalised device coordinates within the viewport image.
+        float ndcX = (mouse.X - _vpMin.X) / viewportSize.X * 2f - 1f;
+        float ndcY = 1f - (mouse.Y - _vpMin.Y) / viewportSize.Y * 2f;
+
+        var near = UnprojectPoint(new XnaVector3(ndcX, ndcY, 0f), invViewProj);
+        var far  = UnprojectPoint(new XnaVector3(ndcX, ndcY, 1f), invViewProj);
+
+        var direction = far - near;
+        if (direction.LengthSquared() < 1e-6f) return;
+
+        var ray = new Microsoft.Xna.Framework.Ray(near, XnaVector3.Normalize(direction));
+
+        Actor? best = null;
+        float bestDistance = float.MaxValue;
+
+        foreach (var renderer in MeshRenderer.All)
+        {
+            if (!renderer.Enabled || !renderer.Actor.IsActive) continue;
+
+            float? hit = ray.Intersects(renderer.WorldBounds.ToBoundingBox());
+            if (hit is not { } distance || distance >= bestDistance) continue;
+
+            bestDistance = distance;
+            best = renderer.Actor;
+        }
+
+        // Clicking empty space clears the selection, the same as every other editor.
+        EditorState.SelectActor(best);
+    }
+
+    /// <summary>Undoes the perspective divide for one NDC point.</summary>
+    private static XnaVector3 UnprojectPoint(XnaVector3 ndc, XnaMatrix invViewProj)
+    {
+        var transformed = XnaVector3.Transform(ndc, invViewProj);
+
+        // Vector3.Transform drops W, so recompute it and divide through by hand.
+        float w = ndc.X * invViewProj.M14 + ndc.Y * invViewProj.M24
+                + ndc.Z * invViewProj.M34 + invViewProj.M44;
+
+        return MathF.Abs(w) < 1e-6f ? transformed : transformed / w;
     }
 
     /// <summary>Moves the editor camera to look at the selected actor from a short distance.</summary>

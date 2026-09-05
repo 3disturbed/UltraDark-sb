@@ -92,6 +92,28 @@ public class Scene
 
     public void MarkForDestroy(Actor actor) => _markedForDestroy.Add(actor);
 
+    /// <summary>
+    /// Applies queued actor adds and removals immediately, without ticking anything.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Layer.AddActor"/> queues rather than inserting, so that spawning during
+    /// a frame cannot mutate the list being iterated. The queue is normally drained at the
+    /// start of <see cref="Update"/> — which is fine for a running game and wrong for a
+    /// tool that builds a scene and then inspects it without simulating.
+    ///
+    /// An editor is the obvious case: it renders through the component registries, which
+    /// are populated on Awake, but walks <see cref="Layer.Actors"/> for its outliner and
+    /// its picking. Without this the scene draws correctly while appearing completely
+    /// empty to everything else.
+    /// </remarks>
+    public void FlushPendingActors()
+    {
+        foreach (var layer in _layers)
+            layer.FlushPending();
+
+        FlushDestroyQueue();
+    }
+
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------

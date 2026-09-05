@@ -175,6 +175,13 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         _prevKeys = keys;
 
+        // Apply queued spawns and destroys every frame, playing or not. Layer.AddActor
+        // only queues, and the queue is normally drained by Scene.Update — which the
+        // editor does not call outside play mode. Without this the outliner and picking
+        // see an empty scene while the renderer, which works off the component
+        // registries, draws it perfectly.
+        if (_engineInitialized) _engine?.SceneManager.ActiveScene?.FlushPendingActors();
+
         // Pump the engine only in play mode. Outside it the scene is static and the
         // editor still draws it, which is what lets you build a level without it running.
         if (EditorState.IsPlaying && !EditorState.IsPlayPaused && _engineInitialized)

@@ -148,6 +148,55 @@ public class SceneTemplateTests
     }
 
     [Fact]
+    public void ASceneIsInspectableWithoutBeingTicked()
+    {
+        // A tool that builds a scene and then reads it — an editor outliner, a level
+        // validator, an asset cooker — never calls Update. Layer.AddActor only queues, so
+        // without an explicit flush every actor is invisible to everything except the
+        // component registries, and the scene renders correctly while appearing empty.
+        var scene = SceneTemplates.CreateDefault3D();
+
+        Assert.Empty(scene.Layers.SelectMany(l => l.Actors));
+
+        scene.FlushPendingActors();
+
+        try
+        {
+            var actors = scene.Layers.SelectMany(l => l.Actors).ToList();
+            Assert.Contains(actors, a => a.Name == "Floor");
+            Assert.Contains(actors, a => a.Name == "Cube");
+            Assert.Contains(actors, a => a.Name == "Sky");
+        }
+        finally
+        {
+            scene.Destroy();
+        }
+    }
+
+    [Fact]
+    public void FlushingIsIdempotentAndPicksUpLaterSpawns()
+    {
+        var scene = new Engine.Core.Scene("Flush");
+        scene.AddActor(new Actor("First"));
+        scene.FlushPendingActors();
+        scene.FlushPendingActors();   // must not duplicate
+
+        Assert.Single(scene.Layers.SelectMany(l => l.Actors));
+
+        scene.AddActor(new Actor("Second"));
+        scene.FlushPendingActors();
+
+        Assert.Equal(2, scene.Layers.SelectMany(l => l.Actors).Count());
+
+        // A queued destroy is applied by the same flush.
+        scene.FindByName("First")!.Destroy();
+        scene.FlushPendingActors();
+
+        Assert.DoesNotContain(scene.Layers.SelectMany(l => l.Actors), a => a.Name == "First");
+        scene.Destroy();
+    }
+
+    [Fact]
     public void EnumsSerialiseAsNamesSoAFileStaysReadable()
     {
         var scene = new Engine.Core.Scene("Enums");
