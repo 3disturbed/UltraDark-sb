@@ -47,6 +47,39 @@ public class AudioSource : Component
     /// <summary>The audio clip to play.  Can be swapped at any time.</summary>
     public SoundEffect? Clip { get; set; }
 
+    /// <summary>
+    /// Asset path of the clip, relative to the project root — the serialisable twin of
+    /// <see cref="Clip"/>. Loaded through the running host's asset manager when one exists,
+    /// otherwise kept until <see cref="Awake"/>.
+    /// </summary>
+    public string? ClipPath
+    {
+        get => _clipPath;
+        set
+        {
+            _clipPath = value;
+            TryResolveClip();
+        }
+    }
+    private string? _clipPath;
+
+    private void TryResolveClip()
+    {
+        if (string.IsNullOrWhiteSpace(_clipPath)) return;
+
+        var assets = Assets.AssetManager.Current;
+        if (assets == null) return;
+
+        try
+        {
+            Clip = assets.Load<SoundEffect>(_clipPath);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[AudioSource] Could not load '{_clipPath}': {ex.Message}");
+        }
+    }
+
     private float _volume = 1f;
     /// <summary>Base volume [0, 1] before bus and spatial attenuation.</summary>
     public float Volume
@@ -130,6 +163,8 @@ public class AudioSource : Component
 
     public override void Awake()
     {
+        if (Clip == null) TryResolveClip();
+
         if (PlayOnAwake)
             Play();
     }

@@ -54,6 +54,40 @@ public sealed class Material3D
     public string? ShaderPath { get; set; }
 
     /// <summary>
+    /// Loads the named textures through the running host's asset manager, doing nothing when
+    /// no host is running (headless tools keep the paths and resolve them later).
+    /// </summary>
+    public void ResolveTextures()
+    {
+        var assets = Assets.AssetManager.Current;
+        if (assets != null) ResolveTextures(assets);
+    }
+
+    /// <summary>
+    /// A copy with the same scalars, paths and texture references. Used before writing to a
+    /// material that might be the shared <see cref="Default"/>.
+    /// </summary>
+    public Material3D Clone() => new()
+    {
+        AlbedoMap         = AlbedoMap,
+        NormalMap         = NormalMap,
+        MetallicMap       = MetallicMap,
+        RoughnessMap      = RoughnessMap,
+        EmissiveMap       = EmissiveMap,
+        AlbedoColor       = AlbedoColor,
+        Metallic          = Metallic,
+        Roughness         = Roughness,
+        EmissiveIntensity = EmissiveIntensity,
+        AlbedoMapPath     = AlbedoMapPath,
+        NormalMapPath     = NormalMapPath,
+        MetallicMapPath   = MetallicMapPath,
+        RoughnessMapPath  = RoughnessMapPath,
+        EmissiveMapPath   = EmissiveMapPath,
+        ShaderPath        = ShaderPath,
+        Shader            = Shader,
+    };
+
+    /// <summary>
     /// Loads every texture named by the path properties through an asset manager.
     /// </summary>
     /// <remarks>

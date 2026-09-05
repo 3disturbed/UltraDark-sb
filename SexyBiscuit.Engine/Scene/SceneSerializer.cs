@@ -30,7 +30,9 @@ public static class SceneSerializer
     // -------------------------------------------------------------------------
     // JSON options (shared, thread-safe)
     // -------------------------------------------------------------------------
-    private static readonly JsonSerializerOptions _options = BuildOptions();
+    // Not readonly: ClearTypeCache replaces it, because JsonSerializerOptions caches type
+    // metadata per Type and would pin a hot-reloaded assembly's previous generation.
+    private static JsonSerializerOptions _options = BuildOptions();
 
     private static JsonSerializerOptions BuildOptions()
     {
@@ -57,9 +59,9 @@ public static class SceneSerializer
     // -------------------------------------------------------------------------
 
     /// <summary>Serialises a <see cref="Core.Scene"/> to a JSON string.</summary>
-    public static string Serialize(Core.Scene scene)
+    public static string Serialize(Core.Scene scene, SceneSerializerOptions? options = null)
     {
-        var dto = BuildSceneDto(scene);
+        var dto = BuildSceneDto(scene, options ?? SceneSerializerOptions.Default);
         return JsonSerializer.Serialize(dto, _options);
     }
 
@@ -72,11 +74,27 @@ public static class SceneSerializer
     }
 
     /// <summary>Serialises a scene and writes it to <paramref name="path"/>.</summary>
-    public static void SaveToFile(Core.Scene scene, string path)
+    public static void SaveToFile(Core.Scene scene, string path, SceneSerializerOptions? options = null)
     {
         string dir = Path.GetDirectoryName(path)!;
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(path, Serialize(scene));
+        File.WriteAllText(path, Serialize(scene, options));
+    }
+
+    /// <summary>
+    /// Forgets every resolved type name and rebuilds the JSON options. Call it after unloading
+    /// or reloading game code: both caches hold <see cref="Type"/> objects from the previous
+    /// assembly generation, which would otherwise be handed out for the new one's names.
+    /// </summary>
+    public static void ClearTypeCache()
+    {
+        lock (_typeCache)
+        {
+            _typeCache.Clear();
+            _ambiguityCache.Clear();
+        }
+
+        _options = BuildOptions();
     }
 
     /// <summary>Reads <paramref name="path"/> and deserialises a scene from it.</summary>
@@ -87,14 +105,14 @@ public static class SceneSerializer
     // Serialisation helpers
     // -------------------------------------------------------------------------
 
-    private static SceneDto BuildSceneDto(Core.Scene scene)
+    private static SceneDto BuildSceneDto(Core.Scene scene, SceneSerializerOptions options)
     {
         var layerDtos = new List<LayerDto>();
         foreach (var layer in scene.Layers)
         {
             var actorDtos = new List<ActorDto>();
             foreach (var actor in layer.Actors)
-                actorDtos.Add(BuildActorDto(actor));
+                actorDtos.Add(BuildActorDto(actor, options));
 
             layerDtos.Add(new LayerDto
             {
@@ -107,40 +125,54 @@ public static class SceneSerializer
         return new SceneDto { Name = scene.Name, Layers = layerDtos };
     }
 
-    internal static ActorDto BuildActorDto(Actor actor)
+    internal static ActorDto BuildActorDto(Actor actor) => BuildActorDto(actor, SceneSerializerOptions.Default);
+
+    internal static ActorDto BuildActorDto(Actor actor, SceneSerializerOptions options)
     {
         var componentDtos = new List<ComponentDto>();
 
         foreach (var component in actor.GetAllComponents())
         {
-            // Transforms are stored as flat fields on the actor, not as components.
-            if (component is Transform or Transform3D) continue;
+            // Transforms are stored as flat fields on the actor, not as components; the
+            // missing-class marker is written back as the actor's class below.
+            if (component is Transform or Transform3D or MissingActorClass) continue;
+
+            // A placeholder goes back out exactly as it came in.
+            if (component is MissingComponent missing)
+            {
+                componentDtos.Add(new ComponentDto { Type = missing.TypeName, Properties = missing.Properties });
+                continue;
+            }
 
             var type = component.GetType();
-            var props = new Dictionary<string, JsonElement>();
-
-            foreach (var prop in GetSerializableProperties(type))
-            {
-                try
-                {
-                    object? value = prop.GetValue(component);
-                    if (value is null) continue;
-                    var element = SerializeValue(value, _options);
-                    props[prop.Name] = element;
-                }
-                catch { /* Skip unreadable properties */ }
-            }
 
             componentDtos.Add(new ComponentDto
             {
-                Type       = type.AssemblyQualifiedName ?? type.FullName ?? type.Name,
-                Properties = props,
+                Type       = TypeNameFor(type, options.TypeNames, typeof(Component)),
+                Properties = CollectProperties(component, type, declaredBelow: null),
             });
+        }
+
+        var actorType = actor.GetType();
+        string? className = null;
+        Dictionary<string, JsonElement>? actorProperties = null;
+
+        if (actor.GetComponent<MissingActorClass>() is { } missingClass)
+        {
+            className = missingClass.ClassName;
+        }
+        else if (actorType != typeof(Actor))
+        {
+            className       = TypeNameFor(actorType, options.TypeNames, typeof(Actor));
+            actorProperties = CollectProperties(actor, actorType, declaredBelow: typeof(Actor));
+            if (actorProperties.Count == 0) actorProperties = null;
         }
 
         var transform = actor.Transform;
         var dto = new ActorDto
         {
+            Class      = className,
+            Properties = actorProperties,
             Name       = actor.Name,
             Tag        = actor.Tag,
             Layer      = actor.Layer,
@@ -161,6 +193,73 @@ public static class SceneSerializer
         }
 
         return dto;
+    }
+
+    /// <summary>
+    /// Reads every serialisable property of an object into a JSON bag. With
+    /// <paramref name="declaredBelow"/> set, only properties declared on types deriving from
+    /// it are taken — an actor subclass's own state, not <c>Name</c> and <c>Tag</c>, which
+    /// the actor block already carries.
+    /// </summary>
+    private static Dictionary<string, JsonElement> CollectProperties(object target, Type type, Type? declaredBelow)
+    {
+        var props = new Dictionary<string, JsonElement>();
+
+        foreach (var prop in GetSerializableProperties(type))
+        {
+            if (declaredBelow != null && (prop.DeclaringType == null || !declaredBelow.IsAssignableFrom(prop.DeclaringType) || prop.DeclaringType == declaredBelow))
+                continue;
+
+            try
+            {
+                object? value = prop.GetValue(target);
+                if (value is null) continue;
+                props[prop.Name] = SerializeValue(value, _options);
+            }
+            catch { /* Skip unreadable properties */ }
+        }
+
+        return props;
+    }
+
+    private static readonly Dictionary<string, bool> _ambiguityCache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The name a scene file records for a type. Short names keep files readable and
+    /// hand-editable, and stay valid across rebuilds; a short name shared by two loaded
+    /// classes in the same family falls back to the namespace-qualified form.
+    /// </summary>
+    internal static string TypeNameFor(Type type, TypeNameStyle style, Type family)
+    {
+        switch (style)
+        {
+            case TypeNameStyle.AssemblyQualified:
+                return type.AssemblyQualifiedName ?? type.FullName ?? type.Name;
+            case TypeNameStyle.Full:
+                return type.FullName ?? type.Name;
+        }
+
+        return IsShortNameAmbiguous(type, family) ? type.FullName ?? type.Name : type.Name;
+    }
+
+    private static bool IsShortNameAmbiguous(Type type, Type family)
+    {
+        string key = family.Name + ":" + type.Name;
+        lock (_typeCache)
+        {
+            if (_ambiguityCache.TryGetValue(key, out bool cached)) return cached;
+        }
+
+        int matches = 0;
+        foreach (var candidate in ReflectionUtil.AllLoadedTypes())
+        {
+            if (candidate.Name != type.Name || candidate.IsAbstract || !family.IsAssignableFrom(candidate)) continue;
+            if (++matches > 1) break;
+        }
+
+        bool ambiguous = matches > 1;
+        lock (_typeCache) _ambiguityCache[key] = ambiguous;
+        return ambiguous;
     }
 
     // -------------------------------------------------------------------------
@@ -187,13 +286,15 @@ public static class SceneSerializer
 
     internal static Actor BuildActor(ActorDto dto)
     {
-        var actor = new Actor
-        {
-            Name     = dto.Name     ?? "Actor",
-            Tag      = dto.Tag      ?? "Untagged",
-            Layer    = dto.Layer,
-            IsActive = dto.Active,
-        };
+        var actor = ConstructActor(dto);
+
+        actor.Name     = dto.Name ?? "Actor";
+        actor.Tag      = dto.Tag  ?? "Untagged";
+        actor.Layer    = dto.Layer;
+        actor.IsActive = dto.Active;
+
+        if (dto.Properties is { Count: > 0 } && actor.GetComponent<MissingActorClass>() == null)
+            ApplyProperties(actor, actor.GetType(), dto.Properties, dto.Class ?? "Actor");
 
         // Apply transform
         var pos = dto.Position;
@@ -240,7 +341,12 @@ public static class SceneSerializer
                 t3d.LocalScale = new Vector3(dto.Scale3[0], dto.Scale3[1], dto.Scale3[2]);
         }
 
-        // Attach components
+        // Attach components. A component the actor already has — added by a subclass
+        // constructor, or the Transform3D the transform block created — is filled in rather
+        // than duplicated; each existing instance is claimed once, so two genuine components
+        // of one type still load as two.
+        var claimed = new HashSet<Component>(ReferenceEqualityComparer.Instance);
+
         foreach (var compDto in dto.Components ?? Enumerable.Empty<ComponentDto>())
         {
             if (string.IsNullOrWhiteSpace(compDto.Type)) continue;
@@ -249,80 +355,123 @@ public static class SceneSerializer
 
             if (type is null)
             {
-                Console.Error.WriteLine($"[SceneSerializer] Could not resolve component type '{compDto.Type}'. Skipping.");
+                // Keep the data. A placeholder writes the type and its properties back out
+                // untouched, so a scene survives a failed build or a renamed class.
+                Console.Error.WriteLine(
+                    $"[SceneSerializer] Could not resolve component type '{compDto.Type}'. Kept as a MissingComponent.");
+                var placeholder = actor.AddComponent<MissingComponent>();
+                placeholder.TypeName   = compDto.Type;
+                placeholder.Properties = compDto.Properties;
+                claimed.Add(placeholder);
                 continue;
             }
 
-            if (!typeof(Component).IsAssignableFrom(type))
+            Component? component = null;
+            foreach (var existing in actor.GetAllComponents())
             {
-                Console.Error.WriteLine($"[SceneSerializer] Type '{compDto.Type}' is not a Component. Skipping.");
-                continue;
+                if (existing.GetType() != type || claimed.Contains(existing)) continue;
+                component = existing;
+                break;
             }
 
-            Component component;
-            try
+            if (component == null)
             {
-                component = actor.AddComponentByType(type);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"[SceneSerializer] Failed to create component '{compDto.Type}': {ex.Message}");
-                continue;
-            }
-
-            // Apply serialised properties
-            if (compDto.Properties is { Count: > 0 })
-            {
-                foreach (var (propName, element) in compDto.Properties)
+                try
                 {
-                    var prop = type.GetProperty(propName,
-                        BindingFlags.Public | BindingFlags.Instance);
-
-                    // Say something. A misspelled or renamed property used to be skipped
-                    // in silence, so the component came up with default values and the
-                    // scene just quietly behaved wrong — the worst possible failure for a
-                    // file people edit by hand.
-                    if (prop is null)
-                    {
-                        Console.Error.WriteLine(
-                            $"[SceneSerializer] '{type.Name}' has no property '{propName}'. Ignored.");
-                        continue;
-                    }
-
-                    if (!prop.CanWrite && !IsFillableCollection(prop.PropertyType))
-                    {
-                        Console.Error.WriteLine(
-                            $"[SceneSerializer] '{type.Name}.{propName}' is read-only. Ignored.");
-                        continue;
-                    }
-
-                    try
-                    {
-                        object? value = DeserializeValue(element, prop.PropertyType, _options);
-                        if (value is null) continue;
-
-                        if (prop.CanWrite)
-                        {
-                            prop.SetValue(component, value);
-                        }
-                        else if (prop.GetValue(component) is System.Collections.IList target
-                              && value is System.Collections.IEnumerable source)
-                        {
-                            // Get-only list: replace its contents rather than the list.
-                            target.Clear();
-                            foreach (var item in source) target.Add(item);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine(
-                            $"[SceneSerializer] Could not set '{propName}' on '{compDto.Type}': {ex.Message}");
-                    }
+                    component = actor.AddComponentByType(type);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[SceneSerializer] Failed to create component '{compDto.Type}': {ex.Message}");
+                    continue;
                 }
             }
+
+            claimed.Add(component);
+
+            if (compDto.Properties is { Count: > 0 })
+                ApplyProperties(component, type, compDto.Properties, compDto.Type);
         }
 
         return actor;
+    }
+
+    /// <summary>
+    /// Creates the actor a DTO describes: the named subclass when it resolves, otherwise a
+    /// plain <see cref="Actor"/> carrying a <see cref="MissingActorClass"/> marker so the
+    /// name is written back on save.
+    /// </summary>
+    private static Actor ConstructActor(ActorDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Class)) return new Actor();
+
+        Type? type = ResolveActorType(dto.Class);
+        if (type != null)
+        {
+            try
+            {
+                return (Actor)Activator.CreateInstance(type)!;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"[SceneSerializer] Could not construct actor class '{dto.Class}': {ex.GetBaseException().Message}. Loading as a plain Actor.");
+            }
+        }
+        else
+        {
+            Console.Error.WriteLine(
+                $"[SceneSerializer] Could not resolve actor class '{dto.Class}'. Loading as a plain Actor; the class name is kept.");
+        }
+
+        var fallback = new Actor();
+        fallback.AddComponent<MissingActorClass>().ClassName = dto.Class;
+        return fallback;
+    }
+
+    private static void ApplyProperties(object target, Type type, Dictionary<string, JsonElement> properties, string ownerName)
+    {
+        foreach (var (propName, element) in properties)
+        {
+            var prop = type.GetProperty(propName, BindingFlags.Public | BindingFlags.Instance);
+
+            // Say something. A misspelled or renamed property used to be skipped in silence,
+            // so the component came up with default values and the scene just quietly
+            // behaved wrong — the worst possible failure for a file people edit by hand.
+            if (prop is null)
+            {
+                Console.Error.WriteLine($"[SceneSerializer] '{type.Name}' has no property '{propName}'. Ignored.");
+                continue;
+            }
+
+            if (!prop.CanWrite && !IsFillableCollection(prop.PropertyType))
+            {
+                Console.Error.WriteLine($"[SceneSerializer] '{type.Name}.{propName}' is read-only. Ignored.");
+                continue;
+            }
+
+            try
+            {
+                object? value = DeserializeValue(element, prop.PropertyType, _options);
+                if (value is null) continue;
+
+                if (prop.CanWrite)
+                {
+                    prop.SetValue(target, value);
+                }
+                else if (prop.GetValue(target) is System.Collections.IList list
+                      && value is System.Collections.IEnumerable source)
+                {
+                    // Get-only list: replace its contents rather than the list.
+                    list.Clear();
+                    foreach (var item in source) list.Add(item);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[SceneSerializer] Could not set '{propName}' on '{ownerName}': {ex.Message}");
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -331,8 +480,15 @@ public static class SceneSerializer
 
     private static readonly Dictionary<string, Type?> _typeCache = new(StringComparer.Ordinal);
 
+    /// <summary>Resolves a component type name written in a scene file.</summary>
+    internal static Type? ResolveComponentType(string name) => ResolveType(name, typeof(Component));
+
+    /// <summary>Resolves an actor class name written in a scene file's <c>class</c> field.</summary>
+    internal static Type? ResolveActorType(string name) => ResolveType(name, typeof(Actor));
+
     /// <summary>
-    /// Resolves a component type name written in a scene file.
+    /// Resolves a type name from a scene file to a concrete type deriving from
+    /// <paramref name="mustDerive"/>.
     /// </summary>
     /// <remarks>
     /// Tries assembly-qualified, then full name in any loaded assembly, then the bare type
@@ -341,44 +497,78 @@ public static class SceneSerializer
     /// camera. Results are cached because a large scene asks for the same handful of types
     /// hundreds of times.
     ///
-    /// An ambiguous bare name — two components with the same short name in different
+    /// The assembly qualifier is stripped before asking individual assemblies —
+    /// <see cref="Assembly.GetType(string)"/> throws on a qualified name, and hot-reloaded
+    /// game types live in load contexts <see cref="Type.GetType(string)"/> never searches.
+    /// Retired assemblies are skipped, so a name never resolves to a previous generation.
+    ///
+    /// An ambiguous bare name — two classes with the same short name in different
     /// namespaces — resolves to the first match and logs, rather than failing the load.
     /// Write the full name to disambiguate.
     /// </remarks>
-    internal static Type? ResolveComponentType(string name)
+    internal static Type? ResolveType(string name, Type mustDerive)
     {
-        if (_typeCache.TryGetValue(name, out var cached)) return cached;
+        string key = mustDerive.Name + ":" + name;
+        lock (_typeCache)
+        {
+            if (_typeCache.TryGetValue(key, out var cached)) return cached;
+        }
 
-        Type? found = Type.GetType(name);
+        Type? found = null;
+        int comma   = name.IndexOf(',');
+        string bare = comma >= 0 ? name[..comma].Trim() : name.Trim();
+
+        if (comma >= 0)
+        {
+            try
+            {
+                found = Type.GetType(name, throwOnError: false);
+            }
+            catch (Exception ex) when (ex is FileLoadException or BadImageFormatException or ArgumentException or TypeLoadException)
+            {
+                found = null;
+            }
+
+            if (found != null && (!mustDerive.IsAssignableFrom(found) || ReflectionUtil.IsRetired(found.Assembly)))
+                found = null;
+        }
 
         if (found == null)
         {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var assembly in ReflectionUtil.LoadedAssemblies())
             {
-                found = assembly.GetType(name, throwOnError: false);
-                if (found != null) break;
+                Type? candidate;
+                try
+                {
+                    candidate = assembly.GetType(bare, throwOnError: false);
+                }
+                catch (Exception ex) when (ex is FileLoadException or BadImageFormatException or ArgumentException or TypeLoadException)
+                {
+                    continue;
+                }
+
+                if (candidate == null || !mustDerive.IsAssignableFrom(candidate)) continue;
+                found = candidate;
+                break;
             }
         }
 
-        if (found == null && !name.Contains('.'))
+        if (found == null && !bare.Contains('.'))
         {
             var matches = new List<Type>();
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var candidate in ReflectionUtil.AllLoadedTypes())
             {
-                foreach (var candidate in assembly.SafeGetTypes())
-                {
-                    if (!string.Equals(candidate.Name, name, StringComparison.Ordinal)) continue;
-                    if (!typeof(Component).IsAssignableFrom(candidate)) continue;
-                    if (candidate.IsAbstract) continue;
-                    matches.Add(candidate);
-                }
+                if (!string.Equals(candidate.Name, bare, StringComparison.Ordinal)) continue;
+                if (!mustDerive.IsAssignableFrom(candidate)) continue;
+                if (candidate.IsAbstract) continue;
+                matches.Add(candidate);
             }
 
             if (matches.Count > 1)
             {
                 Console.Error.WriteLine(
-                    $"[SceneSerializer] '{name}' matches {matches.Count} component types " +
+                    $"[SceneSerializer] '{bare}' matches {matches.Count} {mustDerive.Name.ToLowerInvariant()} types " +
                     $"({string.Join(", ", matches.Select(t => t.FullName))}). Using the first; " +
                     "write the full name to disambiguate.");
             }
@@ -386,7 +576,7 @@ public static class SceneSerializer
             found = matches.FirstOrDefault();
         }
 
-        _typeCache[name] = found;
+        lock (_typeCache) _typeCache[key] = found;
         return found;
     }
 
@@ -407,11 +597,16 @@ public static class SceneSerializer
     /// </remarks>
     internal static IEnumerable<PropertyInfo> GetSerializableProperties(Type type)
     {
+        // A public setter, not merely a setter: a private setter marks runtime state
+        // (TriangleCount, IsGrounded) that has no business in a file people edit by hand
+        // and no meaning on the next load. Get-only lists are the one exception, filled in
+        // place. [SceneIgnore] opts a property out explicitly.
         return type
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead
-                     && (p.CanWrite || IsFillableCollection(p.PropertyType))
-                     && IsSerializableType(p.PropertyType));
+                     && ((p.CanWrite && p.SetMethod?.IsPublic == true) || IsFillableCollection(p.PropertyType))
+                     && IsSerializableType(p.PropertyType)
+                     && !p.IsDefined(typeof(SceneIgnoreAttribute), inherit: true));
     }
 
     /// <summary>
@@ -490,6 +685,27 @@ public static class SceneSerializer
     }
 }
 
+/// <summary>How a scene file names component and actor types.</summary>
+public enum TypeNameStyle
+{
+    /// <summary>The bare class name, qualified with its namespace only when another loaded class shares it. Hand-editable and stable across rebuilds.</summary>
+    Short,
+
+    /// <summary>The namespace-qualified name.</summary>
+    Full,
+
+    /// <summary>The assembly-qualified name, version and all. What older files contain.</summary>
+    AssemblyQualified,
+}
+
+/// <summary>Options for <see cref="SceneSerializer.Serialize(Core.Scene, SceneSerializerOptions?)"/>.</summary>
+public sealed class SceneSerializerOptions
+{
+    public static SceneSerializerOptions Default { get; } = new();
+
+    public TypeNameStyle TypeNames { get; init; } = TypeNameStyle.Short;
+}
+
 /// <summary>
 /// Writes a <see cref="Rendering.Material3D"/> as its portable properties.
 /// </summary>
@@ -498,7 +714,7 @@ public static class SceneSerializer
 /// try to serialise <c>Texture2D</c> and <c>Effect</c>, which cannot round-trip, so the
 /// type was excluded entirely and every material was lost on save. This writes the
 /// scalars and the asset paths, and leaves rebuilding the GPU side to
-/// <see cref="Rendering.Material3D.ResolveTextures"/> once a device exists.
+/// <see cref="Rendering.Material3D.ResolveTextures(Assets.AssetManager)"/> once a device exists.
 /// </remarks>
 public sealed class Material3DJsonConverter : JsonConverter<Rendering.Material3D>
 {
@@ -597,6 +813,14 @@ internal sealed class ActorDto
 {
     [JsonPropertyName("name")]
     public string? Name { get; set; }
+
+    /// <summary>The actor subclass to construct. Omitted for a plain Actor.</summary>
+    [JsonPropertyName("class")]
+    public string? Class { get; set; }
+
+    /// <summary>The subclass's own serialisable properties (not Name, Tag and the transform).</summary>
+    [JsonPropertyName("properties")]
+    public Dictionary<string, JsonElement>? Properties { get; set; }
 
     [JsonPropertyName("tag")]
     public string? Tag { get; set; }

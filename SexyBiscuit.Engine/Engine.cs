@@ -102,9 +102,15 @@ public class SBEngine : Game
     }
 
     /// <summary>
-    /// Called once the engine is fully initialized. Override to load your first scene.
+    /// Called once the engine is fully initialized. The default queues
+    /// <see cref="EngineConfig.StartScene"/> when one is configured; override to load your
+    /// first scene yourself.
     /// </summary>
-    protected virtual void OnEngineReady() { }
+    protected virtual void OnEngineReady()
+    {
+        if (!string.IsNullOrEmpty(Config.StartScene))
+            SceneManager.LoadScene(Config.StartScene);
+    }
 
     // -------------------------------------------------------------------------
     // Game loop

@@ -53,6 +53,18 @@ public class AssetManager : IDisposable
     /// </remarks>
     public Core.SBEvent<string> OnAssetReloaded { get; } = new();
 
+    /// <summary>
+    /// The asset manager of the running host, for components that need to resolve an asset
+    /// path they were given in a scene file. Null in headless tools and tests, in which case
+    /// the path is kept and resolved later.
+    /// </summary>
+    /// <remarks>
+    /// Set by <see cref="Core.EngineHost"/> the same way it installs
+    /// <see cref="Core.TimerManager.Instance"/>, so a standalone game and the editor both
+    /// populate it without a component knowing which host it lives in.
+    /// </remarks>
+    public static AssetManager? Current { get; set; }
+
     // -------------------------------------------------------------------------
     // Construction / disposal
     // -------------------------------------------------------------------------
@@ -360,9 +372,10 @@ public class AssetManager : IDisposable
     // Internal helpers — path normalisation
     // -------------------------------------------------------------------------
     /// <summary>
-    /// Converts all separators to forward-slash and lowercases the result so that
+    /// Resolves the path against <see cref="Core.ProjectPaths.Root"/> (or the working
+    /// directory when no project is open) and converts separators to forward slashes so
     /// lookups are consistent across platforms and calling conventions.
     /// </summary>
     private static string NormalisePath(string path)
-        => Path.GetFullPath(path).Replace('\\', '/');
+        => Core.ProjectPaths.Resolve(path).Replace('\\', '/');
 }

@@ -41,9 +41,53 @@ public static class ReflectionUtil
         }
     }
 
-    /// <summary>Every loadable type across every loaded assembly.</summary>
+    private static readonly HashSet<Assembly> _retired = new();
+
+    /// <summary>
+    /// Marks an assembly as retired: a previous generation of hot-reloaded game code whose
+    /// types must no longer be offered or resolved, even though the runtime may keep it
+    /// loaded until its load context is collected.
+    /// </summary>
+    public static void RetireAssembly(Assembly assembly)
+    {
+        lock (_retired) _retired.Add(assembly);
+    }
+
+    public static bool IsRetired(Assembly assembly)
+    {
+        lock (_retired) return _retired.Contains(assembly);
+    }
+
+    /// <summary>
+    /// Every assembly worth reflecting over: not dynamic, not retired. Includes assemblies
+    /// loaded into collectible load contexts, which is how game code becomes visible to the
+    /// scene loader and the editor.
+    /// </summary>
+    public static IEnumerable<Assembly> LoadedAssemblies()
+        => AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && !IsRetired(a));
+
+    /// <summary>Every loadable type across every loaded, non-retired assembly.</summary>
     public static IEnumerable<Type> AllLoadedTypes()
-        => AppDomain.CurrentDomain.GetAssemblies().SelectMany(SafeGetTypes);
+        => LoadedAssemblies().SelectMany(SafeGetTypes);
+
+    /// <summary>A concrete class with a public parameterless constructor — something a tool can instantiate by name.</summary>
+    public static bool IsPlaceable(Type type)
+        => type.IsClass && !type.IsAbstract && type.GetConstructor(Type.EmptyTypes) != null;
+
+    /// <summary>
+    /// Every concrete <see cref="Actor"/> class that can be constructed with no arguments,
+    /// the base class included — what a "place actor" palette and the scene loader's
+    /// <c>class</c> field both draw from.
+    /// </summary>
+    public static IEnumerable<Type> FindActorTypes()
+    {
+        foreach (var type in AllLoadedTypes())
+        {
+            if (!typeof(Actor).IsAssignableFrom(type)) continue;
+            if (!IsPlaceable(type)) continue;
+            yield return type;
+        }
+    }
 
     /// <summary>
     /// Every concrete <see cref="Component"/> that can be constructed with no arguments —
@@ -62,6 +106,10 @@ public static class ReflectionUtil
             if (!typeof(Component).IsAssignableFrom(type)) continue;
             if (type.GetConstructor(Type.EmptyTypes) == null) continue;
             if (!includeBuiltInTransform && type == typeof(Transform)) continue;
+
+            // Placeholders the loader creates for unresolved types are not something anyone
+            // adds on purpose.
+            if (type == typeof(MissingComponent) || type == typeof(MissingActorClass)) continue;
 
             yield return type;
         }

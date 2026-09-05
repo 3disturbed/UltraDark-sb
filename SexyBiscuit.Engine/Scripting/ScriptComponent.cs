@@ -29,11 +29,32 @@ public sealed class ScriptComponent : Component
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Relative or absolute path to the <c>.js</c> script file to run.
-    /// Set before the component is attached, or call <see cref="Reload"/> after changing it.
+    /// Path to the <c>.js</c> script file to run, relative to the project root.
     /// Example: <c>"Scripts/EnemyAI.js"</c>
     /// </summary>
-    public string ScriptPath { get; set; } = string.Empty;
+    /// <remarks>
+    /// Changing it on an attached component reloads the script immediately: the scene loader
+    /// attaches first and sets properties second, and the editor's tools do the same, so a
+    /// script that only ran when the path was set before attach never ran at all.
+    /// </remarks>
+    public string ScriptPath
+    {
+        get => _scriptPath;
+        set
+        {
+            value ??= string.Empty;
+            if (_scriptPath == value) return;
+            _scriptPath = value;
+
+            if (Actor == null) return;
+
+            InitialiseRuntime();
+            TryCall("onAwake");
+            if (_started) TryCall("onStart");
+        }
+    }
+    private string _scriptPath = string.Empty;
+    private bool   _started;
 
     /// <summary>
     /// The active Jint runtime for this component. Null until <see cref="Awake"/> completes
@@ -47,12 +68,20 @@ public sealed class ScriptComponent : Component
 
     public override void Awake()
     {
+        // No path yet is the normal case for a component restored from a scene file; the
+        // setter picks it up a moment later.
+        if (string.IsNullOrWhiteSpace(_scriptPath)) return;
+
         InitialiseRuntime();
         TryCall("onAwake");
     }
 
     public override void Start()
-        => TryCall("onStart");
+    {
+        _started = true;
+        if (Runtime == null && !string.IsNullOrWhiteSpace(_scriptPath)) InitialiseRuntime();
+        TryCall("onStart");
+    }
 
     public override void Update(float dt)
         => TryCall("onUpdate", dt);
@@ -135,7 +164,7 @@ public sealed class ScriptComponent : Component
     /// Creates a fresh <see cref="JintRuntime"/> from the updated source file, then
     /// re-fires <c>onStart()</c> so the script can re-initialise its state.
     /// </summary>
-    internal void Reload()
+    public void Reload()
     {
         InitialiseRuntime();
 
@@ -152,9 +181,7 @@ public sealed class ScriptComponent : Component
     {
         if (string.IsNullOrWhiteSpace(ScriptPath))
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[ScriptComponent] ScriptPath is not set on actor '{Actor?.Name}'. " +
-                $"Assign ScriptComponent.ScriptPath before the component is attached.");
+            Runtime = null;
             return;
         }
 
@@ -163,7 +190,7 @@ public sealed class ScriptComponent : Component
         string source;
         try
         {
-            source = File.ReadAllText(ScriptPath);
+            source = File.ReadAllText(Core.ProjectPaths.Resolve(ScriptPath));
         }
         catch (Exception ex)
         {

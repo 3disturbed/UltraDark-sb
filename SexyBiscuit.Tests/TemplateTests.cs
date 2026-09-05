@@ -67,6 +67,17 @@ public class ProjectTemplateTests
             Assert.True(components > 0,
                 $"{relativePath} loaded {actors.Count} actors but no components — " +
                 "the file's component types or property names do not match the engine.");
+
+            // Unresolved types now load as placeholders instead of vanishing, so the count
+            // above no longer catches a typo. Name the offenders directly.
+            var missing = actors.SelectMany(a => a.GetAllComponents())
+                                .OfType<MissingComponent>()
+                                .Select(m => m.TypeName)
+                                .Distinct()
+                                .ToList();
+            Assert.True(missing.Count == 0,
+                $"{relativePath} references component types the engine does not have: {string.Join(", ", missing)}.");
+            Assert.DoesNotContain(actors.SelectMany(a => a.GetAllComponents()), c => c is MissingActorClass);
         }
         finally
         {

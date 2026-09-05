@@ -93,6 +93,24 @@ public class Scene
     public void MarkForDestroy(Actor actor) => _markedForDestroy.Add(actor);
 
     /// <summary>
+    /// Moves an actor to another layer (created on demand) without destroying it.
+    /// </summary>
+    /// <remarks>
+    /// The obvious sequence — <c>RemoveActor</c> then <c>AddActor</c> — destroys the actor,
+    /// because a layer's removal queue is its destruction queue: components lose their
+    /// registrations and the actor comes back as an empty shell. The editor's drag-and-drop
+    /// did exactly that for a while.
+    /// </remarks>
+    public void MoveActor(Actor actor, string layerName, int order = 0)
+    {
+        var target = GetOrCreateLayer(layerName, order);
+        if (ReferenceEquals(actor.Layer_, target)) return;
+
+        actor.Layer_?.DetachActor(actor);
+        target.AddActor(actor);
+    }
+
+    /// <summary>
     /// Applies queued actor adds and removals immediately, without ticking anything.
     /// </summary>
     /// <remarks>

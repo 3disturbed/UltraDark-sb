@@ -299,3 +299,116 @@ public class SceneTests
         Assert.Equal(2, scene.FindByTag("enemy").Count());
     }
 }
+
+public class ScenePlumbingTests
+{
+    private sealed class Marker : Component { }
+
+    [RequireComponent(typeof(Marker))]
+    private sealed class NeedsMarker : Component { }
+
+    [Fact]
+    public void MoveActor_KeepsTheActorAndItsComponentsAlive()
+    {
+        var scene = new Scene("move");
+        try
+        {
+            var actor = scene.AddActor(new Actor("Cube"));
+            actor.AddComponent<Transform3D>();
+            var mesh = actor.AddComponent<SexyBiscuit.Engine.Rendering.MeshRenderer>();
+            scene.FlushPendingActors();
+
+            scene.MoveActor(actor, "foreground");
+            scene.FlushPendingActors();
+
+            // RemoveActor + AddActor would have destroyed it: no components, gone from the
+            // renderer registry, and the "moved" actor an empty shell.
+            Assert.False(actor.IsDestroyed);
+            Assert.Same(mesh, actor.GetComponent<SexyBiscuit.Engine.Rendering.MeshRenderer>());
+            Assert.Contains(mesh, SexyBiscuit.Engine.Rendering.MeshRenderer.All);
+            Assert.Equal("foreground", actor.Layer_?.Name);
+            Assert.DoesNotContain(actor, scene.GetLayer("default")!.Actors);
+            Assert.Contains(actor, scene.GetLayer("foreground")!.Actors);
+        }
+        finally
+        {
+            scene.Destroy();
+        }
+    }
+
+    [Fact]
+    public void MoveActor_WorksForAnActorStillQueuedToBeAdded()
+    {
+        var scene = new Scene("move-pending");
+        try
+        {
+            var actor = scene.AddActor(new Actor("Pending"));
+            scene.MoveActor(actor, "ui");
+            scene.FlushPendingActors();
+
+            Assert.Single(scene.GetLayer("ui")!.Actors);
+            Assert.Empty(scene.GetLayer("default")!.Actors);
+        }
+        finally
+        {
+            scene.Destroy();
+        }
+    }
+
+    [Fact]
+    public void AddComponent_ByTypeHonoursRequirementsWhenAsked()
+    {
+        var actor = new Actor("A");
+        actor.AddComponent(typeof(NeedsMarker));
+
+        Assert.True(actor.HasComponent<Marker>());
+        Assert.True(actor.HasComponent<NeedsMarker>());
+
+        // The loader's path stays literal: it restores exactly what the file lists.
+        var literal = new Actor("B");
+        literal.AddComponentByType(typeof(NeedsMarker));
+        Assert.False(literal.HasComponent<Marker>());
+
+        Assert.Throws<ArgumentException>(() => actor.AddComponent(typeof(string)));
+    }
+
+    [Fact]
+    public void RemoveComponent_ByInstanceRefusesTheTransform()
+    {
+        var actor  = new Actor("A");
+        var marker = actor.AddComponent<Marker>();
+
+        Assert.False(actor.RemoveComponent(actor.Transform));
+        Assert.True(actor.RemoveComponent(marker));
+        Assert.False(actor.RemoveComponent(marker));
+        Assert.False(actor.HasComponent<Marker>());
+    }
+
+    [Fact]
+    public void ProjectPaths_ResolveRelativeToTheRoot()
+    {
+        string? previous = ProjectPaths.Root;
+        string root = Path.Combine(Path.GetTempPath(), "sb-project-" + Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            ProjectPaths.Root = root;
+
+            Assert.Equal(Path.GetFullPath(Path.Combine(root, "Scenes", "Main.scene")),
+                         ProjectPaths.Resolve("Scenes/Main.scene"));
+            Assert.Equal("Scenes/Main.scene", ProjectPaths.MakeRelative(Path.Combine(root, "Scenes", "Main.scene")));
+            Assert.True(ProjectPaths.IsInsideRoot("Scenes/Main.scene"));
+            Assert.True(ProjectPaths.IsInsideRoot(root));
+            Assert.False(ProjectPaths.IsInsideRoot("../outside.scene"));
+            Assert.False(ProjectPaths.IsInsideRoot(Path.GetTempPath()));
+
+            // A rooted path passes through untouched.
+            string elsewhere = Path.Combine(Path.GetTempPath(), "elsewhere.png");
+            Assert.Equal(Path.GetFullPath(elsewhere), ProjectPaths.Resolve(elsewhere));
+        }
+        finally
+        {
+            ProjectPaths.Root = previous;
+        }
+    }
+}

@@ -97,6 +97,32 @@ public class Actor
         return c;
     }
 
+    /// <summary>
+    /// Adds a component by type, honouring <see cref="RequireComponentAttribute"/> like the
+    /// generic overload does. The type-name path tools take arrives here.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="AddComponentByType"/> deliberately skips the requirement walk because the
+    /// scene loader restores components in file order and must not invent extra ones; a tool
+    /// adding a single component by name wants the opposite, so it gets its own entry point.
+    /// </remarks>
+    public Component AddComponent(Type type, bool honourRequirements = true)
+    {
+        if (!typeof(Component).IsAssignableFrom(type))
+            throw new ArgumentException($"{type.Name} is not a Component.", nameof(type));
+
+        if (honourRequirements)
+        {
+            foreach (var attr in type.GetCustomAttributes(typeof(RequireComponentAttribute), true).Cast<RequireComponentAttribute>())
+            {
+                if (!HasComponent(attr.RequiredType))
+                    AddComponent(attr.RequiredType);
+            }
+        }
+
+        return AddComponentByType(type);
+    }
+
     private void AttachComponent(Component c)
     {
         c.Actor = this;
@@ -133,6 +159,21 @@ public class Actor
         if (c == null) return;
         c.OnDestroy();
         _components.Remove(c);
+    }
+
+    /// <summary>
+    /// Removes one specific component instance. The actor's own <see cref="Transform"/> is
+    /// refused: every actor has exactly one and nothing else can stand in for it.
+    /// </summary>
+    /// <returns>False when the component was not on this actor or was the transform.</returns>
+    public bool RemoveComponent(Component component)
+    {
+        if (ReferenceEquals(component, Transform)) return false;
+        if (!_components.Contains(component)) return false;
+
+        component.OnDestroy();
+        _components.Remove(component);
+        return true;
     }
 
     public IReadOnlyList<Component> GetAllComponents() => _components;

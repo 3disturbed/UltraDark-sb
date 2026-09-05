@@ -33,8 +33,95 @@ public sealed class MeshRenderer : Component
     // -------------------------------------------------------------------------
     // Properties
     // -------------------------------------------------------------------------
-    public string?          ModelPath  { get; private set; }
+    /// <summary>
+    /// The model file to draw, relative to the project root. Setting it queues a load for the
+    /// next draw, when a <see cref="GraphicsDevice"/> is in hand; setting it to null returns
+    /// to <see cref="MeshType"/> or the fallback cube.
+    /// </summary>
+    /// <remarks>
+    /// The setter used to be private, so a scene file's ModelPath round-tripped as a dead
+    /// string that nothing acted on. Deferring the load to the draw is what lets a headless
+    /// tool set the path and a renderer pick it up when the editor draws the frame.
+    /// </remarks>
+    public string? ModelPath
+    {
+        get => _modelPath;
+        set
+        {
+            if (_modelPath == value) return;
+            _modelPath  = value;
+            _modelDirty = true;
+        }
+    }
+    private string? _modelPath;
+    private bool    _modelDirty;
+
     public List<Material3D> Materials  { get; set; } = new();
+
+    // -------------------------------------------------------------------------
+    // Material proxies — the first material's headline values, for inspectors and tools.
+    // Not serialised: Materials already is, and two copies of one value drift apart.
+    // -------------------------------------------------------------------------
+
+    /// <summary>The first material's albedo colour. Writing it never touches the shared default material.</summary>
+    [SceneIgnore]
+    public Color AlbedoColor
+    {
+        get => PrimaryMaterial.AlbedoColor;
+        set => EnsureOwnMaterial(0).AlbedoColor = value;
+    }
+
+    [SceneIgnore]
+    public float Metallic
+    {
+        get => PrimaryMaterial.Metallic;
+        set => EnsureOwnMaterial(0).Metallic = value;
+    }
+
+    [SceneIgnore]
+    public float Roughness
+    {
+        get => PrimaryMaterial.Roughness;
+        set => EnsureOwnMaterial(0).Roughness = value;
+    }
+
+    [SceneIgnore]
+    public float EmissiveIntensity
+    {
+        get => PrimaryMaterial.EmissiveIntensity;
+        set => EnsureOwnMaterial(0).EmissiveIntensity = value;
+    }
+
+    /// <summary>The first material's albedo texture path, relative to the project root.</summary>
+    [SceneIgnore]
+    public string? AlbedoTexturePath
+    {
+        get => PrimaryMaterial.AlbedoMapPath;
+        set
+        {
+            var material = EnsureOwnMaterial(0);
+            material.AlbedoMapPath = value;
+            material.ResolveTextures();
+        }
+    }
+
+    private Material3D PrimaryMaterial => Materials.Count > 0 ? Materials[0] : Material3D.Default;
+
+    /// <summary>
+    /// The material at <paramref name="index"/>, guaranteed to belong to this renderer: missing
+    /// slots are created and the shared <see cref="Material3D.Default"/> is replaced by a clone
+    /// before it is handed out for writing.
+    /// </summary>
+    public Material3D EnsureOwnMaterial(int index)
+    {
+        while (Materials.Count <= index)
+            Materials.Add(new Material3D());
+
+        if (ReferenceEquals(Materials[index], Material3D.Default))
+            Materials[index] = Material3D.Default.Clone();
+
+        return Materials[index];
+    }
 
     /// <summary>
     /// Object-space bounds of the loaded geometry, used for frustum culling and LOD sizing.
@@ -113,6 +200,13 @@ public sealed class MeshRenderer : Component
 
     public override void Awake() => All.Add(this);
 
+    /// <summary>Loads the textures the materials name, now that a host may be running.</summary>
+    public override void Start()
+    {
+        foreach (var material in Materials)
+            material.ResolveTextures();
+    }
+
     // -------------------------------------------------------------------------
     // Model loading
     // -------------------------------------------------------------------------
@@ -122,11 +216,12 @@ public sealed class MeshRenderer : Component
     /// </summary>
     public void LoadModel(string path, GraphicsDevice gd)
     {
-        // Dispose previous geometry
+        // Dispose previous geometry. Materials are kept: they were authored in the scene and
+        // padding below adds slots for any index the model references beyond them.
         DisposeBuffers();
         _subMeshes.Clear();
-        Materials.Clear();
-        ModelPath = path;
+        _modelPath  = path;
+        _modelDirty = false;
 
         using var ctx = new AssimpContext();
 
@@ -233,6 +328,25 @@ public sealed class MeshRenderer : Component
     /// </summary>
     public void Draw(GraphicsDevice gd, Microsoft.Xna.Framework.Matrix view, Microsoft.Xna.Framework.Matrix projection)
     {
+        if (_modelDirty)
+        {
+            _modelDirty = false;
+            string? requested = _modelPath;
+
+            if (string.IsNullOrWhiteSpace(requested))
+            {
+                DisposeBuffers();
+                _subMeshes.Clear();
+                TriangleCount = 0;
+                LocalBounds   = PrimitiveMesh.GetBounds(_meshType);
+            }
+            else
+            {
+                LoadModel(ProjectPaths.Resolve(requested), gd);
+                _modelPath = requested;      // keep the project-relative form for saving
+            }
+        }
+
         var world = GetTransform3D().GetWorldMatrix();
 
         if (_subMeshes.Count == 0)
