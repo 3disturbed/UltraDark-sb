@@ -7,8 +7,13 @@ obj/
 *.cache
 
 ## Build outputs
-[Dd]ebug/
-[Rr]elease/
+# Anchored to the project root so they match build output only. Unanchored,
+# "[Dd]ebug/" also swallowed SexyBiscuit.Engine/Debug/, the profiler and gizmo
+# source folder.
+**/bin/[Dd]ebug/
+**/bin/[Rr]elease/
+**/obj/[Dd]ebug/
+**/obj/[Rr]elease/
 
 ## IDE
 .vs/
