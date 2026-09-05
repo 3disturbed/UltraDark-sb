@@ -41,10 +41,17 @@ public class AssetManager : IDisposable
     // Events
     // -------------------------------------------------------------------------
     /// <summary>
-    /// Fired (on a background thread in debug builds) when an asset file changes
-    /// and has been hot-reloaded. The argument is the normalised asset path.
+    /// Raised when an asset file changes on disk and has been hot-reloaded. The payload
+    /// is the normalised asset path.
     /// </summary>
-    public event Action<string>? OnAssetReloaded;
+    /// <remarks>
+    /// Only ever raised in Debug and Development builds, where the file watchers exist —
+    /// the member itself is always present so game code does not need its own
+    /// <c>#if DEBUG</c> around the subscription. Raised from the watcher's background
+    /// thread, so a handler that touches the scene should marshal onto the game thread
+    /// via <see cref="Core.TimerManager.SetTimerForNextTick"/>.
+    /// </remarks>
+    public Core.SBEvent<string> OnAssetReloaded { get; } = new();
 
     // -------------------------------------------------------------------------
     // Construction / disposal
@@ -317,7 +324,7 @@ public class AssetManager : IDisposable
                 entry.ByteSize   = byteSize;
                 entry.LastLoaded = DateTime.UtcNow;
 
-                OnAssetReloaded?.Invoke(key);
+                OnAssetReloaded.Broadcast(key);
             }
             catch (Exception ex)
             {
