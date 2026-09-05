@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore SexyBiscuit.sln
+
+      # The editor is a WinForms app and only builds on Windows; the engine, demo
+      # and test projects are cross-platform.
+      - name: Build engine
+        run: dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj -c Release --no-restore
+
+      - name: Build demo
+        run: dotnet build SexyBiscuit.Demo/SexyBiscuit.Demo.csproj -c Release --no-restore
+
+      - name: Build editor
+        if: runner.os == 'Windows'
+        run: dotnet build SexyBiscuit.Editor/SexyBiscuit.Editor.csproj -c Release --no-restore
+
+      - name: Test
+        run: dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj -c Release --no-restore --verbosity normal
+
+  warnings-as-errors:
+    name: Warning check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # The engine builds warning-free today; this job keeps it that way.
+      - name: Build engine with warnings as errors
+        run: dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj -c Release -warnaserror

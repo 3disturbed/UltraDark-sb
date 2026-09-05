@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- Lets `dotnet build` resolve the Windows targeting pack when restoring on
+         macOS or Linux. The editor still only RUNS on Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>SexyBiscuit.Editor</RootNamespace>
     <AssemblyName>SexyBiscuit.Editor</AssemblyName>

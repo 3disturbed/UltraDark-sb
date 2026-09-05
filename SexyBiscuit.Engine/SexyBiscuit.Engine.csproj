@@ -8,6 +8,14 @@
     <RootNamespace>SexyBiscuit.Engine</RootNamespace>
     <AssemblyName>SexyBiscuit.Engine</AssemblyName>
     <Configurations>Debug;Release;Development</Configurations>
+
+    <!-- Ship the XML doc file so IntelliSense shows the engine's documentation in
+         consuming projects. CS1591 (missing XML comment on a public member) is not
+         treated as a warning: much of the engine's surface is self-describing
+         properties, and failing the build over them would drown the warnings that
+         matter. Malformed XML and broken crefs still warn. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
@@ -27,6 +35,12 @@
     <Optimize>true</Optimize>
     <DebugType>none</DebugType>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The test project exercises internal lifecycle hooks (Time.Advance, GameInstance
+         initialisation) that gameplay code has no business calling. -->
+    <InternalsVisibleTo Include="SexyBiscuit.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Engine foundation -->
