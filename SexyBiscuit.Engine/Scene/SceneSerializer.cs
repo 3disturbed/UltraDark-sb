@@ -9,9 +9,22 @@ namespace SexyBiscuit.Engine.Scene;
 
 /// <summary>
 /// Serialises and deserialises <see cref="Core.Scene"/> objects to/from JSON.
-/// Supports all primitive, enum, Vector2, Color, bool, int, float, and string
-/// component properties via reflection. Skips Texture2D and other non-portable types.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Component state is discovered by reflection over public readable/writable properties whose
+/// type round-trips through JSON: primitives, string, enum, <see cref="Vector2"/>,
+/// <see cref="Vector3"/>, <see cref="Vector4"/>, <see cref="Quaternion"/> and
+/// <see cref="Color"/>. GPU-side types such as <c>Texture2D</c> and <c>Effect</c> are skipped
+/// deliberately — a scene file records which asset to load, not the loaded asset.
+/// </para>
+/// <para>
+/// Both <see cref="Transform"/> and <see cref="Transform3D"/> are stored as flat fields on the
+/// actor rather than as components, so a scene file reads naturally and a 2D scene does not
+/// carry empty 3D data. An actor with a <see cref="Transform3D"/> writes the <c>position3</c>,
+/// <c>rotation3</c> and <c>scale3</c> fields; one without writes only the 2D fields.
+/// </para>
+/// </remarks>
 public static class SceneSerializer
 {
     // -------------------------------------------------------------------------
@@ -28,6 +41,9 @@ public static class SceneSerializer
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
         opts.Converters.Add(new Vector2JsonConverter());
+        opts.Converters.Add(new Vector3JsonConverter());
+        opts.Converters.Add(new Vector4JsonConverter());
+        opts.Converters.Add(new QuaternionJsonConverter());
         opts.Converters.Add(new ColorJsonConverter());
         return opts;
     }
@@ -93,8 +109,8 @@ public static class SceneSerializer
 
         foreach (var component in actor.GetAllComponents())
         {
-            // Skip the built-in Transform — it is stored as flat fields on the actor
-            if (component is Transform) continue;
+            // Transforms are stored as flat fields on the actor, not as components.
+            if (component is Transform or Transform3D) continue;
 
             var type = component.GetType();
             var props = new Dictionary<string, JsonElement>();
@@ -119,17 +135,28 @@ public static class SceneSerializer
         }
 
         var transform = actor.Transform;
-        return new ActorDto
+        var dto = new ActorDto
         {
             Name       = actor.Name,
             Tag        = actor.Tag,
             Layer      = actor.Layer,
             Active     = actor.IsActive,
+            LifeSpan   = actor.LifeSpan > 0f ? actor.LifeSpan : null,
             Position   = new[] { transform.LocalPosition.X, transform.LocalPosition.Y },
             Rotation   = transform.LocalRotation,
             Scale      = new[] { transform.LocalScale.X, transform.LocalScale.Y },
             Components = componentDtos,
         };
+
+        var t3d = actor.GetComponent<Transform3D>();
+        if (t3d != null)
+        {
+            dto.Position3 = new[] { t3d.LocalPosition.X, t3d.LocalPosition.Y, t3d.LocalPosition.Z };
+            dto.Rotation3 = new[] { t3d.LocalRotation.X, t3d.LocalRotation.Y, t3d.LocalRotation.Z, t3d.LocalRotation.W };
+            dto.Scale3    = new[] { t3d.LocalScale.X, t3d.LocalScale.Y, t3d.LocalScale.Z };
+        }
+
+        return dto;
     }
 
     // -------------------------------------------------------------------------
@@ -174,6 +201,24 @@ public static class SceneSerializer
         actor.Transform.LocalScale = (scl != null && scl.Length >= 2)
             ? new Vector2(scl[0], scl[1])
             : Vector2.One;
+
+        actor.LifeSpan = dto.LifeSpan ?? 0f;
+
+        // Restore the 3D transform only when the file carries one, so a 2D actor
+        // does not pick up an unnecessary component on load.
+        if (dto.Position3 != null || dto.Rotation3 != null || dto.Scale3 != null)
+        {
+            var t3d = actor.GetComponent<Transform3D>() ?? actor.AddComponent<Transform3D>();
+
+            if (dto.Position3 is { Length: >= 3 })
+                t3d.LocalPosition = new Vector3(dto.Position3[0], dto.Position3[1], dto.Position3[2]);
+
+            if (dto.Rotation3 is { Length: >= 4 })
+                t3d.LocalRotation = new Quaternion(dto.Rotation3[0], dto.Rotation3[1], dto.Rotation3[2], dto.Rotation3[3]);
+
+            if (dto.Scale3 is { Length: >= 3 })
+                t3d.LocalScale = new Vector3(dto.Scale3[0], dto.Scale3[1], dto.Scale3[2]);
+        }
 
         // Attach components
         foreach (var compDto in dto.Components ?? Enumerable.Empty<ComponentDto>())
@@ -247,10 +292,16 @@ public static class SceneSerializer
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Returns public, instance, settable, and readable properties that can
-    /// be round-tripped through JSON (primitives, string, bool, enum, Vector2, Color).
-    /// Intentionally excludes Texture2D, SpriteBatch, and other non-portable XNA types.
+    /// Returns public, instance, settable and readable properties whose type can be
+    /// round-tripped through JSON.
     /// </summary>
+    /// <remarks>
+    /// GPU and runtime types (<c>Texture2D</c>, <c>Effect</c>, <c>SpriteBatch</c>) are
+    /// excluded on purpose: a scene file names the asset to load, and the loader rebuilds
+    /// the GPU resource. Collections are excluded too — the general case cannot be
+    /// reconstructed safely, so components that need one should expose a serialisable
+    /// summary property instead.
+    /// </remarks>
     internal static IEnumerable<PropertyInfo> GetSerializableProperties(Type type)
     {
         return type
@@ -274,6 +325,9 @@ public static class SceneSerializer
         typeof(decimal),
         typeof(string),
         typeof(Vector2),
+        typeof(Vector3),
+        typeof(Vector4),
+        typeof(Quaternion),
         typeof(Color),
     };
 
@@ -349,6 +403,22 @@ internal sealed class ActorDto
     [JsonPropertyName("scale")]
     public float[]? Scale { get; set; }
 
+    /// <summary>Local 3D position as [x, y, z]. Absent for actors with no 3D transform.</summary>
+    [JsonPropertyName("position3")]
+    public float[]? Position3 { get; set; }
+
+    /// <summary>Local 3D rotation as the quaternion [x, y, z, w].</summary>
+    [JsonPropertyName("rotation3")]
+    public float[]? Rotation3 { get; set; }
+
+    /// <summary>Local 3D scale as [x, y, z].</summary>
+    [JsonPropertyName("scale3")]
+    public float[]? Scale3 { get; set; }
+
+    /// <summary>Seconds the actor lives after spawning. Absent when it lives indefinitely.</summary>
+    [JsonPropertyName("lifeSpan")]
+    public float? LifeSpan { get; set; }
+
     [JsonPropertyName("components")]
     public List<ComponentDto>? Components { get; set; }
 }
@@ -386,6 +456,95 @@ public sealed class Vector2JsonConverter : JsonConverter<Vector2>
         writer.WriteStartArray();
         writer.WriteNumberValue(value.X);
         writer.WriteNumberValue(value.Y);
+        writer.WriteEndArray();
+    }
+}
+
+/// <summary>Serialises <see cref="Vector3"/> as a three-element JSON array: [x, y, z].</summary>
+public sealed class Vector3JsonConverter : JsonConverter<Vector3>
+{
+    public override Vector3 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartArray)
+            throw new JsonException("Expected JSON array for Vector3.");
+
+        reader.Read(); float x = reader.GetSingle();
+        reader.Read(); float y = reader.GetSingle();
+        reader.Read(); float z = reader.GetSingle();
+        reader.Read(); // EndArray
+
+        return new Vector3(x, y, z);
+    }
+
+    public override void Write(Utf8JsonWriter writer, Vector3 value, JsonSerializerOptions options)
+    {
+        writer.WriteStartArray();
+        writer.WriteNumberValue(value.X);
+        writer.WriteNumberValue(value.Y);
+        writer.WriteNumberValue(value.Z);
+        writer.WriteEndArray();
+    }
+}
+
+/// <summary>Serialises <see cref="Vector4"/> as a four-element JSON array: [x, y, z, w].</summary>
+public sealed class Vector4JsonConverter : JsonConverter<Vector4>
+{
+    public override Vector4 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartArray)
+            throw new JsonException("Expected JSON array for Vector4.");
+
+        reader.Read(); float x = reader.GetSingle();
+        reader.Read(); float y = reader.GetSingle();
+        reader.Read(); float z = reader.GetSingle();
+        reader.Read(); float w = reader.GetSingle();
+        reader.Read(); // EndArray
+
+        return new Vector4(x, y, z, w);
+    }
+
+    public override void Write(Utf8JsonWriter writer, Vector4 value, JsonSerializerOptions options)
+    {
+        writer.WriteStartArray();
+        writer.WriteNumberValue(value.X);
+        writer.WriteNumberValue(value.Y);
+        writer.WriteNumberValue(value.Z);
+        writer.WriteNumberValue(value.W);
+        writer.WriteEndArray();
+    }
+}
+
+/// <summary>
+/// Serialises <see cref="Quaternion"/> as a four-element JSON array: [x, y, z, w].
+/// </summary>
+/// <remarks>
+/// Stored as raw components rather than Euler angles: Euler round-trips are lossy near the
+/// poles and depend on rotation order, which would make a saved rotation drift each time a
+/// scene is loaded and re-saved.
+/// </remarks>
+public sealed class QuaternionJsonConverter : JsonConverter<Quaternion>
+{
+    public override Quaternion Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartArray)
+            throw new JsonException("Expected JSON array for Quaternion.");
+
+        reader.Read(); float x = reader.GetSingle();
+        reader.Read(); float y = reader.GetSingle();
+        reader.Read(); float z = reader.GetSingle();
+        reader.Read(); float w = reader.GetSingle();
+        reader.Read(); // EndArray
+
+        return new Quaternion(x, y, z, w);
+    }
+
+    public override void Write(Utf8JsonWriter writer, Quaternion value, JsonSerializerOptions options)
+    {
+        writer.WriteStartArray();
+        writer.WriteNumberValue(value.X);
+        writer.WriteNumberValue(value.Y);
+        writer.WriteNumberValue(value.Z);
+        writer.WriteNumberValue(value.W);
         writer.WriteEndArray();
     }
 }
