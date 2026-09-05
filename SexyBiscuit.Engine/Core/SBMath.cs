@@ -156,7 +156,14 @@ public static class SBMath
     // Random
     // -------------------------------------------------------------------------
 
-    /// <summary>Shared random source. Seed it via <see cref="SetSeed"/> for reproducible runs.</summary>
+    /// <summary>
+    /// Shared random source. Seed it via <see cref="SetSeed"/> for reproducible runs.
+    /// </summary>
+    /// <remarks>
+    /// Not thread-safe, by design. Gameplay runs on one thread, and locking every roll
+    /// would cost more than it saves. Draw from it on the game thread; a background job
+    /// that needs randomness should own its own <see cref="System.Random"/>.
+    /// </remarks>
     public static Random Random { get; private set; } = new();
 
     /// <summary>Reseeds <see cref="Random"/> so a session can be replayed deterministically.</summary>

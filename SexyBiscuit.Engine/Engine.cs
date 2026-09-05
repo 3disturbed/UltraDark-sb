@@ -118,6 +118,113 @@ public class SBEngine : Game
     }
 
     /// <summary>
+    /// Brings up the engine's services against a graphics device owned by someone else,
+    /// for a tool that hosts the engine inside its own window.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The normal path is <see cref="Microsoft.Xna.Framework.Game.Run()"/>, which creates a
+    /// window and a device and then calls <c>Initialize</c>. An editor already has both,
+    /// and cannot call <c>Run</c> because that would take over the process's message loop.
+    /// This does the same service setup against the caller's device instead.
+    /// </para>
+    /// <para>
+    /// A hosted engine does not tick itself. The host drives it by calling
+    /// <see cref="TickHosted"/> and rendering through <see cref="Renderer3D"/> and
+    /// <see cref="SceneManager"/> at whatever cadence suits it — which is what lets an
+    /// editor pause the simulation while still drawing the scene.
+    /// </para>
+    /// </remarks>
+    /// <param name="graphicsDevice">The host's device. Used for asset upload and rendering.</param>
+    /// <param name="content">The host's content manager.</param>
+    public void InitializeHosted(GraphicsDevice graphicsDevice, Microsoft.Xna.Framework.Content.ContentManager content)
+    {
+        ArgumentNullException.ThrowIfNull(graphicsDevice);
+        ArgumentNullException.ThrowIfNull(content);
+
+        if (IsHosted) return;
+        IsHosted = true;
+
+        Time.Reset();
+        Time.FixedDeltaTime = Config.FixedTimestep;
+
+        SpriteBatch  = new SpriteBatch(graphicsDevice);
+        Assets       = new AssetManager(graphicsDevice, content);
+        Input        = new InputManager(Config);
+        Audio        = new AudioManager();
+        SceneManager = new SceneManager(this);
+
+        Timers     = TimerManager.Instance    = new TimerManager();
+        Coroutines = CoroutineRunner.Instance = new CoroutineRunner();
+
+        Renderer2D = new RenderSystem2D();
+        Renderer2D.Initialize(graphicsDevice);
+
+        Renderer3D = new RenderSystem3D();
+        Renderer3D.Initialize(graphicsDevice);
+
+        GameInstance = Config.GameInstanceFactory?.Invoke() ?? new GameInstance();
+        GameInstance.InternalInit();
+        GameInstance.InternalStart();
+
+        OnEngineReady();
+    }
+
+    /// <summary>
+    /// True when the engine was brought up by <see cref="InitializeHosted"/> rather than
+    /// by running its own window.
+    /// </summary>
+    public bool IsHosted { get; private set; }
+
+    /// <summary>
+    /// Advances a hosted engine by one frame: time, fixed steps, update, timers,
+    /// coroutines, late update and audio, in the same order as the standalone loop.
+    /// </summary>
+    /// <param name="rawDeltaSeconds">Real seconds since the host's previous frame.</param>
+    /// <remarks>
+    /// Input is not pumped here — the host owns the keyboard and mouse and decides when
+    /// the game should see them, which is how an editor keeps WASD out of the game while
+    /// the pointer is over a panel. Call <c>Input.Update</c> yourself when it should.
+    /// </remarks>
+    public void TickHosted(float rawDeltaSeconds)
+    {
+        if (!IsHosted) return;
+
+        Time.Advance(rawDeltaSeconds);
+
+        float dt         = Time.DeltaTime;
+        float unscaledDt = Time.UnscaledDeltaTime;
+
+        GameInstance.InternalTick(dt);
+
+        float step = Config.FixedTimestep;
+        Time.FixedDeltaTime = step * Time.TimeScale;
+
+        _fixedAccumulator += dt;
+        int steps = 0;
+        while (_fixedAccumulator >= step && steps < Config.MaxFixedStepsPerFrame)
+        {
+            if (Config.EnablePhysics2D) PhysicsSystem2D.Instance.FixedStep(step);
+            if (Config.EnablePhysics3D) PhysicsSystem3D.Instance.FixedStep(step);
+
+            SceneManager.FixedUpdate(step);
+            _fixedAccumulator -= step;
+            steps++;
+        }
+        if (_fixedAccumulator > step * Config.MaxFixedStepsPerFrame)
+            _fixedAccumulator = 0f;
+
+        SceneManager.Update(dt);
+
+        Tween.UpdateAll(dt);
+        Timers.Tick(dt, unscaledDt);
+        Coroutines.Tick(dt, unscaledDt);
+
+        SceneManager.LateUpdate(dt);
+        Audio.Update(dt);
+    }
+
+    /// <summary>
     /// Called once the engine is fully initialized. Override to load your first scene.
     /// </summary>
     protected virtual void OnEngineReady() { }

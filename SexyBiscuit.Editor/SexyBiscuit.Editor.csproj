@@ -13,6 +13,9 @@
     <AssemblyName>SexyBiscuit.Editor</AssemblyName>
     <!-- <ApplicationIcon>Assets\editor_icon.ico</ApplicationIcon> -->
     <Configurations>Debug;Release;Development</Configurations>
+    <!-- The editor is a developer tool, not a shipped game: run it on whatever runtime
+         the machine has rather than demanding the exact .NET 8 one. -->
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
 
   <ItemGroup>

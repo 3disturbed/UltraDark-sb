@@ -4,10 +4,17 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using SexyBiscuit.Editor.Panels;
 using SexyBiscuit.Engine;
+using SexyBiscuit.Engine.AI;
+using SexyBiscuit.Engine.Animation;
 using SexyBiscuit.Engine.Core;
+using SexyBiscuit.Engine.Gameplay;
+using SexyBiscuit.Engine.Rendering;
 using SexyBiscuit.Engine.Scene;
+using SexyBiscuit.Engine.UI;
 using Color = Microsoft.Xna.Framework.Color;
 using Keys = Microsoft.Xna.Framework.Input.Keys;
+using Scene = SexyBiscuit.Engine.Core.Scene;
+using XnaVector3 = Microsoft.Xna.Framework.Vector3;
 
 namespace SexyBiscuit.Editor;
 
@@ -47,6 +54,16 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private ConsolePanel       _console       = null!;
     private ViewportPanel      _viewport      = null!;
     private BuildSettingsPanel _buildSettings = null!;
+    private ApiReferencePanel  _apiReference  = null!;
+    private CodeEditorPanel    _codeEditor    = null!;
+    private GitPanel           _git           = null!;
+    private ProjectManagerPanel _projectManager = null!;
+
+    // The editor's own 3D camera. Lives outside the scene so it is not saved with it
+    // and is not destroyed when the scene is replaced.
+    private Actor?           _editorCamera;
+    private Camera3D?        _editorCamera3D;
+    private Transform3D?     _editorCameraTransform;
 
     // -------------------------------------------------------------------------
     // Engine
@@ -98,15 +115,19 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         // Viewport render target
         RecreateViewportTarget();
 
-        // Engine instance (headless — renders to our render target)
+        // Host the engine inside this window rather than letting it run its own.
+        // Constructing SBEngine is not enough: every service is created in Game.Initialize,
+        // which only runs from Run() — and Run() would take over the message loop.
         _engine = new SBEngine(new EngineConfig
         {
             WindowTitle  = "SexyBiscuit [Editor Preview]",
             WindowWidth  = _viewportWidth,
             WindowHeight = _viewportHeight,
+            // The editor draws the scene itself, into its viewport target.
+            Enable3D     = false,
         });
 
-        // Create a default empty scene
+        _engine.InitializeHosted(GraphicsDevice, Content);
         _engine.SceneManager.CreateScene("Untitled");
         _engineInitialized = true;
 
@@ -115,8 +136,15 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         _inspector    = new InspectorPanel();
         _assetBrowser = new AssetBrowserPanel();
         _console      = new ConsolePanel();
-        _viewport     = new ViewportPanel();
+        _viewport      = new ViewportPanel();
         _buildSettings = new BuildSettingsPanel();
+        _apiReference  = new ApiReferencePanel();
+        _codeEditor    = new CodeEditorPanel();
+        _git           = new GitPanel();
+        _projectManager = new ProjectManagerPanel();
+
+        EditorState.LoadRecentProjects();
+        CreateEditorCamera();
 
         // Route Debug output to editor console
         System.Diagnostics.Trace.Listeners.Add(new EditorTraceListener());
@@ -142,11 +170,16 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         _prevKeys = keys;
 
-        // Pump engine update only in play mode and not paused
+        // Pump the engine only in play mode. Outside it the scene is static and the
+        // editor still draws it, which is what lets you build a level without it running.
         if (EditorState.IsPlaying && !EditorState.IsPlayPaused && _engineInitialized)
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
-            _engine?.SceneManager.ActiveScene?.Update(dt);
+
+            // Input goes to the game only while playing, so editor shortcuts and the
+            // game's own bindings never fight over the same keys.
+            _engine?.Input.Update(dt);
+            _engine?.TickHosted(dt);
         }
 
         base.Update(gameTime);
@@ -157,14 +190,32 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     // -------------------------------------------------------------------------
     protected override void Draw(GameTime gameTime)
     {
-        // Render game scene to viewport render target
+        // Render the scene into the viewport target, in the same order SBEngine does:
+        // the 3D pass first, then the 2D sprite pass composited over it.
         if (_viewportTarget != null && _engineInitialized)
         {
             GraphicsDevice.SetRenderTarget(_viewportTarget);
-            GraphicsDevice.Clear(Color.Black);
+            GraphicsDevice.Clear(new Color(18, 20, 26));
+
+            var scene = _engine?.SceneManager.ActiveScene;
+
+            if (scene != null && EditorState.Viewport3D && _engine != null)
+            {
+                // Prefer the scene's own camera so the viewport shows what the game will;
+                // fall back to the editor camera when the scene has not got one yet.
+                _engine.Renderer3D.OverrideCamera = Camera3D.Main ?? _editorCamera3D;
+                _engine.Renderer3D.Render(scene);
+            }
+
+            // A render target leaves the device in a 3D state; SpriteBatch does not
+            // restore depth or rasteriser state itself, so sprites would z-fight or be
+            // culled without this.
+            GraphicsDevice.DepthStencilState = DepthStencilState.None;
+            GraphicsDevice.RasterizerState   = RasterizerState.CullCounterClockwise;
+            GraphicsDevice.BlendState        = BlendState.AlphaBlend;
 
             _spriteBatch.Begin();
-            _engine?.SceneManager.ActiveScene?.Draw(_spriteBatch);
+            scene?.Draw(_spriteBatch);
             _spriteBatch.End();
 
             GraphicsDevice.SetRenderTarget(null);
@@ -234,15 +285,286 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         if (ImGui.BeginMenu("View"))
         {
-            if (ImGui.MenuItem("Hierarchy"))      { /* already visible */ }
-            if (ImGui.MenuItem("Inspector"))      { /* already visible */ }
-            if (ImGui.MenuItem("Asset Browser"))  { /* already visible */ }
-            if (ImGui.MenuItem("Console"))        { /* already visible */ }
-            if (ImGui.MenuItem("Build Settings")) { /* already visible */ }
+            bool viewport3D = EditorState.Viewport3D;
+            if (ImGui.MenuItem("3D Viewport", "", viewport3D))
+                EditorState.Viewport3D = !viewport3D;
+
+            bool stats = EditorState.ShowRenderStats;
+            if (ImGui.MenuItem("Render Stats", "", stats))
+                EditorState.ShowRenderStats = !stats;
+
+            ImGui.Separator();
+
+            bool api = EditorState.ShowApiReference;
+            if (ImGui.MenuItem("API Reference", "", api))
+                EditorState.ShowApiReference = !api;
+
+            bool code = EditorState.ShowCodeEditor;
+            if (ImGui.MenuItem("Code Editor", "", code))
+                EditorState.ShowCodeEditor = !code;
+
+            bool git = EditorState.ShowGitPanel;
+            if (ImGui.MenuItem("Git", "", git))
+                EditorState.ShowGitPanel = !git;
+
+            ImGui.Separator();
+
+            if (ImGui.MenuItem("Project Manager"))
+                EditorState.ShowProjectManager = true;
+
             ImGui.EndMenu();
         }
 
+        DrawCreateMenu();
+
         ImGui.EndMainMenuBar();
+    }
+
+    // -------------------------------------------------------------------------
+    // Create menu
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Presets for the actors a scene almost always needs.
+    /// </summary>
+    /// <remarks>
+    /// Building a 3D scene by hand means adding a bare Actor, then a Transform3D, then a
+    /// Camera3D, then remembering the "MainCamera3D" tag — four steps to get anything on
+    /// screen. Each preset here is one click, and the result is selected so the inspector
+    /// opens on it.
+    /// </remarks>
+    private void DrawCreateMenu()
+    {
+        var scene = _engine?.SceneManager.ActiveScene;
+        if (scene == null) return;
+
+        if (!ImGui.BeginMenu("Create")) return;
+
+        if (ImGui.MenuItem("Empty Actor"))
+            Spawn(scene, new Actor("Actor"));
+
+        if (ImGui.MenuItem("Empty Actor (3D)"))
+        {
+            var a = new Actor("Actor 3D");
+            a.AddComponent<Transform3D>();
+            Spawn(scene, a);
+        }
+
+        ImGui.Separator();
+
+        if (ImGui.BeginMenu("3D Object"))
+        {
+            if (ImGui.MenuItem("Mesh"))
+            {
+                var a = new Actor("Mesh");
+                a.AddComponent<Transform3D>();
+                a.AddComponent<MeshRenderer>();      // draws a unit cube until a model loads
+                Spawn(scene, a);
+            }
+
+            if (ImGui.MenuItem("Skinned Mesh"))
+            {
+                var a = new Actor("Skinned Mesh");
+                a.AddComponent<Transform3D>();
+                a.AddComponent<SkeletalAnimator>();
+                a.AddComponent<SkinnedMeshRenderer>();
+                Spawn(scene, a);
+            }
+
+            if (ImGui.MenuItem("Particle System"))
+            {
+                var a = new Actor("Particles");
+                a.AddComponent<Transform3D>();
+                a.AddComponent<ParticleSystem3D>();
+                Spawn(scene, a);
+            }
+
+            if (ImGui.MenuItem("Skybox"))
+            {
+                var a = new Actor("Skybox");
+                a.AddComponent<Transform3D>();
+                a.AddComponent<Skybox>();
+                Spawn(scene, a);
+            }
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("Light"))
+        {
+            if (ImGui.MenuItem("Directional")) SpawnLight(scene, LightType.Directional, "Sun");
+            if (ImGui.MenuItem("Point"))       SpawnLight(scene, LightType.Point, "Point Light");
+            if (ImGui.MenuItem("Spot"))        SpawnLight(scene, LightType.Spot, "Spot Light");
+
+            ImGui.Separator();
+
+            if (ImGui.MenuItem("2D Light"))
+            {
+                var a = new Actor("Light 2D");
+                a.AddComponent<Light2D>();
+                Spawn(scene, a);
+            }
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("Camera"))
+        {
+            if (ImGui.MenuItem("Camera 3D"))
+            {
+                var a = new Actor("Camera") { Tag = "MainCamera3D" };
+                a.AddComponent<Transform3D>().Position = new XnaVector3(0f, 2f, 8f);
+                a.AddComponent<Camera3D>();
+                Spawn(scene, a);
+            }
+
+            if (ImGui.MenuItem("Camera 3D + Fly Controls"))
+            {
+                var a = new Actor("Fly Camera") { Tag = "MainCamera3D" };
+                a.AddComponent<Transform3D>().Position = new XnaVector3(0f, 2f, 8f);
+                a.AddComponent<Camera3D>();
+                a.AddComponent<FlyCamController>();
+                Spawn(scene, a);
+            }
+
+            if (ImGui.MenuItem("Camera 2D"))
+            {
+                var a = new Actor("Camera 2D");
+                a.AddComponent<Camera2D>();
+                Spawn(scene, a);
+            }
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("Gameplay"))
+        {
+            if (ImGui.MenuItem("Game Mode"))     Spawn(scene, new GameMode());
+            if (ImGui.MenuItem("Character"))
+            {
+                var c = new Character("Character");
+                c.AddComponent<Transform3D>();
+                Spawn(scene, c);
+            }
+
+            if (ImGui.MenuItem("Player Start"))
+            {
+                var a = new Actor("Player Start");
+                a.AddComponent<Transform3D>();
+                a.AddComponent<PlayerStart>();
+                Spawn(scene, a);
+            }
+
+            if (ImGui.MenuItem("AI Character"))
+            {
+                var c = new Character("AI Character");
+                c.AddComponent<Transform3D>();
+                c.AddComponent<NavMeshAgent>().DriveCharacter = true;
+                Spawn(scene, c);
+            }
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("UI"))
+        {
+            if (ImGui.MenuItem("Canvas"))
+            {
+                var a = new Actor("Canvas");
+                a.AddComponent<Canvas>();
+                Spawn(scene, a);
+            }
+
+            if (ImGui.MenuItem("World Canvas"))
+            {
+                var a = new Actor("World Canvas");
+                a.AddComponent<Transform3D>();
+                a.AddComponent<WorldCanvas>();
+                Spawn(scene, a);
+            }
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("2D Object"))
+        {
+            if (ImGui.MenuItem("Sprite"))
+            {
+                var a = new Actor("Sprite");
+                a.AddComponent<SpriteRenderer>();
+                Spawn(scene, a);
+            }
+
+            if (ImGui.MenuItem("Tilemap"))
+            {
+                var a = new Actor("Tilemap");
+                a.AddComponent<TilemapRenderer>();
+                Spawn(scene, a);
+            }
+
+            if (ImGui.MenuItem("Particle Emitter"))
+            {
+                var a = new Actor("Emitter");
+                a.AddComponent<ParticleEmitter>();
+                Spawn(scene, a);
+            }
+
+            ImGui.EndMenu();
+        }
+
+        ImGui.EndMenu();
+    }
+
+    private void SpawnLight(Scene scene, LightType type, string name)
+    {
+        var a = new Actor(name);
+        var t = a.AddComponent<Transform3D>();
+        var light = a.AddComponent<Light3D>();
+        light.Type = type;
+
+        if (type == LightType.Directional)
+        {
+            t.EulerAngles = new XnaVector3(-50f, 30f, 0f);
+        }
+        else
+        {
+            t.Position = new XnaVector3(0f, 3f, 0f);
+            light.Range = 10f;
+        }
+
+        Spawn(scene, a);
+    }
+
+    private void Spawn(Scene scene, Actor actor)
+    {
+        // Honour the hierarchy's selection so a preset lands where the user is looking.
+        string layer = EditorState.SelectedLayer?.Name ?? "default";
+        scene.AddActor(actor, layer);
+        EditorState.SelectActor(actor);
+        ConsoleLog.Add($"Created {actor.Name}", LogLevel.Info);
+    }
+
+    // -------------------------------------------------------------------------
+    // Editor camera
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Builds the camera the 3D viewport renders through when the scene has none.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not added to the scene: it must not be saved with the level, must not
+    /// appear in the hierarchy, and must survive the scene being replaced. It is only used
+    /// as a fallback — a scene with its own MainCamera3D renders through that instead, so
+    /// what you see matches what the game will show.
+    /// </remarks>
+    private void CreateEditorCamera()
+    {
+        _editorCamera          = new Actor("(Editor Camera)");
+        _editorCameraTransform = _editorCamera.AddComponent<Transform3D>();
+        _editorCamera3D        = _editorCamera.AddComponent<Camera3D>();
+
+        _editorCameraTransform.Position = new XnaVector3(6f, 5f, 10f);
+        _editorCameraTransform.LookAt(XnaVector3.Zero);
     }
 
     // -------------------------------------------------------------------------
@@ -280,6 +602,15 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     // -------------------------------------------------------------------------
     private void DrawPanels()
     {
+        // The launcher is modal in spirit: while it is up, the workspace behind it is
+        // meaningless because no project is loaded.
+        if (EditorState.ShowProjectManager)
+        {
+            _projectManager.Draw();
+            FileDialog.Draw();
+            return;
+        }
+
         if (_engine?.SceneManager.ActiveScene != null)
         {
             _hierarchy.Draw(_engine.SceneManager.ActiveScene);
@@ -288,7 +619,43 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             _console.Draw(_engine.SceneManager.ActiveScene);
             _viewport.Draw(_viewportTarget, _imGui);
             _buildSettings.Draw();
+
+            _apiReference.Draw();
+            _codeEditor.Draw();
+            _git.Draw();
+
+            if (EditorState.ShowRenderStats) DrawRenderStats();
         }
+
+        // Last, so its modal sits above every panel.
+        FileDialog.Draw();
+    }
+
+    /// <summary>A small overlay of what the 3D renderer submitted last frame.</summary>
+    private void DrawRenderStats()
+    {
+        if (_engine == null) return;
+
+        var stats = _engine.Renderer3D.Stats;
+        bool open = EditorState.ShowRenderStats;
+
+        if (ImGui.Begin("Render Stats", ref open))
+        {
+            ImGui.Text($"FPS            {Time.Fps,8:F1}");
+            ImGui.Separator();
+            ImGui.Text($"Renderers      {stats.RenderersDrawn,8} drawn");
+            ImGui.Text($"               {stats.RenderersCulled,8} culled");
+            ImGui.Text($"               {stats.RenderersTotal,8} total");
+            ImGui.Separator();
+            ImGui.Text($"Draw calls     {stats.DrawCalls,8}");
+            ImGui.Text($"Triangles      {stats.Triangles,8:N0}");
+            ImGui.Separator();
+            ImGui.Text($"Lights         {stats.LightsActive,8}");
+            ImGui.Text($"Shadow casters {stats.ShadowCasters,8}");
+        }
+
+        ImGui.End();
+        EditorState.ShowRenderStats = open;
     }
 
     // -------------------------------------------------------------------------

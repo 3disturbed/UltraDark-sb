@@ -136,9 +136,11 @@ public class SceneManager
     }
 
     // -------------------------------------------------------------------------
-    // Lifecycle — called by SBEngine
+    // Lifecycle — driven by SBEngine, or by a host through SBEngine.TickHosted
     // -------------------------------------------------------------------------
-    internal void Update(float dt)
+
+    /// <summary>Ticks the active and additive scenes. Called once per frame.</summary>
+    public void Update(float dt)
     {
         ProcessPendingLoad();
         _activeScene?.Update(dt);
@@ -146,21 +148,24 @@ public class SceneManager
             s.Update(dt);
     }
 
-    internal void FixedUpdate(float dt)
+    /// <summary>Ticks the fixed step on every live scene.</summary>
+    public void FixedUpdate(float dt)
     {
         _activeScene?.FixedUpdate(dt);
         foreach (var s in _additiveScenes.ToArray())
             s.FixedUpdate(dt);
     }
 
-    internal void LateUpdate(float dt)
+    /// <summary>Runs LateUpdate on every live scene, after all Updates.</summary>
+    public void LateUpdate(float dt)
     {
         _activeScene?.LateUpdate(dt);
         foreach (var s in _additiveScenes.ToArray())
             s.LateUpdate(dt);
     }
 
-    internal void Draw(SpriteBatch sb)
+    /// <summary>Draws the 2D pass for every live scene into an open sprite batch.</summary>
+    public void Draw(SpriteBatch sb)
     {
         _activeScene?.Draw(sb);
         foreach (var s in _additiveScenes)

@@ -3,8 +3,12 @@ using System.Reflection;
 using System.Text;
 using ImGuiNET;
 using SexyBiscuit.Engine.Core;
+using MathHelper = Microsoft.Xna.Framework.MathHelper;
 using XnaColor = Microsoft.Xna.Framework.Color;
 using XnaVector2 = Microsoft.Xna.Framework.Vector2;
+using XnaVector3 = Microsoft.Xna.Framework.Vector3;
+using XnaVector4 = Microsoft.Xna.Framework.Vector4;
+using XnaQuaternion = Microsoft.Xna.Framework.Quaternion;
 
 namespace SexyBiscuit.Editor.Panels;
 
@@ -244,12 +248,54 @@ public sealed class InspectorPanel
             {
                 var xv = (XnaVector2)(value ?? XnaVector2.Zero);
                 var sv = new Vector2(xv.X, xv.Y);
-                ImGui.SetNextItemWidth(80f);
-                if (ImGui.DragFloat("##vx", ref sv.X, 0.1f)) { }
-                ImGui.SameLine();
-                ImGui.SetNextItemWidth(80f);
-                if (ImGui.DragFloat("##vy", ref sv.Y, 0.1f)) { }
-                prop.SetValue(component, new XnaVector2(sv.X, sv.Y));
+
+                // Only write when a drag actually changed something. Writing every frame
+                // marked the transform dirty continuously, which defeats the engine's
+                // lazy world-transform cache for every selected actor.
+                bool changed = DragComponent("X", ref sv.X);
+                changed |= DragComponent("Y", ref sv.Y, sameLine: true);
+
+                if (changed) prop.SetValue(component, new XnaVector2(sv.X, sv.Y));
+            }
+            else if (pType == typeof(XnaVector3))
+            {
+                var xv = (XnaVector3)(value ?? XnaVector3.Zero);
+                var sv = new Vector3(xv.X, xv.Y, xv.Z);
+
+                bool changed = DragComponent("X", ref sv.X);
+                changed |= DragComponent("Y", ref sv.Y, sameLine: true);
+                changed |= DragComponent("Z", ref sv.Z, sameLine: true);
+
+                if (changed) prop.SetValue(component, new XnaVector3(sv.X, sv.Y, sv.Z));
+            }
+            else if (pType == typeof(XnaVector4))
+            {
+                var xv = (XnaVector4)(value ?? XnaVector4.Zero);
+                var sv = new Vector4(xv.X, xv.Y, xv.Z, xv.W);
+
+                if (ImGui.DragFloat4("##v", ref sv, 0.05f))
+                    prop.SetValue(component, new XnaVector4(sv.X, sv.Y, sv.Z, sv.W));
+            }
+            else if (pType == typeof(XnaQuaternion))
+            {
+                // Quaternions are edited as Euler degrees. Nobody can reason about raw
+                // xyzw, and the round-trip through Euler is stable as long as the widget
+                // only writes back the axis the user actually dragged.
+                var q = (XnaQuaternion)(value ?? XnaQuaternion.Identity);
+                var euler = QuaternionToEuler(q);
+                var sv = new Vector3(euler.X, euler.Y, euler.Z);
+
+                bool changed = DragComponent("P", ref sv.X, tooltip: "Pitch (degrees)");
+                changed |= DragComponent("Y", ref sv.Y, sameLine: true, tooltip: "Yaw (degrees)");
+                changed |= DragComponent("R", ref sv.Z, sameLine: true, tooltip: "Roll (degrees)");
+
+                if (changed)
+                {
+                    prop.SetValue(component, XnaQuaternion.CreateFromYawPitchRoll(
+                        MathHelper.ToRadians(sv.Y),
+                        MathHelper.ToRadians(sv.X),
+                        MathHelper.ToRadians(sv.Z)));
+                }
             }
             else if (pType == typeof(XnaColor))
             {
@@ -289,6 +335,51 @@ public sealed class InspectorPanel
         {
             ImGui.PopID();
         }
+    }
+
+    /// <summary>
+    /// One labelled component of a multi-axis drag field. Returns true only when the
+    /// user actually changed it.
+    /// </summary>
+    private static bool DragComponent(string label, ref float value, bool sameLine = false,
+                                      string? tooltip = null)
+    {
+        if (sameLine) ImGui.SameLine();
+
+        ImGui.PushID(label);
+        ImGui.TextDisabled(label);
+        ImGui.SameLine(0f, 4f);
+        ImGui.SetNextItemWidth(58f);
+
+        bool changed = ImGui.DragFloat("##d", ref value, 0.05f);
+
+        if (tooltip != null && ImGui.IsItemHovered())
+            ImGui.SetTooltip(tooltip);
+
+        ImGui.PopID();
+        return changed;
+    }
+
+    /// <summary>Converts a quaternion to pitch/yaw/roll in degrees for display.</summary>
+    private static Vector3 QuaternionToEuler(XnaQuaternion q)
+    {
+        float sinr = 2f * (q.W * q.X + q.Y * q.Z);
+        float cosr = 1f - 2f * (q.X * q.X + q.Y * q.Y);
+        float pitch = MathF.Atan2(sinr, cosr);
+
+        float sinp = 2f * (q.W * q.Y - q.Z * q.X);
+        float yaw = MathF.Abs(sinp) >= 1f
+            ? MathF.CopySign(MathF.PI / 2f, sinp)
+            : MathF.Asin(sinp);
+
+        float siny = 2f * (q.W * q.Z + q.X * q.Y);
+        float cosy = 1f - 2f * (q.Y * q.Y + q.Z * q.Z);
+        float roll = MathF.Atan2(siny, cosy);
+
+        return new Vector3(
+            MathHelper.ToDegrees(pitch),
+            MathHelper.ToDegrees(yaw),
+            MathHelper.ToDegrees(roll));
     }
 
     // -------------------------------------------------------------------------
