@@ -126,19 +126,55 @@ public class Scene
             layer.Draw(sb);
     }
 
-    internal void Destroy()
+    /// <summary>
+    /// Destroys every actor in the scene and drops its layers.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SceneManager"/> calls this when a scene is replaced or unloaded. Call it
+    /// yourself for a scene you created directly with <c>new Scene(...)</c> — in a test, a
+    /// tool, or a headless server. It is not optional bookkeeping: components register
+    /// themselves in static registries (<see cref="Rendering.MeshRenderer.All"/>,
+    /// <see cref="Rendering.Light3D.All"/>, <see cref="Gameplay.PlayerStart.All"/> and the
+    /// rest) and only leave them on destroy, so a dropped scene leaves its actors visible
+    /// to the renderer and to spawn selection forever.
+    /// </remarks>
+    public void Destroy()
     {
         foreach (var layer in _layers)
             layer.Destroy();
+
         _layers.Clear();
+        _markedForDestroy.Clear();
     }
 
+    /// <summary>
+    /// Applies every <see cref="MarkForDestroy"/> queued during this frame.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Layer.RemoveActor"/> only queues, so the layer's pending list is
+    /// flushed here too. Without that the actor survived until the next frame's
+    /// <see cref="Layer.Update"/> — two frames to destroy something, which contradicts
+    /// the documented "removed at the end of the current frame" and left destroyed
+    /// actors updating one more time.
+    /// </remarks>
     private void FlushDestroyQueue()
     {
+        if (_markedForDestroy.Count == 0) return;
+
+        var touched = new HashSet<Layer>();
+
         foreach (var actor in _markedForDestroy)
         {
-            actor.Layer_?.RemoveActor(actor);
+            var layer = actor.Layer_;
+            if (layer == null) continue;
+
+            layer.RemoveActor(actor);
+            touched.Add(layer);
         }
+
         _markedForDestroy.Clear();
+
+        foreach (var layer in touched)
+            layer.FlushPending();
     }
 }

@@ -18,19 +18,19 @@ public sealed class Transform : Component
     public Vector2 LocalPosition
     {
         get => _localPosition;
-        set { _localPosition = value; _dirty = true; }
+        set { _localPosition = value; MarkDirty(); }
     }
 
     public float LocalRotation
     {
         get => _localRotation;
-        set { _localRotation = value; _dirty = true; }
+        set { _localRotation = value; MarkDirty(); }
     }
 
     public Vector2 LocalScale
     {
         get => _localScale;
-        set { _localScale = value; _dirty = true; }
+        set { _localScale = value; MarkDirty(); }
     }
 
     // -------------------------------------------------------------------------
@@ -50,7 +50,7 @@ public sealed class Transform : Component
             // offset. Inverting through this transform would be circular — it would use
             // the very position being assigned.
             _localPosition = _parent == null ? value : _parent.InverseTransformPoint(value);
-            _dirty = true;
+            MarkDirty();
         }
     }
 
@@ -60,7 +60,7 @@ public sealed class Transform : Component
         set
         {
             _localRotation = _parent == null ? value : value - _parent.Rotation;
-            _dirty = true;
+            MarkDirty();
         }
     }
 
@@ -78,7 +78,7 @@ public sealed class Transform : Component
                     ? new Vector2(value.X / ps.X, value.Y / ps.Y)
                     : value;
             }
-            _dirty = true;
+            MarkDirty();
         }
     }
 
@@ -116,7 +116,7 @@ public sealed class Transform : Component
             Scale    = worldScl;
         }
 
-        _dirty = true;
+        MarkDirty();
     }
 
     private void AddChild(Transform c)    => _children.Add(c);
@@ -187,10 +187,25 @@ public sealed class Transform : Component
                 scaled.X * cos - scaled.Y * sin,
                 scaled.X * sin + scaled.Y * cos);
         }
+    }
 
-        // Propagate dirty to children
+    /// <summary>
+    /// Marks this transform and its whole subtree as needing recalculation.
+    /// </summary>
+    /// <remarks>
+    /// Every local mutation goes through here rather than setting <c>_dirty</c> alone.
+    /// Marking only self was not enough: a descendant whose own flag was already clear
+    /// returned its cached world transform without ever consulting the ancestor that
+    /// moved, so moving a root left the rest of the chain behind. Recursion stops at a
+    /// subtree that is already dirty, so a burst of edits in one frame costs one walk.
+    /// </remarks>
+    private void MarkDirty()
+    {
+        if (_dirty) return;
+        _dirty = true;
+
         foreach (var child in _children)
-            child._dirty = true;
+            child.MarkDirty();
     }
 
     // -------------------------------------------------------------------------

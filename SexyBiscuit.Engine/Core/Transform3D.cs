@@ -18,25 +18,25 @@ public sealed class Transform3D : Component
     public Vector3 LocalPosition
     {
         get => _localPosition;
-        set { _localPosition = value; _dirty = true; }
+        set { _localPosition = value; MarkDirty(); }
     }
 
     public Quaternion LocalRotation
     {
         get => _localRotation;
-        set { _localRotation = value; _dirty = true; }
+        set { _localRotation = value; MarkDirty(); }
     }
 
     public Vector3 LocalScale
     {
         get => _localScale;
-        set { _localScale = value; _dirty = true; }
+        set { _localScale = value; MarkDirty(); }
     }
 
     public Vector3 LocalEulerAngles
     {
         get => QuaternionToEuler(_localRotation);
-        set { _localRotation = EulerToQuaternion(value); _dirty = true; }
+        set { _localRotation = EulerToQuaternion(value); MarkDirty(); }
     }
 
     // -------------------------------------------------------------------------
@@ -56,7 +56,7 @@ public sealed class Transform3D : Component
             // offset. Inverting through this transform would be circular — it would use
             // the very position being assigned.
             _localPosition = _parent == null ? value : _parent.InverseTransformPoint(value);
-            _dirty = true;
+            MarkDirty();
         }
     }
 
@@ -68,7 +68,7 @@ public sealed class Transform3D : Component
             _localRotation = _parent == null
                 ? value
                 : Quaternion.Inverse(_parent.Rotation) * value;
-            _dirty = true;
+            MarkDirty();
         }
     }
 
@@ -86,7 +86,7 @@ public sealed class Transform3D : Component
                     ? new Vector3(value.X / ps.X, value.Y / ps.Y, value.Z / ps.Z)
                     : value;
             }
-            _dirty = true;
+            MarkDirty();
         }
     }
 
@@ -131,7 +131,7 @@ public sealed class Transform3D : Component
             Scale    = ws;
         }
 
-        _dirty = true;
+        MarkDirty();
     }
 
     private void AddChild(Transform3D c)    => _children.Add(c);
@@ -210,8 +210,25 @@ public sealed class Transform3D : Component
                            + _parent.Position;
         }
 
+    }
+
+    /// <summary>
+    /// Marks this transform and its whole subtree as needing recalculation.
+    /// </summary>
+    /// <remarks>
+    /// Every local mutation goes through here rather than setting <c>_dirty</c> alone.
+    /// Marking only self was not enough: a descendant whose own flag was already clear
+    /// returned its cached world transform without ever consulting the ancestor that
+    /// moved, so moving a root left the rest of the chain behind. Recursion stops at a
+    /// subtree that is already dirty, so a burst of edits in one frame costs one walk.
+    /// </remarks>
+    private void MarkDirty()
+    {
+        if (_dirty) return;
+        _dirty = true;
+
         foreach (var child in _children)
-            child._dirty = true;
+            child.MarkDirty();
     }
 
     // -------------------------------------------------------------------------

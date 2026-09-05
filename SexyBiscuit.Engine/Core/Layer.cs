@@ -25,6 +25,9 @@ public class Layer
     private readonly List<Actor>  _pendingAdd    = new();
     private readonly List<Actor>  _pendingRemove = new();
 
+    // Reused scratch so a flush allocates nothing.
+    private readonly List<Actor>  _flushBuffer   = new();
+
     public IReadOnlyList<Actor> Actors => _actors;
 
     // -------------------------------------------------------------------------
@@ -71,21 +74,45 @@ public class Layer
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------
+    /// <summary>
+    /// Applies queued adds and removes. Called at the start of <see cref="Update"/>.
+    /// </summary>
+    /// <remarks>
+    /// Both queues are drained into a local buffer before being walked, because
+    /// <c>Start</c> and <c>OnDestroy</c> routinely spawn or destroy actors — a game mode
+    /// spawning its controller and pawn is the obvious case — and that would otherwise
+    /// mutate the list mid-enumeration. Anything queued during the flush lands on the
+    /// next frame, which matches the documented "added at the start of the next Update".
+    /// </remarks>
     internal void FlushPending()
     {
-        foreach (var a in _pendingAdd)
+        if (_pendingAdd.Count > 0)
         {
-            _actors.Add(a);
-            a.InternalStart();
-        }
-        _pendingAdd.Clear();
+            _flushBuffer.Clear();
+            _flushBuffer.AddRange(_pendingAdd);
+            _pendingAdd.Clear();
 
-        foreach (var a in _pendingRemove)
-        {
-            a.InternalDestroy();
-            _actors.Remove(a);
+            foreach (var a in _flushBuffer)
+            {
+                _actors.Add(a);
+                a.InternalStart();
+            }
         }
-        _pendingRemove.Clear();
+
+        if (_pendingRemove.Count > 0)
+        {
+            _flushBuffer.Clear();
+            _flushBuffer.AddRange(_pendingRemove);
+            _pendingRemove.Clear();
+
+            foreach (var a in _flushBuffer)
+            {
+                a.InternalDestroy();
+                _actors.Remove(a);
+            }
+        }
+
+        _flushBuffer.Clear();
     }
 
     internal void Update(float dt)
@@ -122,9 +149,11 @@ public class Layer
             a.InternalDraw(sb);
     }
 
-    internal void Destroy()
+    /// <summary>Destroys every actor in the layer and clears its queues.</summary>
+    public void Destroy()
     {
-        foreach (var a in _actors)
+        // Snapshot: InternalDestroy runs OnDestroy, which can touch the actor list.
+        foreach (var a in _actors.ToArray())
             a.InternalDestroy();
         _actors.Clear();
         _pendingAdd.Clear();
