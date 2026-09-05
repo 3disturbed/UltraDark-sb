@@ -155,6 +155,59 @@ public abstract class Widget
     }
 
     // -------------------------------------------------------------------------
+    // Drawing helpers
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// A shared 1x1 white texture, created on first use from the batch's device.
+    /// </summary>
+    /// <remarks>
+    /// Lets a widget draw a solid fill without the caller supplying a texture, so a
+    /// freshly constructed widget is visible rather than invisible. Cached per device
+    /// because the device can change when the window is recreated.
+    /// </remarks>
+    public static Texture2D GetPixel(SpriteBatch sb)
+    {
+        if (_pixel is { IsDisposed: false } && ReferenceEquals(_pixelDevice, sb.GraphicsDevice))
+            return _pixel;
+
+        _pixel = new Texture2D(sb.GraphicsDevice, 1, 1);
+        _pixel.SetData(new[] { Color.White });
+        _pixelDevice = sb.GraphicsDevice;
+        return _pixel;
+    }
+
+    private static Texture2D?     _pixel;
+    private static GraphicsDevice? _pixelDevice;
+
+    /// <summary>Fills a rectangle with a solid colour.</summary>
+    protected static void FillRect(SpriteBatch sb, Rectangle rect, Color color)
+        => sb.Draw(GetPixel(sb), rect, color);
+
+    /// <summary>Draws a rectangle outline of the given thickness, inset within the rectangle.</summary>
+    protected static void StrokeRect(SpriteBatch sb, Rectangle rect, Color color, int thickness = 1)
+    {
+        if (thickness <= 0) return;
+        var px = GetPixel(sb);
+
+        sb.Draw(px, new Rectangle(rect.X, rect.Y, rect.Width, thickness), color);
+        sb.Draw(px, new Rectangle(rect.X, rect.Bottom - thickness, rect.Width, thickness), color);
+        sb.Draw(px, new Rectangle(rect.X, rect.Y, thickness, rect.Height), color);
+        sb.Draw(px, new Rectangle(rect.Right - thickness, rect.Y, thickness, rect.Height), color);
+    }
+
+    /// <summary>Draws text left-aligned and vertically centred within a rectangle.</summary>
+    protected static void DrawTextInRect(SpriteBatch sb, SpriteFont? font, string text,
+                                         Rectangle rect, Color color, float padding = 4f)
+    {
+        if (font == null || string.IsNullOrEmpty(text)) return;
+
+        var size = font.MeasureString(text);
+        var position = new Vector2(rect.X + padding, rect.Y + (rect.Height - size.Y) * 0.5f);
+        sb.DrawString(font, text, position, color);
+    }
+
+    // -------------------------------------------------------------------------
     // Utility
     // -------------------------------------------------------------------------
     /// <summary>Effective tint multiplied by opacity alpha.</summary>
