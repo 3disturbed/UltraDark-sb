@@ -25,6 +25,16 @@ public sealed class AssistantSettings
     public bool WriteProjectMcpConfig { get; set; } = true;
 
     // -------------------------------------------------------------------------
+    // Engine source
+    // -------------------------------------------------------------------------
+
+    /// <summary>The engine repository root, when it cannot be found by walking up from the editor binary.</summary>
+    public string? EngineRepoPath { get; set; }
+
+    /// <summary>Give the embedded assistant access to the engine repository as well as the project.</summary>
+    public bool IncludeEngineRepo { get; set; } = true;
+
+    // -------------------------------------------------------------------------
     // Persistence
     // -------------------------------------------------------------------------
 

@@ -10,6 +10,12 @@ namespace SexyBiscuit.Editor.Panels;
 /// </summary>
 public sealed class AssetBrowserPanel
 {
+    // Build output and tool folders are not content.
+    private static readonly HashSet<string> HiddenFolders = new(StringComparer.OrdinalIgnoreCase) { "bin", "obj", ".git", ".vs", ".sexybiscuit" };
+
+    private static string[] VisibleDirectories(string path)
+        => Directory.GetDirectories(path).Where(d => !HiddenFolders.Contains(Path.GetFileName(d))).ToArray();
+
     private string _currentDirectory = "";
     private string _filter           = "";
     private byte[] _filterBuf        = new byte[128];
@@ -87,7 +93,7 @@ public sealed class AssetBrowserPanel
 
         bool isSelected = _currentDirectory == dirPath;
         bool hasSubDirs = false;
-        try { hasSubDirs = Directory.GetDirectories(dirPath).Length > 0; }
+        try { hasSubDirs = VisibleDirectories(dirPath).Length > 0; }
         catch { }
 
         var flags = ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.SpanFullWidth;
@@ -105,7 +111,7 @@ public sealed class AssetBrowserPanel
         {
             try
             {
-                foreach (var sub in Directory.GetDirectories(dirPath).OrderBy(d => d))
+                foreach (var sub in VisibleDirectories(dirPath).OrderBy(d => d))
                     DrawDirectoryTree(sub);
             }
             catch { }
@@ -141,7 +147,7 @@ public sealed class AssetBrowserPanel
         try
         {
             files   = Directory.GetFiles(_currentDirectory).OrderBy(f => f).ToArray();
-            subdirs = Directory.GetDirectories(_currentDirectory).OrderBy(d => d).ToArray();
+            subdirs = VisibleDirectories(_currentDirectory).OrderBy(d => d).ToArray();
         }
         catch
         {

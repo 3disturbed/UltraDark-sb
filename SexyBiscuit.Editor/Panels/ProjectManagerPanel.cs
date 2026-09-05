@@ -15,6 +15,7 @@ public sealed class ProjectManagerPanel
 
     // New project fields
     private byte[] _newProjectName = new byte[256];
+    private bool   _addCodeProject = true;
     private string _newProjectDir = "";
     private int _selectedTemplate = 0;
     private string[] _templateNames = Array.Empty<string>();
@@ -253,6 +254,7 @@ public sealed class ProjectManagerPanel
         ImGui.SameLine(140);
         ImGui.SetNextItemWidth(-1);
         ImGui.InputText("##ProjectName", _newProjectName, (uint)_newProjectName.Length);
+        ImGui.Checkbox("Add C# project (GameMode, PlayerController, Character starters)", ref _addCodeProject);
 
         ImGui.Spacing();
 
@@ -321,6 +323,13 @@ public sealed class ProjectManagerPanel
 
                 string projectDir = Path.Combine(_newProjectDir, projectName);
                 string resultPath = ProjectFile.CreateNew(projectName, projectDir, templatePath);
+
+                if (_addCodeProject)
+                {
+                    var engine = GameCode.GameCodeHost.Instance?.EngineLocation
+                        ?? new Engine.Code.EngineLocation(null, AppContext.BaseDirectory, Engine.Code.AssemblyIdentity.RunningEngineMvid);
+                    Engine.Code.CodeProjectGenerator.Generate(projectDir, projectName, engine);
+                }
                 ConsoleLog.Add($"Created new project: {projectName}", LogLevel.Info);
                 EditorState.OpenProject(resultPath);
 

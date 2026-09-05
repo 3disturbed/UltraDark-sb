@@ -30,10 +30,29 @@ public sealed class PlaceActorsPanel
 
     public PlaceActorsPanel()
     {
-        // One list for the palette, the Create menu and the MCP place_actor tool.
-        _entries = ActorPresets.All
-            .Select(p => new Entry(p.Category, p.Name, p.Description, p.Build))
-            .ToList();
+        _entries = new List<Entry>();
+        RebuildEntries();
+
+        // Project actor classes come and go with every hot reload.
+        GameCode.GameCodeHost.TypesChanged += RebuildEntries;
+    }
+
+    /// <summary>One list for the palette, the Create menu and the MCP place_actor tool, plus the project's own actor classes.</summary>
+    private void RebuildEntries()
+    {
+        _entries.Clear();
+        _entries.AddRange(ActorPresets.All.Select(p => new Entry(p.Category, p.Name, p.Description, p.Build)));
+
+        var types = GameCode.GameCodeHost.Instance?.Types;
+        if (types == null) return;
+
+        foreach (var type in types.ActorTypes.OrderBy(t => t.Name))
+        {
+            var captured = type;
+            _entries.Add(new Entry("Project", type.Name,
+                Engine.Mcp.XmlDocs.Summary(type) ?? type.FullName ?? type.Name,
+                () => (Actor)Activator.CreateInstance(captured)!));
+        }
     }
 
     public void Draw(Scene? scene)
@@ -90,7 +109,17 @@ public sealed class PlaceActorsPanel
 
     private static void Place(Scene scene, Entry entry)
     {
-        var actor = entry.Build();
+        Actor actor;
+        try
+        {
+            actor = entry.Build();
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Add($"Could not build '{entry.Name}': {ex.GetBaseException().Message}", LogLevel.Error);
+            return;
+        }
+
         scene.AddActor(actor, EditorState.SelectedLayer?.Name ?? "default");
         EditorState.SelectActor(actor);
         ConsoleLog.Add($"Placed {entry.Name}", LogLevel.Info);

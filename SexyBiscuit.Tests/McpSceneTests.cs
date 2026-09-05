@@ -161,13 +161,14 @@ public class SceneToolTests
     public void ListActorPresetsDescribesTheComponentsEachOneCreates()
     {
         using var h = new SceneToolHarness();
+        int renderersBefore = MeshRenderer.All.Count;
 
         var list = h.Ok("list_actor_presets").AsObject()["value"]!.AsArray();
         var camera = list.Single(p => p!["name"]!.GetValue<string>() == "Camera")!;
         Assert.Contains("Camera3D", camera["components"]!.AsArray().Select(c => c!.GetValue<string>()));
 
         // Building the samples must not leave them in the renderer registry.
-        Assert.Empty(MeshRenderer.All);
+        Assert.Equal(renderersBefore, MeshRenderer.All.Count);
     }
 
     [Fact]

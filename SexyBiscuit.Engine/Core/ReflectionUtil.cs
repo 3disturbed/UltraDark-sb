@@ -58,6 +58,12 @@ public static class ReflectionUtil
         lock (_retired) return _retired.Contains(assembly);
     }
 
+    /// <summary>Reverses <see cref="RetireAssembly"/>. For tests; a retired game generation never comes back.</summary>
+    internal static void UnretireAssembly(Assembly assembly)
+    {
+        lock (_retired) _retired.Remove(assembly);
+    }
+
     /// <summary>
     /// Every assembly worth reflecting over: not dynamic, not retired. Includes assemblies
     /// loaded into collectible load contexts, which is how game code becomes visible to the

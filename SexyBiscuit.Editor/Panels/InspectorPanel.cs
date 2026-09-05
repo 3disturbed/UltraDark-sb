@@ -17,6 +17,12 @@ namespace SexyBiscuit.Editor.Panels;
 /// </summary>
 public sealed class InspectorPanel
 {
+    public InspectorPanel()
+    {
+        // Game code reloads bring new component types; the cached list must not outlive them.
+        GameCode.GameCodeHost.TypesChanged += () => _componentTypes = null;
+    }
+
     // Buffers for text inputs
     private byte[] _nameBuf  = new byte[256];
     private byte[] _tagBuf   = new byte[128];

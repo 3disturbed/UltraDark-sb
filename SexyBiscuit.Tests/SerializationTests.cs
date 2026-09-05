@@ -441,9 +441,16 @@ public class AssetPathAndScriptTests
 
             var restored = SceneSerializer.Deserialize(json);
             restored.FlushPendingActors();
-            var copy = restored.FindByName("Cube")!.GetComponent<MeshRenderer>()!;
-            Assert.Equal(Color.Red, copy.AlbedoColor);
-            Assert.Equal(0.25f, copy.Roughness, 4);
+            try
+            {
+                var copy = restored.FindByName("Cube")!.GetComponent<MeshRenderer>()!;
+                Assert.Equal(Color.Red, copy.AlbedoColor);
+                Assert.Equal(0.25f, copy.Roughness, 4);
+            }
+            finally
+            {
+                restored.Destroy();
+            }
         }
         finally
         {
@@ -467,7 +474,14 @@ public class AssetPathAndScriptTests
 
             var restored = SceneSerializer.Deserialize(json);
             restored.FlushPendingActors();
-            Assert.Equal("Assets/Models/tree.obj", restored.FindByName("Tree")!.GetComponent<MeshRenderer>()!.ModelPath);
+            try
+            {
+                Assert.Equal("Assets/Models/tree.obj", restored.FindByName("Tree")!.GetComponent<MeshRenderer>()!.ModelPath);
+            }
+            finally
+            {
+                restored.Destroy();
+            }
         }
         finally
         {

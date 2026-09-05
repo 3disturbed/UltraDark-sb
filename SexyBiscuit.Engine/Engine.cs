@@ -193,4 +193,68 @@ public class EngineConfig
     /// base class; supply a factory to install your own subclass.
     /// </summary>
     public Func<GameInstance>? GameInstanceFactory { get; set; }
+
+    /// <summary>
+    /// Reads a project's <c>ProjectSettings.json</c> — the same file the editor reads. Keys are
+    /// matched ignoring case, so the templates' PascalCase and the demo's camelCase both work;
+    /// <c>appName</c> is accepted for <see cref="WindowTitle"/>. A missing file gives defaults
+    /// with a note on stderr, and <c>Assets/ProjectSettings.json</c> is tried as well.
+    /// </summary>
+    public static EngineConfig FromProjectSettings(string path)
+    {
+        var config = new EngineConfig();
+
+        string? file = null;
+        foreach (var candidate in new[] { path, Path.Combine("Assets", path) })
+        {
+            string full = Core.ProjectPaths.Resolve(candidate);
+            if (File.Exists(full)) { file = full; break; }
+        }
+
+        if (file == null)
+        {
+            Console.Error.WriteLine($"[EngineConfig] '{path}' not found; using defaults.");
+            return config;
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(file));
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                var value = property.Value;
+                switch (property.Name.ToLowerInvariant())
+                {
+                    case "windowtitle":
+                    case "appname":          if (value.ValueKind == System.Text.Json.JsonValueKind.String) config.WindowTitle = value.GetString() ?? config.WindowTitle; break;
+                    case "windowwidth":      if (value.TryGetInt32(out int w)) config.WindowWidth = w; break;
+                    case "windowheight":     if (value.TryGetInt32(out int h)) config.WindowHeight = h; break;
+                    case "fullscreen":       config.Fullscreen = ReadBool(value, config.Fullscreen); break;
+                    case "vsync":            config.VSync = ReadBool(value, config.VSync); break;
+                    case "showcursor":       config.ShowCursor = ReadBool(value, config.ShowCursor); break;
+                    case "allowresize":      config.AllowResize = ReadBool(value, config.AllowResize); break;
+                    case "hotreload":        config.HotReload = ReadBool(value, config.HotReload); break;
+                    case "enable3d":         config.Enable3D = ReadBool(value, config.Enable3D); break;
+                    case "enablephysics2d":  config.EnablePhysics2D = ReadBool(value, config.EnablePhysics2D); break;
+                    case "enablephysics3d":  config.EnablePhysics3D = ReadBool(value, config.EnablePhysics3D); break;
+                    case "startscene":       if (value.ValueKind == System.Text.Json.JsonValueKind.String) config.StartScene = value.GetString() ?? ""; break;
+                    case "fixedtimestep":    if (value.TryGetSingle(out float step) && step > 0f) config.FixedTimestep = step; break;
+                    case "maxfixedstepsperframe": if (value.TryGetInt32(out int steps) && steps > 0) config.MaxFixedStepsPerFrame = steps; break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[EngineConfig] Could not read '{file}': {ex.Message}; using defaults.");
+        }
+
+        return config;
+
+        static bool ReadBool(System.Text.Json.JsonElement element, bool fallback) => element.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.True  => true,
+            System.Text.Json.JsonValueKind.False => false,
+            _ => fallback,
+        };
+    }
 }

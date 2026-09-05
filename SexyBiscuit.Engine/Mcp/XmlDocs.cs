@@ -13,6 +13,17 @@ namespace SexyBiscuit.Engine.Mcp;
 public static class XmlDocs
 {
     private static readonly ConcurrentDictionary<Assembly, Lazy<Dictionary<string, string>>> _index = new();
+    private static readonly ConcurrentDictionary<Assembly, string> _explicitPaths = new();
+
+    /// <summary>
+    /// Names the documentation file for an assembly that has no location — one loaded from a
+    /// stream, as hot-reloaded game code is.
+    /// </summary>
+    public static void Register(Assembly assembly, string xmlPath)
+    {
+        _explicitPaths[assembly] = xmlPath;
+        _index.TryRemove(assembly, out _);
+    }
     private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex Tags       = new(@"<see\s+cref=""[A-Z]:([^""]+)""\s*/>|<see\s+cref=""([^""]+)""\s*/>|<paramref\s+name=""([^""]+)""\s*/>|<[^>]+>", RegexOptions.Compiled);
 
@@ -27,7 +38,11 @@ public static class XmlDocs
     }
 
     /// <summary>Drops the cached index for an assembly, e.g. when game code is unloaded.</summary>
-    public static void Forget(Assembly assembly) => _index.TryRemove(assembly, out _);
+    public static void Forget(Assembly assembly)
+    {
+        _index.TryRemove(assembly, out _);
+        _explicitPaths.TryRemove(assembly, out _);
+    }
 
     private static string? Lookup(Assembly assembly, string key)
     {
@@ -39,10 +54,18 @@ public static class XmlDocs
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        string? location = assembly.IsDynamic ? null : assembly.Location;
-        if (string.IsNullOrEmpty(location)) return result;
+        string? xmlPath;
+        if (_explicitPaths.TryGetValue(assembly, out var explicitPath))
+        {
+            xmlPath = explicitPath;
+        }
+        else
+        {
+            string? location = assembly.IsDynamic ? null : assembly.Location;
+            if (string.IsNullOrEmpty(location)) return result;
+            xmlPath = Path.ChangeExtension(location, ".xml");
+        }
 
-        string xmlPath = Path.ChangeExtension(location, ".xml");
         if (!File.Exists(xmlPath)) return result;
 
         try

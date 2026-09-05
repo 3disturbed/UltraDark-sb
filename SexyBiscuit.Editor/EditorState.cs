@@ -121,6 +121,9 @@ public static class EditorState
     /// <summary>Shows the Git panel.</summary>
     public static bool ShowGitPanel { get; set; }
 
+    /// <summary>Shows the C# Project panel.</summary>
+    public static bool ShowCodeProject { get; set; } = true;
+
     /// <summary>Shows the project launcher. Open on startup until a project is chosen.</summary>
     public static bool ShowProjectManager { get; set; } = true;
 

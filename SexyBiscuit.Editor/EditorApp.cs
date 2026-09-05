@@ -3,7 +3,9 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using SexyBiscuit.Editor.Assistant;
+using SexyBiscuit.Editor.GameCode;
 using SexyBiscuit.Editor.Panels;
+using SexyBiscuit.Engine.Code;
 using SexyBiscuit.Engine;
 using SexyBiscuit.Engine.AI;
 using SexyBiscuit.Engine.Animation;
@@ -65,6 +67,12 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     // project opens, so an external Claude Code connects inside its start-up budget.
     private McpHost? _mcp;
 
+    // The C# side: builds, hot reload, engine restart.
+    private GameCodeHost?     _code;
+    private EditorRestart?    _restart;
+    private CodeProjectPanel? _codeProject;
+    private readonly LaunchOptions _options;
+
     // Frames still to simulate while paused (step_frame).
     private int _pendingSteps;
 
@@ -93,9 +101,15 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     // -------------------------------------------------------------------------
     // Construction
     // -------------------------------------------------------------------------
-    public EditorApp()
+    public EditorApp() : this(new LaunchOptions())
+    {
+    }
+
+    public EditorApp(LaunchOptions options)
     {
         Instance = this;
+        _options = options;
+        if (options.ResetLayout) _resetLayoutRequested = true;
 
         _graphics = new GraphicsDeviceManager(this)
         {
@@ -163,9 +177,20 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         System.Diagnostics.Trace.Listeners.Add(new EditorTraceListener());
         ConsoleLog.Add("SexyBiscuit Editor initialized.", LogLevel.Info);
 
-        _mcp = new McpHost(AssistantSettings.Load());
+        var settings = AssistantSettings.Load();
+        if (_options.McpPort is { } port) settings.McpPort = port;
+
+        _mcp = new McpHost(settings);
         _mcp.Start();
         EditorState.OnProjectOpened += root => _mcp?.OnProjectOpened(root);
+
+        _code    = new GameCodeHost(_mcp, settings);
+        _restart = new EditorRestart(_mcp, _code);
+        _mcp.Registry.RegisterInstance(new GameCodeTools(_mcp, _code, _restart), new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
+        EditorState.OnProjectOpened += root => _code?.OnProjectOpened(root);
+        _codeProject = new CodeProjectPanel(_code);
+
+        ApplyLaunchOptions();
 
 
     }
@@ -183,6 +208,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         // Tool calls queued by the MCP server run here, first, so anything they spawn is
         // flushed into the layers below and drawn this same frame.
         _mcp?.Drain();
+        _code?.Update();
 
         var keys = Keyboard.GetState();
 
@@ -220,7 +246,17 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
             // Input goes to the game only while playing, so editor shortcuts and the
             // game's own bindings never fight over the same keys.
-            _engine?.Tick(dt, pumpInput: true);
+            try
+            {
+                _engine?.Tick(dt, pumpInput: true);
+            }
+            catch (Exception ex)
+            {
+                // Per-component exceptions are isolated by GameCodeHost; anything that still
+                // escapes (a subsystem, physics) ends play mode instead of the editor.
+                ConsoleLog.Add($"Play mode stopped: {ex.GetType().Name}: {ex.Message}", LogLevel.Error);
+                ExitPlayMode();
+            }
         }
         else if (EditorState.IsPlaying && EditorState.IsPlayPaused && _pendingSteps > 0 && _engineInitialized)
         {
@@ -366,6 +402,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             bool git = EditorState.ShowGitPanel;
             if (ImGui.MenuItem("Git", "", git))
                 EditorState.ShowGitPanel = !git;
+
+            bool codeProject = EditorState.ShowCodeProject;
+            if (ImGui.MenuItem("C# Project", "", codeProject))
+                EditorState.ShowCodeProject = !codeProject;
 
             ImGui.Separator();
 
@@ -577,6 +617,27 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             ImGui.EndMenu();
         }
 
+        // Actor classes from the project's own C# code, if any is loaded.
+        var projectTypes = _code?.Types?.ActorTypes;
+        if (projectTypes is { Count: > 0 } && ImGui.BeginMenu("Project"))
+        {
+            foreach (var type in projectTypes.OrderBy(t => t.Name))
+            {
+                if (!ImGui.MenuItem(type.Name)) continue;
+
+                try
+                {
+                    Spawn(scene, (Actor)Activator.CreateInstance(type)!);
+                }
+                catch (Exception ex)
+                {
+                    ConsoleLog.Add($"Could not create {type.Name}: {ex.GetBaseException().Message}", LogLevel.Error);
+                }
+            }
+
+            ImGui.EndMenu();
+        }
+
         ImGui.EndMenu();
     }
 
@@ -746,6 +807,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         ImGuiDock.DockWindow("Details",        rightBottom);
         ImGuiDock.DockWindow("Build Settings", rightBottom);
         ImGuiDock.DockWindow("Git",            rightBottom);
+        ImGuiDock.DockWindow("C# Project",     rightBottom);
         ImGuiDock.DockWindow("Render Stats",   rightBottom);
 
         ImGuiDock.Finish(dockspaceId);
@@ -899,6 +961,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             _apiReference.Draw();
             _codeEditor.Draw();
             _git.Draw();
+            _codeProject?.Draw();
 
             if (EditorState.ShowRenderStats) DrawRenderStats();
         }
@@ -1141,9 +1204,102 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
     protected override void OnExiting(object sender, EventArgs args)
     {
+        _code?.Dispose();
+        _code = null;
         _mcp?.Stop();
         _mcp = null;
         base.OnExiting(sender, args);
+    }
+
+    /// <summary>The C# code host, when it started.</summary>
+    public GameCodeHost? Code => _code;
+
+    /// <summary>The engine rebuild + restart service.</summary>
+    public EditorRestart? Restart => _restart;
+
+    /// <summary>Raised after the editor resumed a project and scene following a self-restart.</summary>
+    public event Action<RelaunchState>? Resumed;
+
+    // -------------------------------------------------------------------------
+    // Launch options and resume
+    // -------------------------------------------------------------------------
+
+    private void ApplyLaunchOptions()
+    {
+        if (_options.ResumeFile != null)
+        {
+            var state = RelaunchStateFile.TryReadAndDelete(
+                string.IsNullOrEmpty(_options.ResumeFile) ? null : _options.ResumeFile,
+                maxAge: TimeSpan.FromMinutes(10));
+
+            if (state != null)
+            {
+                ResumeFrom(state);
+                return;
+            }
+
+            ConsoleLog.Add("No resume state found; starting normally.", LogLevel.Warning);
+        }
+
+        if (!string.IsNullOrEmpty(_options.ProjectFile))
+        {
+            EditorState.OpenProject(_options.ProjectFile);
+            if (!string.IsNullOrEmpty(_options.ScenePath)) OpenSceneFile(_options.ScenePath, keepPath: true);
+        }
+    }
+
+    private void ResumeFrom(RelaunchState state)
+    {
+        if (!string.IsNullOrEmpty(state.ProjectFile) && File.Exists(state.ProjectFile))
+            EditorState.OpenProject(state.ProjectFile);
+
+        if (!string.IsNullOrEmpty(state.ScenePath) && File.Exists(state.ScenePath))
+        {
+            // An autosaved scene was unsaved before the restart: load it but keep it "unsaved".
+            OpenSceneFile(state.ScenePath, keepPath: !state.SceneWasAutosaved);
+            if (state.SceneWasAutosaved) EditorState.SceneDirty = true;
+        }
+
+        var scene = _engine?.SceneManager.ActiveScene;
+        if (scene != null && state.SelectedActorName != null)
+        {
+            scene.FlushPendingActors();
+            EditorState.SelectActor(scene.FindByName(state.SelectedActorName));
+        }
+        if (scene != null && state.SelectedLayer != null)
+            EditorState.SelectedLayer = scene.Layers.FirstOrDefault(l => l.Name == state.SelectedLayer);
+
+        ConsoleLog.Add($"Resumed after {state.Reason}{(state.BuildSummary != null ? $" ({state.BuildSummary})" : "")}.", LogLevel.Info);
+        Resumed?.Invoke(state);
+    }
+
+    /// <summary>Loads a scene file without a dialog. Relative paths resolve against the project root.</summary>
+    public bool OpenSceneFile(string path, bool keepPath = true)
+    {
+        string full = Path.IsPathRooted(path) ? path : Path.Combine(EditorState.ProjectPath, path);
+        if (!File.Exists(full))
+        {
+            ConsoleLog.Add($"Scene not found: {full}", LogLevel.Warning);
+            return false;
+        }
+
+        try
+        {
+            var loaded = SceneSerializer.LoadFromFile(full);
+            _engine?.SceneManager.AdoptScene(loaded);
+            loaded.FlushPendingActors();
+            EditorState.SelectActor(null);
+            EditorState.CurrentScenePath = keepPath ? RelativeToProject(full) : null;
+            EditorState.SceneDirty       = false;
+            _mcp?.Undo.Clear();
+            ConsoleLog.Add($"Opened: {full}", LogLevel.Info);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Add($"Failed to open scene: {ex.Message}", LogLevel.Error);
+            return false;
+        }
     }
 
     // -------------------------------------------------------------------------
