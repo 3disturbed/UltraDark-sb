@@ -75,26 +75,16 @@ foreach (var layer in scene.Layers)
 
 ---
 
-### 4. `LoadScene` does not read the file
+### 4. `LoadScene` only reads files that exist
 
-`SceneManager.LoadScene(path)` creates a **new empty `Scene` named after the
-file** and never opens it.
+`SceneManager.LoadScene(path)` deserialises the file on the next `Update` when
+it exists (`.scene` or `.json`, resolved against `ProjectPaths.Root`). When it
+does not, you get the old behaviour — an **empty scene named after the file** —
+plus a warning on stderr, so a typo in a path looks like a working but empty
+level.
 
-```csharp
-// ProcessPendingLoad, in full:
-var scene = new Scene(Path.GetFileNameWithoutExtension(path));
-```
-
-**Fix** — deserialise the file yourself and hand it to `AdoptScene`:
-
-```csharp
-var loaded = SceneSerializer.LoadFromFile(path);
-SceneManager.AdoptScene(loaded);
-```
-
-`AdoptScene` destroys the previous scene, re-adds `DontDestroyOnLoad` actors,
-and raises the load/unload events. Prefer it to `LoadScene` for anything
-file-backed.
+`SceneSerializer.LoadFromFile` + `SceneManager.AdoptScene` is the synchronous
+route and throws on a missing file; prefer it when you want to know.
 
 **Check** — `sed -n '/private void ProcessPendingLoad/,/^    }/p' SexyBiscuit.Engine/Core/SceneManager.cs`
 
@@ -319,16 +309,27 @@ models go through other paths — see
 `SoundEffect.FromStream` is the only decoder wired up, despite NAudio being
 referenced.
 
-### Component type names in scene files must be namespace-qualified
+### Component type names are short by default
 
-`Type.GetType("Camera2D")` returns null and the component is skipped with a
-warning. Write `"SexyBiscuit.Engine.Rendering.Camera2D"`.
+`SceneSerializer` writes `"type": "Camera2D"` and resolves short, full or
+assembly-qualified names across every loaded assembly, so hand-written files can
+use short names too. The trap is a **short name two loaded types share**: the
+writer falls back to the full name for those, but a hand-written short name picks
+whichever the scan finds first. A name that resolves to nothing becomes a
+`MissingComponent` placeholder rather than a dropped component.
 
-### Textures do not survive serialisation
+**Check** — `grep -n 'TypeNameStyle' SexyBiscuit.Engine/Scene/SceneSerializer.cs`
 
-Only primitives, `string`, `bool`, `enum`, `Vector2/3/4`, `Quaternion` and
-`Color` round-trip. Store an asset **path** in a string property and resolve it
-in `Start`.
+### Textures survive only through their path twins
+
+`Texture2D`, `SoundEffect` and `Model` are not serialisable.
+`SpriteRenderer.TexturePath`, `AudioSource.ClipPath`, `MeshRenderer.ModelPath` and
+`Material3D`'s `*MapPath` properties are, and the asset loads from the path
+after the scene does. Assign a texture directly and it is lost on save; set the
+path and it round-trips. Your own components need the same pattern: a `string`
+path plus a `Start` that resolves it.
+
+**Check** — `grep -n 'TexturePath\|ClipPath\|ModelPath' SexyBiscuit.Engine/Rendering/SpriteRenderer.cs SexyBiscuit.Engine/Audio/AudioSource.cs SexyBiscuit.Engine/Rendering/MeshRenderer.cs`
 
 ### A `new Scene(...)` you drop leaks into static registries
 
@@ -347,44 +348,45 @@ scene.Destroy();          // not optional
 
 ---
 
-### The bundled `.scene` templates use a different shape
+### The bundled `.scene` templates load now
 
-`"transform": {x, y, …}` and short type names. `SceneSerializer` reads
-`"position"/"rotation"/"scale"` arrays and qualified type names. Treat the
-templates as design references.
+Template scenes use the canonical format with short type names, which the
+serialiser reads. The remaining mismatch is the camera tag (`"MainCamera"`, not
+`"MainCamera3D"`); see [Three different camera tags](#three-different-camera-tags).
+
+**Check** — `head -20 'Templates/3D Scene/Scenes/Main3D.scene'`
 
 ---
 
-## Editor
+## Editor and assistant
 
-### Play mode restore discards the scene
+### Actor ids change after undo, redo or load
 
-`ExitPlayMode` deserialises the F5 snapshot into `restored`, then calls
-`SceneManager.CreateScene(restored.Name)` — which makes a *new empty scene* and
-drops `restored`'s actors. **Save before pressing F5.**
+The Assistant's tools address actors by id or name. Ids are assigned at
+construction, and undo, redo, play-mode Stop and `load_scene` all rebuild the
+scene from JSON, so every id changes. Re-query with `get_scene_summary` or
+`find_actors` instead of remembering ids; names are stable, and an ambiguous
+name comes back with the candidates.
 
-`SceneManager.AdoptScene` exists for exactly this, and the Open Scene path was
-already switched to it; play mode was not:
+**Check** — `grep -n 'ids change' SexyBiscuit.Engine/Mcp/Tools/SceneResources.cs`
 
-```csharp
-var restored = SceneSerializer.Deserialize(_sceneSnapshot);
-_engine.SceneManager.AdoptScene(restored);      // was CreateScene(restored.Name)
-```
+### Tool calls during play mode are discarded on Stop
 
-**Check** — `sed -n '/private void ExitPlayMode/,/^    }/p' SexyBiscuit.Editor/EditorApp.cs`
+Every mutating tool still runs while the scene is playing, but Stop restores the
+pre-play snapshot, so the result carries a warning that the change is temporary
+and no undo snapshot is taken. Stop first, then edit.
 
-### Play mode only runs `Update`
+**Check** — `grep -n 'IsPlaying' SexyBiscuit.Editor/Assistant/McpHost.cs`
 
-The editor calls `SceneManager.ActiveScene.Update(dt)` directly rather than
-`SBEngine.Update`, so there is no `FixedUpdate`, no `LateUpdate`, no physics
-stepping and no tween updates. Components whose logic lives in `FixedUpdate`
-look inert.
+### Claude Code must be signed in for the binary the editor runs
 
-The 2D viewport also draws with a plain `SpriteBatch.Begin()` and **no camera
-transform**, so `Camera2D` has no effect there. The 3D viewport does respect
-`Camera3D.Main`.
+The embedded assistant runs a standalone `claude` binary with its own
+credentials; being signed in to the Claude desktop app does not count. The panel
+shows **Claude Code is not signed in** with a button that opens a terminal —
+type `/login` there once, then **Resume**.
 
-**Check** — `grep -n -A5 'EditorState.IsPlaying &&' SexyBiscuit.Editor/EditorApp.cs`
+**Check** — `dotnet run --project SexyBiscuit.Editor -- --assistant-selftest`
+
 
 ## Build and shipping
 
