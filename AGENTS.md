@@ -219,7 +219,37 @@ dotnet run --no-build --project SexyBiscuit.Build -c Release -- \
 ```
 
 `--all` is web, win-x64, osx-arm64 and linux-x64. `--platform <name>` picks one; it accepts RIDs
-and `BuildSettings` platform names. Each desktop target is published self-contained and
+and `BuildSettings` platform names.
+
+### Android: every publish should carry an APK, and none can yet
+
+**The intent is that a published game always has an Android build on `/downloads`** — most people
+who will try a prototype have a phone in their hand and no desktop open.
+
+**It is not currently possible, and the failure used to be silent.** `--platform android` staged
+scripts and scenes, skipped the publish step with "not a desktop platform", packaged a **17 KB zip
+containing no application at all** — no APK, no AAB, no native libraries — and reported `ok` in
+0.0 seconds. Published, that becomes an Android download on the site that cannot be installed,
+which is worse than having no Android build. It now fails instead:
+
+```
+android    FAILED     0.0s
+  Android: [Publish] Android cannot be built yet: there is no publish path for it, so the
+  archive would hold no application. An APK needs the .NET `android` workload and an Android
+  SDK installed; until then do not ship this target.
+```
+
+To make it possible, and in this order:
+
+1. `dotnet workload install android`, plus an Android SDK and a JDK on the build machine.
+2. `RuntimeIdentifiers.For` returns null for `BuildPlatform.Android` — mobile needs its own path,
+   not a RID: a `net8.0-android` head project that references the game, then `dotnet publish` to
+   an `.apk` (or `.aab`), signed.
+3. Drop the guard in `ExportPipeline` once that path exists, and add Android to `--all`.
+
+Until step 3 lands, a phone playtest goes through the **PWA web export**, which installs to a home
+screen and runs offline — `node html5/tools/export.js Games/<Name> --pwa`. That is the Android
+story today, and it is a good one; it is just not an APK. Each desktop target is published self-contained and
 single-file, with its native libraries beside the binary, then archived: `.zip` for Windows and
 web, `.tar.gz` for macOS and Linux so the executable bit survives.
 

@@ -237,6 +237,20 @@ public class ExportPipeline
             }
             if (published?.Success != true) success = false;
         }
+        else if (rid == null && IsMobile(config.Platform))
+        {
+            // Android and iOS have no publish path yet, and skipping quietly is
+            // the dangerous version of that: the run reported "ok" in 0.0s and
+            // packaged a 17 KB zip of loose scripts and scenes — no APK, no
+            // native libraries, nothing that runs. Published to DarksGames that
+            // becomes an Android download that cannot be installed, which is
+            // worse than having no Android build at all.
+            _errors.Add($"[Publish] {config.Platform} cannot be built yet: there is no publish path "
+                + "for it, so the archive would hold no application. An APK needs the .NET `android` "
+                + "workload and an Android SDK installed; until then do not ship this target.");
+            Log($"Step 10: FAILED ({config.Platform} has no publish path).");
+            success = false;
+        }
         else
         {
             Log(rid == null ? "Step 10: Skipped (not a desktop platform)." : "Step 10: Skipped (publish disabled).");
@@ -365,6 +379,13 @@ public class ExportPipeline
     // -------------------------------------------------------------------------
 
     // Step 1 — Validate
+    /// <summary>
+    /// A platform whose archive is meaningless without a published application.
+    /// Web is deliberately not here: its export IS the artifact.
+    /// </summary>
+    private static bool IsMobile(BuildPlatform platform)
+        => platform is BuildPlatform.Android or BuildPlatform.iOS;
+
     private void ValidateConfig(PlatformConfig config, string platformOutputDir)
     {
         var failures = new List<string>();
