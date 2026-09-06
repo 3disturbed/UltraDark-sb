@@ -52,13 +52,12 @@ Two phases, two toolchains:
 
    ```bash
    node html5/tools/export.js Games/<Name> --pwa       # dist/Web/ + <slug>-<version>-web.zip
-   node html5/tools/upload.js Games/<Name>/dist/*-web.zip --game "<Name>"
    ```
 
    The export is a static site with a manifest and a service worker, so it installs to a
-   phone's home screen from the site and runs offline. The uploader POSTs the zip and its
-   metadata to `$SB_UPLOAD_URL` with `$SB_UPLOAD_TOKEN` and prints the URL. In CI the same two
-   commands run on every push, so the build never enters the agent's context at all.
+   phone's home screen and runs offline. The web build is hosted on the server as a Game Card;
+   it is not sent to the publish API, which serves downloadable native builds. In CI the export
+   runs on every push, so the build never enters the agent's context at all.
 5. **Feedback comes back as text** — an issue, or `Games/<Name>/FEEDBACK.md` — and the next
    session opens with the brief and the feedback, not with a scene dump.
 

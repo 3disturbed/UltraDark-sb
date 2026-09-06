@@ -11,13 +11,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { validateProject, templateProjects, report, checkScript } from '../tools/validate.js';
 import { exportWeb, fill, readGitSha, slugify } from '../tools/export.js';
 import { zipDirectory, listZip } from '../tools/lib/zip.js';
 import { solidPng, parseHexColour } from '../tools/lib/png.js';
-import { upload, UploadConfigError } from '../tools/upload.js';
+import { publish, encodeMeta, platformFor, channelFor, UploadConfigError } from '../tools/upload.js';
 import { serve } from '../tools/serve.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -192,58 +193,115 @@ test('small helpers behave', () => {
 // upload
 // -----------------------------------------------------------------------------
 
-test('the uploader posts multipart with a bearer token and reads the location back', async () => {
+test('the uploader publishes raw bytes with a base64url metadata header, and retries a rate limit', async () => {
     const received = [];
-    let failFirst = true;
+    let limitFirst = true;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-publish-'));
+    const file = path.join(dir, 'hello-world-1.0.0-osx-arm64.tar.gz');
+    const payload = Buffer.from('not really an archive');
+    fs.writeFileSync(file, payload);
+    const checksum = crypto.createHash('sha256').update(payload).digest('hex');
+
     const server = http.createServer((request, response) => {
-        let body = '';
-        request.on('data', (chunk) => { body += chunk.toString('latin1'); });
+        const chunks = [];
+        request.on('data', (chunk) => chunks.push(chunk));
         request.on('end', () => {
-            received.push({ headers: request.headers, body });
-            if (failFirst) {
-                failFirst = false;
-                response.writeHead(503).end('busy');
+            received.push({ headers: request.headers, body: Buffer.concat(chunks) });
+            if (limitFirst) {
+                limitFirst = false;
+                response.writeHead(429, { 'content-type': 'application/json', 'retry-after': '1' })
+                        .end(JSON.stringify({ error: 'rate_limited', message: 'slow down' }));
                 return;
             }
-            response.writeHead(201, { 'content-type': 'application/json' }).end(JSON.stringify({ url: 'https://darksgames.app/builds/42' }));
+            response.writeHead(201, { 'content-type': 'application/json' }).end(JSON.stringify({
+                id: 'bld_1234', url: 'https://darksgames.app/api/v1/builds/bld_1234/download',
+                page: 'https://darksgames.app/downloads', checksum, replaced: false, published: true, ready: true,
+            }));
         });
     });
     await new Promise((resolve) => server.listen(0, resolve));
-    const url = `http://127.0.0.1:${server.address().port}/upload`;
-
-    const dir = tempDir('upload');
-    const file = path.join(dir, 'hello-world-1.0.0-web.zip');
-    fs.writeFileSync(file, 'not really a zip');
+    const url = `http://127.0.0.1:${server.address().port}/publish`;
 
     try {
-        const result = await upload({
-            file, url, token: 'secret', metadata: { game: 'Hello World', version: '1.0.0' }, fields: { game: 'title' },
+        const result = await publish({
+            file, url, token: 'secret', appSlug: 'hello-world', title: 'Hello World',
+            version: '1.0.0', rid: 'osx-arm64', channel: 'alpha', notes: 'First cut.', env: {},
         });
+
         assert.equal(result.ok, true);
         assert.equal(result.status, 201);
-        assert.equal(result.url, 'https://darksgames.app/builds/42');
-        assert.equal(result.platform, 'web');
-        assert.equal(received.length, 2, 'a 5xx is retried once');
+        assert.equal(result.id, 'bld_1234');
+        assert.equal(result.url, 'https://darksgames.app/api/v1/builds/bld_1234/download');
+        assert.equal(result.platform, 'macos');
+        assert.equal(received.length, 2, 'a 429 is retried once');
 
         const last = received.at(-1);
         assert.equal(last.headers.authorization, 'Bearer secret');
-        assert.ok(last.headers['content-type'].startsWith('multipart/form-data'));
-        assert.ok(last.body.includes('name="title"'), 'the field map renamed game to title');
-        assert.ok(last.body.includes('Hello World'));
-        assert.ok(last.body.includes('name="sha256"'));
-        assert.ok(last.body.includes('filename="hello-world-1.0.0-web.zip"'));
+        assert.equal(last.headers['content-type'], 'application/octet-stream');
+        assert.ok(last.body.equals(payload), 'the body is the file itself, not a multipart wrapper');
 
-        await assert.rejects(() => upload({ file, url, token: undefined, env: {} }), UploadConfigError);
-        await assert.rejects(() => upload({ file, url: undefined, token: 't', env: {} }), UploadConfigError);
+        const meta = JSON.parse(Buffer.from(last.headers['x-build-meta'], 'base64url').toString());
+        assert.equal(meta.appSlug, 'hello-world');
+        assert.equal(meta.title, 'Hello World');
+        assert.equal(meta.version, '1.0.0');
+        assert.equal(meta.platform, 'macos');
+        assert.equal(meta.channel, 'alpha');
+        assert.equal(meta.fileName, 'hello-world-1.0.0-osx-arm64.tar.gz');
+        assert.equal(meta.replace, true);
+        assert.equal(meta.publish, true);
+        assert.ok(meta.notes.startsWith('First cut.'));
+        assert.ok(meta.notes.includes('osx-arm64'), 'the provenance line names the runtime');
     } finally {
         server.close();
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });
 
-// -----------------------------------------------------------------------------
-// serve --watch
-// -----------------------------------------------------------------------------
+test('the uploader refuses what the API would reject, before sending anything', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-publish-'));
+    const archive = path.join(dir, 'game-1.0.0-win-x64.zip');
+    fs.writeFileSync(archive, 'x');
+
+    try {
+        const base = { file: archive, url: 'http://127.0.0.1:1/none', appSlug: 'game', version: '1.0.0', env: {} };
+
+        // No token anywhere, and a token file that does not exist.
+        await assert.rejects(() => publish({ ...base, tokenFile: path.join(dir, 'nope') }), UploadConfigError);
+
+        // A web build is not a downloadable game build.
+        await assert.rejects(() => publish({ ...base, token: 't', platform: 'web' }), UploadConfigError);
+
+        // The extension allowlist is a security control, not tidiness.
+        const page = path.join(dir, 'game-1.0.0-win-x64.html');
+        fs.writeFileSync(page, 'x');
+        await assert.rejects(() => publish({ ...base, file: page, token: 't' }), UploadConfigError);
+
+        // The slug is the game's identity on the site.
+        await assert.rejects(() => publish({ ...base, token: 't', appSlug: 'Hello World!' }), UploadConfigError);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('the metadata header maps platforms and channels the way the C# target does', () => {
+    assert.equal(platformFor('win-x64'), 'windows');
+    assert.equal(platformFor('osx-arm64'), 'macos');
+    assert.equal(platformFor('linux-x64'), 'linux');
+    assert.equal(platformFor('android'), 'android');
+    assert.equal(platformFor('ios'), 'other');
+    assert.equal(platformFor('web'), null);
+
+    assert.equal(channelFor('alpha'), 'alpha');
+    assert.equal(channelFor('dev'), 'alpha');
+    assert.equal(channelFor('playtest'), 'beta');
+    assert.equal(channelFor('release'), 'demo');
+
+    // A note long enough to overflow the 6144-byte header is given back until it fits.
+    const meta = { appSlug: 'game', title: 'Game', version: '1.0.0', fileName: 'g.zip', notes: '—'.repeat(3900), requirements: '' };
+    const header = encodeMeta(meta);
+    assert.ok(header.length <= 6144, `header was ${header.length}`);
+    assert.ok(meta.notes.endsWith('…'));
+});
 
 test('the dev server injects the reload snippet only when watching', async () => {
     const root = tempDir('serve');

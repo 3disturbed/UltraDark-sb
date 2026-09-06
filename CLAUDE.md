@@ -24,7 +24,7 @@ For the HTML5 port, from `html5/` (node 22+, no dependencies):
     npm run validate -- <projectDir>          # scenes load, scripts compile, scripts stay in the contract
     node tools/serve.js --watch               # editor at /html5/editor/, player at /html5/runtime/, live reload
     node tools/export.js <projectDir> --pwa   # a static, installable web build and its zip
-    node tools/upload.js <zip>                # POST to $SB_UPLOAD_URL with $SB_UPLOAD_TOKEN
+    node tools/upload.js <archive>            # publish a native build to DarksGames ($DG_BUILD_TOKEN)
 
 Conventions: XML docs on public API, `// ----` section banners, British spelling in prose, tests
 named like `ARoundTripPreservesActorIdentity` with a why-comment, scenes destroyed in tests,

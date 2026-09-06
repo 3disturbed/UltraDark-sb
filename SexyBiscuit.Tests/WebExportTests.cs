@@ -218,13 +218,14 @@ public class WebExportTests : IDisposable
 
         // A BuildSettings.json in the project wins over the defaults.
         File.WriteAllText(Path.Combine(_projectDir, PlatformConfig.FileName),
-            """{ "appName": "Saved Name", "version": "2.0.0", "outputDirectory": "out", "upload": { "url": "https://example.test/upload", "fields": { "game": "title" } } }""");
+            """{ "appName": "Saved Name", "version": "2.0.0", "outputDirectory": "out", "upload": { "url": "https://example.test/upload", "appSlug": "saved-name", "channel": "beta" } }""");
         var saved = PlatformConfig.ForProject(_projectDir, BuildPlatform.Web);
         Assert.Equal("Saved Name", saved.AppName);
         Assert.Equal("2.0.0", saved.Version);
         Assert.Equal("out", saved.OutputDirectory);
         Assert.Equal("https://example.test/upload", saved.Upload.Url);
-        Assert.Equal("title", saved.Upload.Fields["game"]);
+        Assert.Equal("saved-name", saved.Upload.AppSlug);
+        Assert.Equal("beta", saved.Upload.Channel);
         Assert.Contains("Scenes/Main.scene", saved.Scenes);
     }
 

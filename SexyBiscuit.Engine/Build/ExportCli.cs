@@ -22,6 +22,24 @@ public sealed record ExportCliOptions
     public bool                Publish         { get; init; } = true;
     public bool                Package         { get; init; } = true;
     public bool                Upload          { get; init; }
+
+    /// <summary>Publish channel: alpha, beta or demo.</summary>
+    public string?             Channel         { get; init; }
+
+    /// <summary>Release notes for the download card.</summary>
+    public string?             Notes           { get; init; }
+
+    /// <summary>What a player needs to run it.</summary>
+    public string?             Requirements    { get; init; }
+
+    /// <summary>The catalog slug to publish under.</summary>
+    public string?             AppSlug         { get; init; }
+
+    /// <summary>Upload the build but leave it hidden on the site.</summary>
+    public bool                Hidden          { get; init; }
+
+    /// <summary>Make a version collision an error instead of replacing the build in place.</summary>
+    public bool                NoReplace       { get; init; }
     public string?             Version         { get; init; }
     public string?             ReportPath      { get; init; }
     public bool                Quiet           { get; init; }
@@ -47,7 +65,13 @@ public sealed record ExportCliOptions
           --version <v>         overrides the version for this run
           --no-publish          stage content only; do not run dotnet publish
           --no-zip              do not archive the platform folders
-          --upload              send every archive to the configured upload target
+          --upload              publish every native archive to DarksGames (needs DG_BUILD_TOKEN)
+          --channel <c>         alpha (default), beta or demo
+          --app-slug <slug>     the catalog slug to publish under; defaults to the app name
+          --notes <text>        release notes for the download card
+          --requirements <text> what a player needs, e.g. "Windows 10+, 4 GB RAM"
+          --hidden              upload the build but leave it hidden on the site
+          --no-replace          fail instead of replacing a build with the same version and platform
           --report <path>       also write build-report.json here
           --keystore <path>     Android keystore (validated, not yet built)
           --depot <id>          Steam depot id
@@ -60,6 +84,8 @@ public sealed record ExportCliOptions
         var platforms = new List<BuildPlatform>();
         var errors    = new List<string>();
         string? projectDir = null, output = null, file = null, keystore = null, version = null, report = null;
+        string? channel = null, notes = null, requirements = null, appSlug = null;
+        bool hidden = false, noReplace = false;
         uint? depot = null;
         BuildConfiguration? configuration = null;
         bool all = false, publish = true, package = true, upload = false, quiet = false, help = false;
@@ -145,6 +171,12 @@ public sealed record ExportCliOptions
                 case "--no-publish": publish = false; break;
                 case "--no-zip":     package = false; break;
                 case "--upload":     upload  = true;  break;
+                case "--channel":      channel      = Next(arg); break;
+                case "--notes":        notes        = Next(arg); break;
+                case "--requirements": requirements = Next(arg); break;
+                case "--app-slug":     appSlug      = Next(arg); break;
+                case "--hidden":       hidden    = true; break;
+                case "--no-replace":   noReplace = true; break;
                 case "--quiet":      quiet   = true;  break;
                 case "--help":
                 case "-h":           help    = true;  break;
@@ -160,6 +192,8 @@ public sealed record ExportCliOptions
             ProjectDir = projectDir, Platforms = platforms, All = all, Configuration = configuration,
             OutputDirectory = output, ConfigFile = file, Keystore = keystore, Depot = depot,
             Publish = publish, Package = package, Upload = upload, Version = version, ReportPath = report,
+            Channel = channel, Notes = notes, Requirements = requirements, AppSlug = appSlug,
+            Hidden = hidden, NoReplace = noReplace,
             Quiet = quiet, Help = help, Errors = errors,
         };
     }

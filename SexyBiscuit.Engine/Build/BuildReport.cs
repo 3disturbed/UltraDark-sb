@@ -16,6 +16,9 @@ public sealed record TargetReport
     public long         ArchiveBytes { get; init; }
     public List<string> Errors       { get; init; } = new();
     public string?      UploadUrl    { get; init; }
+
+    /// <summary>The site's build id, stable across a re-publish of the same version.</summary>
+    public string?      UploadId     { get; init; }
     public int?         UploadStatus { get; init; }
 }
 

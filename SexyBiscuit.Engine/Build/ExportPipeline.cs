@@ -14,6 +14,9 @@ using SexyBiscuit.Engine.Build.Upload;
 
 namespace SexyBiscuit.Engine.Build;
 
+/// <summary>Finds the target a build publishes to, or explains why there is none.</summary>
+public delegate IUploadTarget? UploadTargetLookup(UploadSettings settings, out string? why);
+
 /// <summary>Result of a full <see cref="ExportPipeline.Export"/> run.</summary>
 public record ExportResult(
     bool          Success,
@@ -39,6 +42,9 @@ public sealed record ExportOptions
 
     /// <summary>Overrides <see cref="PlatformConfig.Version"/> for this run.</summary>
     public string? Version { get; init; }
+
+    /// <summary>False publishes the build hidden, to be made live from the site later. Null follows the project's setting.</summary>
+    public bool? PublishListing { get; init; }
 }
 
 /// <summary>
@@ -63,6 +69,9 @@ public class ExportPipeline
 
     /// <summary>Where log lines go as they happen. Null for a quiet run; the result carries the log anyway.</summary>
     public TextWriter? Output { get; set; } = Console.Out;
+
+    /// <summary>How an upload target is found. Replaced by tests so a publish never opens a socket.</summary>
+    public UploadTargetLookup UploadTargetFactory { get; set; } = (UploadSettings settings, out string? why) => UploadTargets.FromConfig(settings, out why);
 
     /// <summary>The theme colour of the exported page and its manifest.</summary>
     public const string ThemeColour = "#12141a";
@@ -303,33 +312,34 @@ public class ExportPipeline
 
         if (options.Upload)
         {
-            var target = UploadTargets.FromConfig(template.Upload, out var why);
+            var target = UploadTargetFactory(template.Upload, out var why);
             if (target == null)
             {
-                progress?.Report($"upload skipped: {why}");
-                targetReports = targetReports.Select(t => t with { Errors = t.Success ? t.Errors : t.Errors }).ToList();
+                progress?.Report($"publish skipped: {why}");
                 foreach (var t in targetReports.Where(t => t.Archive != null))
-                    t.Errors.Add($"not uploaded: {why}");
+                    t.Errors.Add($"not published: {why}");
             }
             else
             {
-                var metadata = new UploadMetadata(template.AppName, version, template.Configuration.ToString(),
-                                                  GitInfo.TryReadHeadSha(root), template.Upload.Channel, DateTime.UtcNow);
-                for (int i = 0; i < targetReports.Count; i++)
+                var staged   = new BuildReport { Targets = targetReports };
+                var pending  = BuildPublisher.ArtifactsFrom(staged, template.Upload, out var skipped);
+                foreach (var note in skipped) progress?.Report($"publish: {note}");
+
+                var metadata = BuildPublisher.MetadataFor(template, version, GitInfo.TryReadHeadSha(root), publish: options.PublishListing);
+                var results  = await BuildPublisher.PublishAsync(target, pending, metadata, template.Upload, progress, cancellation).ConfigureAwait(false);
+
+                foreach (var published in results)
                 {
-                    var t = targetReports[i];
-                    if (!t.Success || t.Archive == null) continue;
-
-                    var artifact = new UploadArtifact(t.Archive, (t.Rid ?? t.Platform).ToLowerInvariant(), t.Rid, t.ArchiveBytes);
-                    var uploaded = await target.UploadAsync(artifact, metadata, progress, cancellation).ConfigureAwait(false);
-                    progress?.Report($"upload {artifact.Platform}  {uploaded.Status?.ToString() ?? "ERR"}  {uploaded.Url ?? uploaded.Error}");
-
-                    targetReports[i] = t with
+                    int index = targetReports.FindIndex(t => t.Archive == published.Artifact);
+                    if (index < 0) continue;
+                    var t = targetReports[index];
+                    targetReports[index] = t with
                     {
-                        UploadUrl    = uploaded.Url,
-                        UploadStatus = uploaded.Status,
-                        Success      = t.Success && uploaded.Success,
-                        Errors       = uploaded.Success ? t.Errors : t.Errors.Append($"upload failed: {uploaded.Error}").ToList(),
+                        UploadUrl    = published.Url,
+                        UploadStatus = published.Status,
+                        UploadId     = published.Id,
+                        Success      = t.Success && published.Success,
+                        Errors       = published.Success ? t.Errors : t.Errors.Append($"publish failed: {published.Error}").ToList(),
                     };
                 }
             }
@@ -894,6 +904,11 @@ public class ExportPipeline
         if (!string.IsNullOrWhiteSpace(options.Keystore)) template.AndroidKeystorePath = options.Keystore;
         if (options.Depot is { } depot) template.SteamDepotId = depot;
         if (!string.IsNullOrWhiteSpace(options.Version)) template.Version = options.Version;
+        if (!string.IsNullOrWhiteSpace(options.Channel))      template.Upload.Channel      = options.Channel;
+        if (!string.IsNullOrWhiteSpace(options.Notes))        template.Upload.Notes        = options.Notes;
+        if (!string.IsNullOrWhiteSpace(options.Requirements)) template.Upload.Requirements = options.Requirements;
+        if (!string.IsNullOrWhiteSpace(options.AppSlug))      template.Upload.AppSlug      = options.AppSlug;
+        if (options.NoReplace) template.Upload.Replace = false;
 
         var pipeline = new ExportPipeline { Output = options.Quiet ? null : Console.Out };
         var progress = new Progress<string>(line => { if (!options.Quiet) Console.WriteLine($"[sbengine] {line}"); });
@@ -906,6 +921,7 @@ public class ExportPipeline
                 Publish = options.Publish,
                 Package = options.Package,
                 Upload  = options.Upload,
+                PublishListing = options.Hidden ? false : null,
             }, progress).GetAwaiter().GetResult();
         }
         catch (Exception ex)

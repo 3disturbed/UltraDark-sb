@@ -73,12 +73,10 @@ under `html5/runtime/export/`, so there is one page, not two.
 The result is static files; serve them from anything. It will not run from `file://`,
 and a service worker needs HTTPS or localhost.
 
-```bash
-node html5/tools/upload.js Games/<Name>/dist/<slug>-<version>-web.zip --game "<Name>"
-```
-
-POSTs the zip and its metadata to `$SB_UPLOAD_URL` with `$SB_UPLOAD_TOKEN` and prints the
-URL. `html5/README.md` lists every tool and its flags.
+The web build is hosted on the server as a Game Card. `html5/tools/upload.js` publishes
+**native** archives to DarksGames, not web ones — see
+[18. Build & export](18-build-export.md#publishing-development-builds). `html5/README.md`
+lists every tool and its flags.
 
 `Web` is deliberately the last value in `BuildPlatform`: the editor's platform
 dropdown maps its selection by ordinal, so inserting a value anywhere else would

@@ -24,14 +24,18 @@ checkout (or in CI through `release.yml`).
    dotnet run --no-build --project SexyBiscuit.Build -c Release -- --project Games/<name> --all --upload --quiet
    ```
 
-   With `SB_UPLOAD_URL` and `SB_UPLOAD_TOKEN` set the archives are uploaded and the report
-   carries the URLs. Without them, drop `--upload` and hand over the archives in `dist/`. In
-   CI: `gh workflow run release.yml -f game=Games/<name> -f upload=true` then
+`--upload` publishes the **native** archives to DarksGames; the web build is not published
+   (it is hosted as a Game Card). The token comes from `DG_BUILD_TOKEN` or the first line of
+   `~/.sexybiscuit/dg-token`; without one, drop `--upload` and hand over the archives in
+   `dist/`. Add `--channel beta` for a playtest candidate, `--hidden` to upload without listing
+   it. In CI: `gh workflow run release.yml -f game=Games/<name> -f upload=true` then
    `gh run watch --exit-status`.
 
-   Inside the editor (the `sexybiscuit` MCP server is connected) the same run is
-   `run_tests` for the gate and `export_build` with `platforms: ["all"], upload: true`
-   for the build; `get_build_report` reads a run that outlived the wait.
+   Inside the editor (the `sexybiscuit` MCP server is connected) the same run is `run_tests`
+   for the gate and `export_build` with `platforms: ["all"]` for the build, then
+   `publish_build` to send the archives — it publishes what is already on disk, so a failed
+   publish never costs another twenty-minute desktop build. `get_build_report` reads a run
+   that outlived the wait.
 
 4. **Read the summary, not the log.** One line per target. Open the log (`dist/<Platform>/`
    is the staged folder; the CLI prints the error lines under a failed target) only for a

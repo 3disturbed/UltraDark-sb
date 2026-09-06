@@ -782,6 +782,7 @@ public static class ToolLabels
             case "run_scene_report": return "Play the scene and report";
             case "run_tests":        return $"Run the {a("project") ?? "engine"} tests";
             case "export_build":     return "Export the build";
+            case "publish_build":    return "Publish to DarksGames";
             case "get_build_report": return "Read the build report";
             case "get_project_info": return "Read project info";
             case "get_scene_summary": return "Read the scene";

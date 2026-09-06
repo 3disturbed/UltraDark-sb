@@ -42,13 +42,14 @@ Pick the closest one to the brief when the user does not name one.
 
 5. **Commit and push** (`git add Games/<name> && git commit -m "<name>: first playable" && git push -u origin main`).
 
-6. **Hand off a build.** With `SB_UPLOAD_URL` and `SB_UPLOAD_TOKEN` set:
+6. **Hand off a build.**
 
    ```bash
-   node html5/tools/export.js Games/<name> --pwa && node html5/tools/upload.js Games/<name>/dist/*-web.zip --game "<name>"
+   node html5/tools/export.js Games/<name> --pwa
    ```
 
-   Report the URL the uploader prints. Without an upload target, serve it:
+   The zip in `Games/<name>/dist/` goes on the server as a Game Card; it is not sent to the
+   publish API, which is for native builds. To let the team play it now, serve it:
    `node html5/tools/serve.js --watch` and report the LAN URL it prints, with
    `?project=/Games/<name>/`.
 

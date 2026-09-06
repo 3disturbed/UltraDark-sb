@@ -17,12 +17,12 @@ on:
         default: Release
         type: string
       upload:
-        description: Send the archives to the upload target (needs SB_UPLOAD_URL and SB_UPLOAD_TOKEN secrets)
+        description: Publish the native archives to DarksGames (needs the DG_BUILD_TOKEN secret)
         default: false
         type: boolean
       channel:
-        description: The release channel sent with an upload
-        default: dev
+        description: The publish channel - alpha, beta or demo
+        default: alpha
         type: string
   push:
     tags:
@@ -71,8 +71,7 @@ jobs:
           - { os: macos-latest,   platform: osx-arm64 }
     env:
       SEXYBISCUIT_REPO: ${{ github.workspace }}
-      SB_UPLOAD_URL: ${{ secrets.SB_UPLOAD_URL }}
-      SB_UPLOAD_TOKEN: ${{ secrets.SB_UPLOAD_TOKEN }}
+      DG_BUILD_TOKEN: ${{ secrets.DG_BUILD_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -90,6 +89,7 @@ jobs:
           extra=""
           [ -n "${{ needs.resolve.outputs.version }}" ] && extra="$extra --version ${{ needs.resolve.outputs.version }}"
           [ "${{ inputs.upload }}" = "true" ] && extra="$extra --upload"
+          [ -n "${{ inputs.channel }}" ] && extra="$extra --channel ${{ inputs.channel }}"
           dotnet run --no-build --project SexyBiscuit.Build -c Release -- \
             --project "${{ needs.resolve.outputs.game }}" \
             --platform ${{ matrix.platform }} \
