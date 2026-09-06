@@ -134,7 +134,7 @@ public sealed class McpServer
 
                 JsonElement? arguments = p is { ValueKind: JsonValueKind.Object } po && po.TryGetProperty("arguments", out var a) ? a : null;
                 var result = await Tools.InvokeAsync(name, arguments, context).ConfigureAwait(false);
-                return JsonRpcResponse.Success(id, result.ToJsonNode());
+                return JsonRpcResponse.Success(id, result.ToJsonNode(Tools.EmitStructuredContent));
             }
 
             case "resources/list":

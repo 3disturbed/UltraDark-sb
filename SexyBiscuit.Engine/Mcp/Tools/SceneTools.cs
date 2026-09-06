@@ -18,15 +18,31 @@ public sealed class SceneTools
     }
 
     [McpTool("get_scene_summary",
-        "Compact list of every actor in the open scene — id, name, class, layer, tag, component types, position — plus " +
-        "layer info and checks (main camera, light, player start, game mode). Ids change after undo, redo or load, so " +
-        "re-query rather than remembering them.",
+        "The scene at a glance: a header (layers, dirty flag, checks for camera, light, player start, game mode) then " +
+        "one line per actor — id, name, class, layer, tag, components, position. Page with offset and limit; " +
+        "compact=false gives the same as JSON. Ids change after undo, redo or load.",
         Label = "Read the scene summary")]
     public McpToolResult GetSceneSummary(
-        [McpParam("Include each actor's component type list")] bool includeComponents = true)
+        [McpParam("One text line per actor (default) or JSON")] bool compact = true,
+        [McpParam("Only actors in this layer")] string? layer = null,
+        [McpParam("Skip this many actors")] int offset = 0,
+        [McpParam("Actors per page")] int limit = 100,
+        [McpParam("Include each actor's component type list (JSON form)")] bool includeComponents = true)
     {
         var scene = RequireScene(_host);
-        return McpToolResult.Json(SceneViews.SceneSummary(scene, _host, _undo, includeComponents));
+
+        if (compact)
+            return McpToolResult.Text(SceneViews.SceneSummaryText(scene, _host, _undo, layer, offset, limit));
+
+        var summary = SceneViews.SceneSummary(scene, _host, _undo, includeComponents);
+        var actors  = summary["actors"]!.AsArray();
+        var kept    = actors.Where(a => layer == null || string.Equals(a?["layer"]?.GetValue<string>(), layer, StringComparison.OrdinalIgnoreCase)).ToList();
+        var page    = kept.Skip(Math.Max(0, offset)).Take(Math.Max(1, limit)).ToList();
+
+        foreach (var node in page) actors.Remove(node!);
+        summary["actors"] = new JsonArray(page.Select(n => (JsonNode)n!.DeepClone()).ToArray());
+        if (kept.Count > offset + limit) summary["nextOffset"] = offset + limit;
+        return McpToolResult.Json(summary);
     }
 
     [McpTool("get_scene_json",
@@ -36,18 +52,20 @@ public sealed class SceneTools
     public McpToolResult GetSceneJson(
         [McpParam("'view' or 'file'")] string format = "view",
         [McpParam("Only actors in this layer")] string? layer = null,
-        [McpParam("Cap on the actors returned in view format")] int maxActors = 200)
+        [McpParam("Skip this many actors (view format)")] int offset = 0,
+        [McpParam("Cap on the actors returned in view format")] int maxActors = 50)
     {
         var scene = RequireScene(_host);
 
         if (string.Equals(format, "file", StringComparison.OrdinalIgnoreCase))
-            return McpToolResult.Text(SceneSerializer.Serialize(scene));
+            return McpToolResult.Text(JsonNode.Parse(SceneSerializer.Serialize(scene))!.ToJsonString());
 
         if (!string.Equals(format, "view", StringComparison.OrdinalIgnoreCase))
             throw new McpToolException($"Unknown format '{format}'.", "Use 'view' or 'file'.");
 
-        var layers   = new JsonArray();
-        int emitted  = 0;
+        var layers    = new JsonArray();
+        int seen      = 0;
+        int emitted   = 0;
         bool truncated = false;
 
         foreach (var l in scene.Layers)
@@ -57,6 +75,7 @@ public sealed class SceneTools
             var actors = new JsonArray();
             foreach (var actor in l.Actors)
             {
+                if (seen++ < offset) continue;
                 if (emitted >= maxActors)
                 {
                     truncated = true;
@@ -76,6 +95,7 @@ public sealed class SceneTools
             ["layers"]    = layers,
             ["truncated"] = truncated,
         };
+        if (truncated) result["nextOffset"] = offset + emitted;
         return McpToolResult.Json(result);
     }
 
@@ -103,9 +123,8 @@ public sealed class SceneTools
         _host.CurrentScenePath = null;
         _host.SceneDirty       = true;
 
-        var summary = SceneViews.SceneSummary(scene, _host, _undo, includeComponents: true);
-        summary["note"] = IdsRegeneratedNote;
-        return McpToolResult.Json(summary, $"Created scene '{name}' from the {template} template.");
+        return McpToolResult.Text($"Created scene '{name}' from the {template} template. {IdsRegeneratedNote}\n"
+                                  + SceneViews.SceneSummaryText(scene, _host, _undo, null, 0, 100));
     }
 
     [McpTool("load_scene",
@@ -140,9 +159,8 @@ public sealed class SceneTools
         _host.CurrentScenePath = MakeProjectRelative(_host, full);
         _host.SceneDirty       = false;
 
-        var summary = SceneViews.SceneSummary(loaded, _host, _undo, includeComponents: true);
-        summary["note"] = IdsRegeneratedNote;
-        var result = McpToolResult.Json(summary, $"Loaded {_host.CurrentScenePath}.");
+        var result = McpToolResult.Text($"Loaded {_host.CurrentScenePath}. {IdsRegeneratedNote}\n"
+                                        + SceneViews.SceneSummaryText(loaded, _host, _undo, null, 0, 100));
         foreach (var warning in warnings) result.WithWarning(warning);
         return result;
     }
@@ -205,12 +223,21 @@ public sealed class SceneTools
     }
 
     [McpTool("get_actor",
-        "Everything about one actor: transform (rotation in degrees), components with their editable properties, " +
-        "bounds and selection state. actor is an id from get_scene_summary or an exact name.")]
-    public McpToolResult GetActor([McpParam("Actor id or name")] string actor)
+        "One actor. detail 'full' (default): transform in degrees, every component with its editable properties, bounds, " +
+        "selection; 'row': id, name, class, layer, tag, component types, position. actor is an id or an exact name.")]
+    public McpToolResult GetActor(
+        [McpParam("Actor id or name")] string actor,
+        [McpParam("'full' or 'row'")] string detail = "full")
     {
-        var scene = RequireScene(_host);
-        return McpToolResult.Json(SceneViews.ActorView(ActorRef.Resolve(scene, actor), _host));
+        var scene  = RequireScene(_host);
+        var target = ActorRef.Resolve(scene, actor);
+
+        return detail.ToLowerInvariant() switch
+        {
+            "row"  => McpToolResult.Json(SceneViews.ActorRow(target)),
+            "full" => McpToolResult.Json(SceneViews.ActorView(target, _host)),
+            _      => throw new McpToolException($"Unknown detail '{detail}'.", "Use 'full' or 'row'."),
+        };
     }
 
     // -------------------------------------------------------------------------

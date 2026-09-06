@@ -139,6 +139,21 @@ public sealed class DotnetBuildRunner
         return string.IsNullOrEmpty(value) ? null : value;
     }
 
+    /// <summary>What a dotnet invocation produced.</summary>
+    public sealed record DotnetRun(int ExitCode, IReadOnlyList<string> Lines, bool TimedOut, bool Cancelled);
+
+    /// <summary>
+    /// Runs any <c>dotnet</c> command — publish, test — with the same capture and timeout
+    /// handling as a build. The publisher and the test runner share this rather than each
+    /// spawning their own process.
+    /// </summary>
+    public async Task<DotnetRun> RunDotnetAsync(IReadOnlyList<string> args, string? workingDirectory, TimeSpan timeout,
+                                                IProgress<string>? progress = null, CancellationToken cancellation = default)
+    {
+        var run = await RunAsync(args, workingDirectory, timeout, progress, cancellation).ConfigureAwait(false);
+        return new DotnetRun(run.ExitCode, run.Lines, run.TimedOut, run.Cancelled);
+    }
+
     private sealed record RunOutcome(int ExitCode, IReadOnlyList<string> Lines, bool TimedOut, bool Cancelled);
 
     private async Task<RunOutcome> RunAsync(IReadOnlyList<string> args, string? workingDirectory, TimeSpan timeout,

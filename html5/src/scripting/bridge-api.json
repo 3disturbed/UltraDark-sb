@@ -1,0 +1,502 @@
+{
+  "$comment": "The scripting contract shared by the C# Jint bridge (SexyBiscuit.Engine/Scripting/ScriptBridge.cs) and the browser bridge (html5/src/scripting/ScriptBridge.js). A test on each side pins its bridge to this file, so adding a member here without adding it to both bridges fails both suites. shared=false marks a member one engine has and the other does not; the validator warns when a script uses one.",
+  "version": 1,
+  "globals": {
+    "actor": {
+      "id": {
+        "kind": "prop",
+        "shared": true
+      },
+      "name": {
+        "kind": "prop",
+        "shared": true
+      },
+      "tag": {
+        "kind": "prop",
+        "shared": true
+      },
+      "active": {
+        "kind": "prop",
+        "shared": true
+      },
+      "transform": {
+        "kind": "prop",
+        "shared": true
+      },
+      "transform3d": {
+        "kind": "prop",
+        "shared": true
+      },
+      "getComponent": {
+        "kind": "fn",
+        "shared": true
+      },
+      "addComponent": {
+        "kind": "fn",
+        "shared": true
+      },
+      "destroy": {
+        "kind": "fn",
+        "shared": true
+      }
+    },
+    "transform": {
+      "x": {
+        "kind": "prop",
+        "shared": true
+      },
+      "y": {
+        "kind": "prop",
+        "shared": true
+      },
+      "rotation": {
+        "kind": "prop",
+        "shared": true
+      },
+      "scaleX": {
+        "kind": "prop",
+        "shared": true
+      },
+      "scaleY": {
+        "kind": "prop",
+        "shared": true
+      },
+      "lookAt": {
+        "kind": "fn",
+        "shared": true
+      },
+      "distanceTo": {
+        "kind": "fn",
+        "shared": true
+      }
+    },
+    "transform3d": {
+      "x": {
+        "kind": "prop",
+        "shared": true
+      },
+      "y": {
+        "kind": "prop",
+        "shared": true
+      },
+      "z": {
+        "kind": "prop",
+        "shared": true
+      },
+      "rotX": {
+        "kind": "prop",
+        "shared": true
+      },
+      "rotY": {
+        "kind": "prop",
+        "shared": true
+      },
+      "rotZ": {
+        "kind": "prop",
+        "shared": true
+      },
+      "lookAt": {
+        "kind": "fn",
+        "shared": true
+      }
+    },
+    "Input": {
+      "isPressed": {
+        "kind": "fn",
+        "shared": true
+      },
+      "isHeld": {
+        "kind": "fn",
+        "shared": true
+      },
+      "isReleased": {
+        "kind": "fn",
+        "shared": true
+      },
+      "getAxis": {
+        "kind": "fn",
+        "shared": true
+      },
+      "mouseX": {
+        "kind": "prop",
+        "shared": true
+      },
+      "mouseY": {
+        "kind": "prop",
+        "shared": true
+      },
+      "mouseDeltaX": {
+        "kind": "prop",
+        "shared": true
+      },
+      "mouseDeltaY": {
+        "kind": "prop",
+        "shared": true
+      },
+      "scrollDelta": {
+        "kind": "prop",
+        "shared": true
+      },
+      "isKeyDown": {
+        "kind": "fn",
+        "shared": true
+      },
+      "isKeyHeld": {
+        "kind": "fn",
+        "shared": true
+      },
+      "isKeyPressed": {
+        "kind": "fn",
+        "shared": true
+      },
+      "isKeyReleased": {
+        "kind": "fn",
+        "shared": true
+      },
+      "isMouseDown": {
+        "kind": "fn",
+        "shared": true
+      },
+      "isMouseHeld": {
+        "kind": "fn",
+        "shared": true
+      },
+      "isMousePressed": {
+        "kind": "fn",
+        "shared": true
+      },
+      "isMouseReleased": {
+        "kind": "fn",
+        "shared": true
+      },
+      "touchCount": {
+        "kind": "prop",
+        "shared": true
+      },
+      "getTouch": {
+        "kind": "fn",
+        "shared": true
+      },
+      "joystickX": {
+        "kind": "prop",
+        "shared": true
+      },
+      "joystickY": {
+        "kind": "prop",
+        "shared": true
+      }
+    },
+    "Audio": {
+      "play": {
+        "kind": "fn",
+        "shared": true
+      },
+      "playOneShot": {
+        "kind": "fn",
+        "shared": true
+      },
+      "stop": {
+        "kind": "fn",
+        "shared": true
+      },
+      "setVolume": {
+        "kind": "fn",
+        "shared": true
+      }
+    },
+    "Scene": {
+      "name": {
+        "kind": "prop",
+        "shared": true
+      },
+      "find": {
+        "kind": "fn",
+        "shared": true
+      },
+      "findAll": {
+        "kind": "fn",
+        "shared": true
+      },
+      "findByTag": {
+        "kind": "fn",
+        "shared": true
+      },
+      "findFirstByTag": {
+        "kind": "fn",
+        "shared": true
+      },
+      "createActor": {
+        "kind": "fn",
+        "shared": true
+      },
+      "addComponent": {
+        "kind": "fn",
+        "shared": true
+      },
+      "destroy": {
+        "kind": "fn",
+        "shared": true
+      },
+      "destroyActor": {
+        "kind": "fn",
+        "shared": true
+      },
+      "instantiate": {
+        "kind": "fn",
+        "shared": true
+      },
+      "load": {
+        "kind": "fn",
+        "shared": true
+      }
+    },
+    "Debug": {
+      "log": {
+        "kind": "fn",
+        "shared": true
+      },
+      "warn": {
+        "kind": "fn",
+        "shared": true
+      },
+      "error": {
+        "kind": "fn",
+        "shared": true
+      }
+    },
+    "Vector2": {
+      "create": {
+        "kind": "fn",
+        "shared": true
+      },
+      "add": {
+        "kind": "fn",
+        "shared": true
+      },
+      "sub": {
+        "kind": "fn",
+        "shared": true
+      },
+      "scale": {
+        "kind": "fn",
+        "shared": true
+      },
+      "normalize": {
+        "kind": "fn",
+        "shared": true
+      },
+      "dot": {
+        "kind": "fn",
+        "shared": true
+      },
+      "distance": {
+        "kind": "fn",
+        "shared": true
+      },
+      "length": {
+        "kind": "fn",
+        "shared": true
+      }
+    },
+    "Physics": {
+      "raycast": {
+        "kind": "fn",
+        "shared": true
+      },
+      "overlapCircle": {
+        "kind": "fn",
+        "shared": true
+      },
+      "overlapBox": {
+        "kind": "fn",
+        "shared": true
+      }
+    },
+    "Time": {
+      "deltaTime": {
+        "kind": "prop",
+        "shared": true
+      },
+      "unscaledDeltaTime": {
+        "kind": "prop",
+        "shared": true
+      },
+      "time": {
+        "kind": "prop",
+        "shared": true
+      },
+      "frameCount": {
+        "kind": "prop",
+        "shared": true
+      },
+      "fps": {
+        "kind": "prop",
+        "shared": true
+      },
+      "timeScale": {
+        "kind": "prop",
+        "shared": true
+      }
+    },
+    "Network": {
+      "localId": {
+        "kind": "prop",
+        "shared": true
+      },
+      "isServer": {
+        "kind": "prop",
+        "shared": true
+      },
+      "isConnected": {
+        "kind": "prop",
+        "shared": true
+      },
+      "isLocalPlayer": {
+        "kind": "fn",
+        "shared": true
+      },
+      "startServer": {
+        "kind": "fn",
+        "shared": true
+      },
+      "connect": {
+        "kind": "fn",
+        "shared": true
+      },
+      "sendToAll": {
+        "kind": "fn",
+        "shared": true
+      },
+      "broadcast": {
+        "kind": "fn",
+        "shared": true
+      }
+    }
+  },
+  "bare": {
+    "log": {
+      "kind": "fn",
+      "shared": true
+    },
+    "warn": {
+      "kind": "fn",
+      "shared": true
+    },
+    "error": {
+      "kind": "fn",
+      "shared": true
+    }
+  },
+  "actorProxy": {
+    "id": {
+      "kind": "prop",
+      "shared": true
+    },
+    "name": {
+      "kind": "prop",
+      "shared": true
+    },
+    "tag": {
+      "kind": "prop",
+      "shared": true
+    },
+    "active": {
+      "kind": "prop",
+      "shared": true
+    },
+    "transform": {
+      "kind": "prop",
+      "shared": true
+    },
+    "getComponent": {
+      "kind": "fn",
+      "shared": true
+    },
+    "destroy": {
+      "kind": "fn",
+      "shared": true
+    }
+  },
+  "actorProxyTransform": {
+    "x": {
+      "kind": "prop",
+      "shared": true
+    },
+    "y": {
+      "kind": "prop",
+      "shared": true
+    },
+    "rotation": {
+      "kind": "prop",
+      "shared": true
+    }
+  },
+  "collisionData": {
+    "other": {
+      "kind": "prop",
+      "shared": true
+    },
+    "contactPoint": {
+      "kind": "prop",
+      "shared": true
+    },
+    "normal": {
+      "kind": "prop",
+      "shared": true
+    },
+    "relativeVelocity": {
+      "kind": "prop",
+      "shared": true
+    },
+    "tag": {
+      "kind": "prop",
+      "shared": true
+    },
+    "name": {
+      "kind": "prop",
+      "shared": true
+    },
+    "getComponent": {
+      "kind": "fn",
+      "shared": true
+    }
+  },
+  "hooks": {
+    "onAwake": {
+      "shared": true
+    },
+    "onStart": {
+      "shared": true
+    },
+    "onUpdate": {
+      "shared": true
+    },
+    "onFixedUpdate": {
+      "shared": true
+    },
+    "onLateUpdate": {
+      "shared": true
+    },
+    "onDestroy": {
+      "shared": true
+    },
+    "onCollisionEnter": {
+      "shared": true
+    },
+    "onCollisionStay": {
+      "shared": true
+    },
+    "onCollisionExit": {
+      "shared": true
+    },
+    "onTriggerEnter": {
+      "shared": true
+    },
+    "onTriggerStay": {
+      "shared": true
+    },
+    "onTriggerExit": {
+      "shared": true
+    }
+  }
+}

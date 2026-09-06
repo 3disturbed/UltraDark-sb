@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Microsoft.Xna.Framework;
+using SexyBiscuit.Editor.GameCode;
 using SexyBiscuit.Editor.Panels;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.Mcp;
@@ -29,13 +30,58 @@ public sealed class EditorTools
         => EditorState.CurrentProject ?? throw new McpToolException("No project is open.", "Call open_project or create_project first; get_project_info lists templates and recent projects.");
 
     // -------------------------------------------------------------------------
+    // Context
+    // -------------------------------------------------------------------------
+
+    [McpTool("get_context",
+        "Where things stand, in about a hundred tokens: project, scene (name, path, actor count, layers, dirty flag, " +
+        "checks), selection, play state, C# project and last build. Call this first; get_scene_summary, get_actor and " +
+        "get_project_info give more when a task needs it.",
+        Label = "Read the context")]
+    public McpToolResult GetContext()
+    {
+        var context = new JsonObject();
+        var project = EditorState.CurrentProject;
+
+        if (project == null)
+        {
+            context["project"]   = null;
+            context["templates"] = new JsonArray(TemplateLocator.List().Select(t => (JsonNode)t.Name).ToArray());
+            context["recent"]    = new JsonArray(EditorState.RecentProjects.Select(r => (JsonNode)new JsonObject { ["name"] = r.Name, ["path"] = r.Path }).ToArray());
+            context["hint"]      = "Call open_project or create_project; get_project_info describes the templates.";
+            return McpToolResult.Json(context);
+        }
+
+        context["project"] = new JsonObject { ["name"] = project.ProjectName, ["root"] = EditorState.ProjectPath };
+
+        var scene = App.Engine?.SceneManager.ActiveScene;
+        context["scene"]   = scene == null ? null : SceneViews.SceneBrief(scene, _host.SceneHost, _host.Undo);
+        context["playing"] = EditorState.IsPlaying;
+        if (EditorState.IsPlayPaused) context["paused"] = true;
+
+        var code = GameCodeHost.Instance;
+        if (code?.Project != null)
+        {
+            var codeView = new JsonObject { ["csproj"] = code.Project.CsprojPath };
+            if (code.LastBuild is { } build) codeView["lastBuild"] = build.State.ToString().ToLowerInvariant();
+            context["code"] = codeView;
+        }
+        else
+        {
+            context["code"] = null;
+        }
+
+        return McpToolResult.Json(context);
+    }
+
+    // -------------------------------------------------------------------------
     // Project
     // -------------------------------------------------------------------------
 
     [McpTool("get_project_info",
         "Describe the open project and the editor: root folder, asset/script/scene folders, the open scene and whether it " +
-        "has unsaved changes, play mode, and the MCP URL. Call this first. With no project open it lists the templates " +
-        "create_project accepts and the recent projects open_project can take.",
+        "has unsaved changes, play mode, the MCP URL, and the templates create_project accepts with descriptions. " +
+        "get_context is the cheap version; use this for the folders and the template list.",
         Label = "Read project info")]
     public McpToolResult GetProjectInfo() => McpToolResult.Json(ProjectInfo());
 
@@ -199,7 +245,7 @@ public sealed class EditorTools
     public McpToolResult ListAssets(
         [McpParam("Only this sub-folder of the asset directory")] string? subdirectory = null,
         [McpParam("Only these extensions, e.g. ['.png', '.wav']")] string[]? extensions = null,
-        [McpParam("Maximum entries")] int limit = 500)
+        [McpParam("Maximum entries")] int limit = 100)
     {
         var project = RequireProject();
         string root = EditorState.ProjectPath;
@@ -357,11 +403,12 @@ public sealed class EditorTools
     // -------------------------------------------------------------------------
 
     [McpTool("capture_viewport",
-        "A PNG screenshot of the editor viewport as it is rendered right now, downscaled to maxWidth. Look at it to check " +
-        "your work. includeUi captures the whole editor window with its panels instead.",
+        "A PNG screenshot of the editor viewport as it is rendered right now, downscaled to maxWidth. 640 px is enough " +
+        "to judge a scene and costs about a third of 1024; use 1024 only to read text. includeUi captures the whole " +
+        "editor window with its panels instead.",
         MainThread = false, Label = "Capture the viewport")]
     public async Task<McpToolResult> CaptureViewport(
-        [McpParam("Longest edge in pixels")] int maxWidth = 1024,
+        [McpParam("Longest edge in pixels")] int maxWidth = 640,
         [McpParam("Capture the whole editor window including panels")] bool includeUi = false,
         CancellationToken cancellation = default)
     {
@@ -379,8 +426,8 @@ public sealed class EditorTools
         [McpParam("World point to look at [x, y, z]")] float[]? lookAt = null,
         [McpParam("[pitch, yaw, roll] degrees")] float[]? rotation = null,
         [McpParam("Vertical field of view in degrees")] float fov = 60f,
-        [McpParam("Image width")] int width = 1024,
-        [McpParam("Image height")] int height = 576,
+        [McpParam("Image width")] int width = 640,
+        [McpParam("Image height")] int height = 360,
         CancellationToken cancellation = default)
     {
         var pose = new ViewportCapture.CameraPose(
@@ -486,7 +533,7 @@ public sealed class EditorTools
         [McpParam("Only entries after this sequence number")] long sinceSequence = 0,
         [McpParam("Minimum level: info, warning or error")] string? level = null,
         [McpParam("Case-insensitive substring filter")] string? contains = null,
-        [McpParam("Maximum entries returned (the newest)")] int limit = 200)
+        [McpParam("Maximum entries returned (the newest)")] int limit = 50)
     {
         LogLevel minimum = LogLevel.Info;
         if (level != null && !Enum.TryParse(level, ignoreCase: true, out minimum))

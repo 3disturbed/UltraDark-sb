@@ -212,6 +212,52 @@ public sealed class McpToolRegistry
     // -------------------------------------------------------------------------
 
     /// <summary>
+    /// Also send each JSON result's <c>structuredContent</c> copy on the wire. Off by default: a
+    /// client that receives it ignores the text block, which carries the summary and warnings,
+    /// and no tool declares an output schema that would need it.
+    /// </summary>
+    public bool EmitStructuredContent { get; set; }
+
+    /// <summary>
+    /// Runs a main-thread tool on the calling thread, with no undo snapshot, no activity entry and
+    /// no thread hop: what a batch tool uses for each of its operations, so the whole batch is one
+    /// undo step and one flush. The caller must already be on the game thread.
+    /// </summary>
+    public McpToolResult InvokeInline(string name, JsonElement? arguments, McpCallContext context)
+    {
+        var descriptor = Find(name);
+        if (descriptor == null)
+            return McpToolResult.Error($"Unknown tool '{name}'.");
+        if (!descriptor.MainThread)
+            return McpToolResult.Error($"'{name}' cannot run inside a batch.");
+
+        try
+        {
+            var args     = McpSchema.Bind(descriptor.Method, arguments, context);
+            var returned = descriptor.Method.Invoke(descriptor.Target, args);
+            if (returned is Task)
+                return McpToolResult.Error($"'{name}' is asynchronous and cannot run inside a batch.");
+            return Normalise(returned);
+        }
+        catch (McpToolException ex)
+        {
+            return McpToolResult.Error(ex.FullMessage);
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is McpToolException inner)
+        {
+            return McpToolResult.Error(inner.FullMessage);
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException != null)
+        {
+            return McpToolResult.Error($"{name} failed: {ex.InnerException.Message}");
+        }
+        catch (Exception ex)
+        {
+            return McpToolResult.Error($"{name} failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Runs a tool. Never throws: unknown tools, bad arguments, cancellation and handler
     /// exceptions all come back as an <c>isError</c> result Claude can read and act on.
     /// </summary>
@@ -319,7 +365,7 @@ public sealed class McpToolRegistry
         McpToolResult r => r,
         null            => McpToolResult.Text("OK"),
         string s        => McpToolResult.Text(s),
-        JsonNode n      => McpToolResult.Text(McpJson.ToText(n)),
+        JsonNode n      => McpToolResult.Text(McpJson.ToText(n, indented: false)),
         _               => McpToolResult.Json(value),
     };
 
@@ -327,23 +373,29 @@ public sealed class McpToolRegistry
     // Descriptions
     // -------------------------------------------------------------------------
 
-    /// <summary>The <c>tools/list</c> payload, with MCP annotations.</summary>
+    /// <summary>
+    /// The <c>tools/list</c> payload. Every byte of it sits in the model's context for the whole
+    /// session, so annotations are emitted only when they say something: a read-only hint lets
+    /// the client run calls in parallel, a destructive hint gates them; the rest is the default.
+    /// </summary>
     public JsonArray DescribeForToolsList()
     {
         var array = new JsonArray();
         foreach (var tool in Tools)
         {
-            array.Add(new JsonObject
+            var entry = new JsonObject
             {
                 ["name"]        = tool.Name,
                 ["description"] = tool.Description,
                 ["inputSchema"] = tool.InputSchema.DeepClone(),
-                ["annotations"] = new JsonObject
-                {
-                    ["readOnlyHint"]    = !tool.Mutating,
-                    ["destructiveHint"] = tool.Destructive,
-                },
-            });
+            };
+
+            var annotations = new JsonObject();
+            if (!tool.Mutating)   annotations["readOnlyHint"]    = true;
+            if (tool.Destructive) annotations["destructiveHint"] = true;
+            if (annotations.Count > 0) entry["annotations"] = annotations;
+
+            array.Add(entry);
         }
         return array;
     }

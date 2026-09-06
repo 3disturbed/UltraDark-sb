@@ -43,16 +43,19 @@ var towerType = "Basic";
 // Lifecycle callbacks
 // =============================================================================
 
-function onStart() {
-    // -- Read tower stats from actor properties -------------------------------
-    // PlacementGrid.js sets these custom properties when creating the tower.
-    // This decouples tower definitions from this script — adding new tower
-    // types only requires changes to PlacementGrid.js.
-    if (actor.towerRange !== undefined) range = actor.towerRange;
-    if (actor.towerDamage !== undefined) damage = actor.towerDamage;
-    if (actor.towerCooldown !== undefined) cooldown = actor.towerCooldown;
-    if (actor.towerType !== undefined) towerType = actor.towerType;
+// Called by PlacementGrid.js right after it attaches this script:
+//     script.invoke("configure", range, damage, cooldown, type)
+// The engine runs it before onStart, so the stats are set by the time the tower
+// starts. This keeps tower definitions in PlacementGrid.js — adding a tower type
+// needs no change here.
+function configure(newRange, newDamage, newCooldown, newType) {
+    range = newRange;
+    damage = newDamage;
+    cooldown = newCooldown;
+    towerType = newType;
+}
 
+function onStart() {
     // Splash towers get a splash radius so their bullets deal area damage
     if (towerType === "Splash") {
         splashRadius = 60;
@@ -122,7 +125,7 @@ function shootAt(target) {
         // Visual appearance — small white projectile
         var sprite = bullet.addComponent("SpriteRenderer");
         if (sprite) {
-            sprite.Color = { R: 255, G: 255, B: 255, A: 255 };
+            sprite.tint = { R: 255, G: 255, B: 255, A: 255 };
         }
         bullet.transform.scaleX = 0.3;
         bullet.transform.scaleY = 0.3;
@@ -130,22 +133,16 @@ function shootAt(target) {
         // Collision detection
         var col = bullet.addComponent("BoxCollider2D");
         if (col) {
-            col.Width = 8;
-            col.Height = 8;
+            col.size = { x: 8, y: 8 };
         }
 
-        // Attach bullet behavior script
+        // Attach the bullet behaviour script and hand it its target and damage.
+        // configure() runs before the bullet's onStart on either engine.
         var script = bullet.addComponent("ScriptComponent");
         if (script) {
             script.ScriptPath = "Scripts/TowerBullet.js";
+            script.invoke("configure", damage, target.transform.x, target.transform.y, splashRadius);
         }
-
-        // Pass target position and damage to the bullet. The bullet reads
-        // these in its onStart to determine direction and impact behavior.
-        bullet.bulletDamage = damage;
-        bullet.targetX = target.transform.x;
-        bullet.targetY = target.transform.y;
-        bullet.splashRadius = splashRadius;
 
         // Aim the bullet toward the target
         var dx = target.transform.x - actor.transform.x;

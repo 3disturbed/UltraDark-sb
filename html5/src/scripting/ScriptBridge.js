@@ -1,21 +1,23 @@
 // -----------------------------------------------------------------------------
 // ScriptBridge — the globals a project `.js` script sees.
 //
-// This is the compatibility layer for scripts written against the C# engine's
-// Jint bridge. Everything `Scripting/TypeScriptDefinitions.cs` declares is here
-// with the same names and the same shapes, so a script that runs under Jint runs
-// here unchanged.
-//
-// It is deliberately a superset. The C# bridge exposes seven globals and no
-// `getComponent`, which is why none of the forty-five bundled template scripts
-// have ever run — they call `log()`, `Input.isKeyHeld`, `actor.getComponent` and
-// `actor.transform`, none of which exist there. Those are all provided here.
-// Adding them cannot break a script written against the narrower surface, and it
-// makes the shipped templates work. Each addition is marked below.
+// This is the shared scripting contract: the C# engine's Jint bridge
+// (`SexyBiscuit.Engine/Scripting/ScriptBridge.cs`) installs the same globals
+// with the same members and the same shapes, and `bridge-api.json` beside this
+// file lists every one of them. A test on each side holds its bridge to that
+// list, so a script that runs here runs under Jint unchanged, and the other way
+// round. Add to both sides or neither.
 // -----------------------------------------------------------------------------
 
 import { Vector2 as Vec2Class, Vector3 as Vec3Class } from '../math/index.js';
 import { Time } from '../core/Time.js';
+import { Actor } from '../core/Actor.js';
+import { schemaOf } from '../core/TypeRegistry.js';
+import { coerce } from '../core/PropertyTypes.js';
+import { applyProperties } from '../scene/SceneSerializer.js';
+
+/** Proxies handed to scripts, mapped back to the actor each stands for. */
+const proxyToActor = new WeakMap();
 
 /**
  * Builds the global object a script executes against.
@@ -34,26 +36,24 @@ export function createScriptGlobals(actor, services = {}) {
     const engine = () => actor.scene?.engine ?? null;
     const input = () => engine()?.input ?? null;
     const audioManager = () => engine()?.audio ?? null;
+    const scene = () => actor.scene ?? null;
 
     // ---- actor ---------------------------------------------------------------
-    // The C# `actor` proxy has name/tag/active/destroy only. `transform`,
-    // `transform3d`, `getComponent` and `addComponent` are additions.
     const actorProxy = {
+        get id() { return actor.id; },
         get name() { return actor.name; },
         set name(value) { actor.name = String(value); },
         get tag() { return actor.tag; },
         set tag(value) { actor.tag = String(value); },
         get active() { return actor.isActive; },
         set active(value) { actor.isActive = Boolean(value); },
-        get id() { return actor.id; },
-        destroy() { actor.destroy(); },
-
-        // Additions:
         get transform() { return transformProxy; },
         get transform3d() { return transform3DProxy(); },
         getComponent(name) { return wrapComponent(actor.getComponent(name)); },
         addComponent(name) { return wrapComponent(actor.addComponent(name)); },
+        destroy() { actor.destroy(); },
     };
+    proxyToActor.set(actorProxy, actor);
 
     // ---- transform -----------------------------------------------------------
     const transformProxy = {
@@ -76,27 +76,31 @@ export function createScriptGlobals(actor, services = {}) {
         },
     };
 
-    // ---- transform3d (an addition; the 3D templates ask for it) --------------
+    // ---- transform3d — null until the actor has a Transform3D -----------------
+    let cachedTransform3D = null;
+    let cachedTransform3DProxy = null;
     function transform3DProxy() {
         const t = actor.transform3D;
         if (!t) return null;
-        return {
-            get x() { return t.position.x; }, set x(v) { t.x = Number(v); },
-            get y() { return t.position.y; }, set y(v) { t.y = Number(v); },
-            get z() { return t.position.z; }, set z(v) { t.z = Number(v); },
-            get rotX() { return t.eulerAngles.x; },
-            set rotX(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(Number(v), e.y, e.z); },
-            get rotY() { return t.eulerAngles.y; },
-            set rotY(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(e.x, Number(v), e.z); },
-            get rotZ() { return t.eulerAngles.z; },
-            set rotZ(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(e.x, e.y, Number(v)); },
-            lookAt(x, y, z) { t.lookAt(new Vec3Class(Number(x), Number(y), Number(z))); },
-        };
+        if (t !== cachedTransform3D) {
+            cachedTransform3D = t;
+            cachedTransform3DProxy = {
+                get x() { return t.position.x; }, set x(v) { t.x = Number(v); },
+                get y() { return t.position.y; }, set y(v) { t.y = Number(v); },
+                get z() { return t.position.z; }, set z(v) { t.z = Number(v); },
+                get rotX() { return t.eulerAngles.x; },
+                set rotX(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(Number(v), e.y, e.z); },
+                get rotY() { return t.eulerAngles.y; },
+                set rotY(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(e.x, Number(v), e.z); },
+                get rotZ() { return t.eulerAngles.z; },
+                set rotZ(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(e.x, e.y, Number(v)); },
+                lookAt(x, y, z) { t.lookAt(new Vec3Class(Number(x), Number(y), Number(z))); },
+            };
+        }
+        return cachedTransform3DProxy;
     }
 
     // ---- Input ---------------------------------------------------------------
-    // isPressed/isHeld/isReleased/getAxis/mouseX/mouseY are the documented set.
-    // Everything after them is an addition the templates depend on.
     const inputProxy = {
         isPressed(action) { return input()?.isPressed(action) ?? false; },
         isHeld(action) { return input()?.isHeld(action) ?? false; },
@@ -104,19 +108,20 @@ export function createScriptGlobals(actor, services = {}) {
         getAxis(action) { return input()?.getAxis(action) ?? 0; },
         get mouseX() { return input()?.mousePosition.x ?? 0; },
         get mouseY() { return input()?.mousePosition.y ?? 0; },
+        get mouseDeltaX() { return input()?.mouseDelta.x ?? 0; },
+        get mouseDeltaY() { return input()?.mouseDelta.y ?? 0; },
+        get scrollDelta() { return input()?.scrollDelta ?? 0; },
 
-        // Additions:
         isKeyDown(key) { return input()?.isKeyDown(key) ?? false; },
         isKeyHeld(key) { return input()?.isKeyDown(key) ?? false; },
         isKeyPressed(key) { return input()?.isKeyPressed(key) ?? false; },
         isKeyReleased(key) { return input()?.isKeyReleased(key) ?? false; },
+
         isMouseDown(button) { return input()?.isMouseButtonDown(button) ?? false; },
         isMouseHeld(button) { return input()?.isMouseButtonDown(button) ?? false; },
         isMousePressed(button) { return input()?.isMouseButtonPressed(button) ?? false; },
         isMouseReleased(button) { return input()?.isMouseButtonReleased(button) ?? false; },
-        get mouseDeltaX() { return input()?.mouseDelta.x ?? 0; },
-        get mouseDeltaY() { return input()?.mouseDelta.y ?? 0; },
-        get scrollDelta() { return input()?.scrollDelta ?? 0; },
+
         get touchCount() { return input()?.touch.touchCount ?? 0; },
         getTouch(index) {
             const touch = input()?.touch.touches[index];
@@ -129,6 +134,7 @@ export function createScriptGlobals(actor, services = {}) {
 
     // ---- Audio ---------------------------------------------------------------
     const audioProxy = {
+        /** Returns a handle whose id is 0 when nothing could play; never null. */
         play(path, loop = false) {
             const handle = audioManager()?.play(path, { loop });
             return { id: handle?.id ?? 0 };
@@ -138,18 +144,63 @@ export function createScriptGlobals(actor, services = {}) {
             const id = typeof handle === 'number' ? handle : handle?.id;
             if (id) audioManager()?.stopById(id);
         },
-        setVolume(volume) { audioManager()?.setMasterVolume(volume); },   // addition
+        setVolume(volume) { audioManager()?.setMasterVolume(volume); },
     };
 
     // ---- Scene ---------------------------------------------------------------
     const sceneProxy = {
-        find(name) { return wrapActor(actor.scene?.findByName(name)); },
+        get name() { return scene()?.name ?? ''; },
+
+        find(name) { return wrapActor(scene()?.findByName(name)); },
+
+        /** Every actor with the name; the bundled scripts use it for a batch of enemies. */
+        findAll(name) {
+            return (scene()?.allActors ?? [])
+                .filter((a) => a.name === name && !a.isDestroyed)
+                .map(wrapActor);
+        },
 
         /** An array, as the C# bridge returns. An empty one is still truthy. */
-        findByTag(tag) { return (actor.scene?.findByTag(tag) ?? []).map(wrapActor); },
+        findByTag(tag) { return (scene()?.findByTag(tag) ?? []).map(wrapActor); },
 
-        /** Addition: the single-actor form the bundled scripts actually want. */
-        findFirstByTag(tag) { return wrapActor((actor.scene?.findByTag(tag) ?? [])[0]); },
+        /** The single-actor form the bundled scripts actually want. */
+        findFirstByTag(tag) { return wrapActor((scene()?.findByTag(tag) ?? [])[0]); },
+
+        createActor(name = 'Actor', x = 0, y = 0) {
+            const target = scene();
+            if (!target) return null;
+            const created = new Actor(String(name));
+            created.transform.x = Number(x);
+            created.transform.y = Number(y);
+            target.addActor(created);
+            return wrapActor(created);
+        },
+
+        addComponent(actorLike, typeName, properties) {
+            const target = unwrapActor(actorLike);
+            if (!target) {
+                log('warn', 'Scene.addComponent: the first argument is not an actor.');
+                return null;
+            }
+            let component;
+            try {
+                component = target.addComponent(typeName);
+            } catch (err) {
+                log('warn', err.message);
+                return null;
+            }
+            if (properties && typeof properties === 'object') {
+                applyProperties(component, properties, target.name, (message) => log('warn', message));
+            }
+            return wrapComponent(component);
+        },
+
+        destroy(actorLike) {
+            const target = unwrapActor(actorLike);
+            if (!target) log('warn', 'Scene.destroy: the argument is not an actor.');
+            else target.destroy();
+        },
+        destroyActor(actorLike) { sceneProxy.destroy(actorLike); },
 
         instantiate(prefabPath, x = 0, y = 0) {
             const spawned = engine()?.instantiate?.(prefabPath, new Vec2Class(x, y));
@@ -157,8 +208,6 @@ export function createScriptGlobals(actor, services = {}) {
         },
 
         load(sceneName) { engine()?.sceneManager?.loadScene(sceneName); },
-
-        get name() { return actor.scene?.name ?? ''; },   // addition
     };
 
     // ---- Debug ---------------------------------------------------------------
@@ -184,10 +233,10 @@ export function createScriptGlobals(actor, services = {}) {
         length: (v) => Math.hypot(v.x, v.y),
     };
 
-    // ---- Physics (an addition; README documents it, the C# bridge lacks it) ---
+    // ---- Physics -------------------------------------------------------------
     const physicsProxy = {
         raycast(originX, originY, dirX, dirY, maxDistance = Infinity) {
-            const hit = actor.scene?.physics2D?.raycast(
+            const hit = scene()?.physics2D?.raycast(
                 new Vec2Class(originX, originY), new Vec2Class(dirX, dirY), maxDistance);
             if (!hit) return null;
             return {
@@ -198,17 +247,17 @@ export function createScriptGlobals(actor, services = {}) {
             };
         },
         overlapCircle(x, y, radius) {
-            return (actor.scene?.physics2D?.overlapCircle(new Vec2Class(x, y), radius) ?? [])
+            return (scene()?.physics2D?.overlapCircle(new Vec2Class(x, y), radius) ?? [])
                 .map((c) => wrapActor(c.actor));
         },
         overlapBox(x, y, width, height) {
-            return (actor.scene?.physics2D
+            return (scene()?.physics2D
                 ?.overlapBox(new Vec2Class(x, y), new Vec2Class(width, height)) ?? [])
                 .map((c) => wrapActor(c.actor));
         },
     };
 
-    // ---- Time (an addition) --------------------------------------------------
+    // ---- Time ----------------------------------------------------------------
     const timeProxy = {
         get deltaTime() { return Time.deltaTime; },
         get unscaledDeltaTime() { return Time.unscaledDeltaTime; },
@@ -217,6 +266,28 @@ export function createScriptGlobals(actor, services = {}) {
         get fps() { return Time.fps; },
         get timeScale() { return Time.timeScale; },
         set timeScale(value) { Time.timeScale = Number(value); },
+    };
+
+    // ---- Network — a stub that lets a multiplayer script run solo -------------
+    // Player 0 is the local player when there is no network, so a lobby script that asks
+    // `Network.isLocalPlayer(id)` behaves as a one-player game rather than a dead one.
+    let networkWarned = false;
+    const unavailable = () => {
+        if (!networkWarned) {
+            networkWarned = true;
+            log('warn', 'Network is not available in this build; the script is running solo.');
+        }
+        return false;
+    };
+    const networkProxy = {
+        get localId() { return 0; },
+        get isServer() { return false; },
+        get isConnected() { return false; },
+        isLocalPlayer(id) { return Number(id) === 0; },
+        startServer() { return unavailable(); },
+        connect() { return unavailable(); },
+        sendToAll() {},
+        broadcast() {},
     };
 
     return {
@@ -230,6 +301,7 @@ export function createScriptGlobals(actor, services = {}) {
         Vector2: vector2Proxy,
         Physics: physicsProxy,
         Time: timeProxy,
+        Network: networkProxy,
 
         // Bare logging functions. The templates call `log(...)` with no namespace.
         log: debugProxy.log,
@@ -239,23 +311,20 @@ export function createScriptGlobals(actor, services = {}) {
 }
 
 /**
- * The proxy shape the C# bridge hands back for a *found* actor.
- *
- * Note the asymmetry, which is part of the contract: this has a `transform`
- * sub-object, whereas the `actor` global in C# does not. Scripts written for the
- * C# engine rely on it.
+ * The proxy shape a script gets for a *found* actor: from `Scene.find`, from a
+ * collision, from `Scene.createActor`. Returns null for a missing or destroyed actor.
  */
 export function wrapActor(target) {
     if (!target || target.isDestroyed) return null;
 
-    return {
+    const proxy = {
+        get id() { return target.id; },
         get name() { return target.name; },
         set name(value) { target.name = String(value); },
         get tag() { return target.tag; },
         set tag(value) { target.tag = String(value); },
         get active() { return target.isActive; },
         set active(value) { target.isActive = Boolean(value); },
-        get id() { return target.id; },
         transform: {
             get x() { return target.transform.position.x; },
             set x(value) { target.transform.x = Number(value); },
@@ -267,30 +336,86 @@ export function wrapActor(target) {
         getComponent(name) { return wrapComponent(target.getComponent(name)); },
         destroy() { target.destroy(); },
     };
+    proxyToActor.set(proxy, target);
+    return proxy;
 }
 
 /**
- * Exposes a component's schema-declared properties to a script.
+ * The object a flat-function collision hook receives:
+ * `{ other, contactPoint: {x, y}, normal: {x, y}, relativeVelocity, tag, name, getComponent() }`.
+ *
+ * `other` is a wrapped actor, as it is under Jint, and `tag`, `name` and
+ * `getComponent` forward to it — the bundled scripts name the parameter `other`
+ * and write `other.tag` and `other.getComponent("ScriptComponent")`.
+ */
+export function wrapCollisionData(data) {
+    const other = wrapActor(data?.other);
+    const point = data?.contactPoint;
+    const normal = data?.normal;
+    return {
+        other,
+        contactPoint: { x: point?.x ?? 0, y: point?.y ?? 0 },
+        normal: { x: normal?.x ?? 0, y: normal?.y ?? 0 },
+        relativeVelocity: data?.relativeVelocity ?? 0,
+        get tag() { return other?.tag; },
+        get name() { return other?.name; },
+        getComponent(name) { return other ? other.getComponent(name) : null; },
+    };
+}
+
+/** The actor behind a script-facing proxy (or a raw actor), else null. */
+export function unwrapActor(value) {
+    if (value instanceof Actor) return value;
+    return (value && proxyToActor.get(value)) ?? null;
+}
+
+/**
+ * Exposes a component's declared properties to a script.
  *
  * Only declared properties are reachable, which keeps a script from reaching
  * into engine internals — the same intent as Jint's "no CLR access by default".
+ * A member is found under its camelCase name or its C# PascalCase name
+ * (`rb.gravityScale` and `rb.GravityScale` are one property), and a value
+ * assigned in a file-friendly form — `"#FF0000"`, `[1, 2]` — is coerced the way
+ * a scene file's would be.
  */
 export function wrapComponent(component) {
     if (!component) return null;
 
-    // The velocity shorthands the bundled scripts use live on Rigidbody2D itself,
-    // so a plain property forward covers them along with everything else.
+    const schema = schemaOf(component.constructor) ?? {};
+
+    const resolveKey = (target, key) => {
+        if (typeof key !== 'string' || key in target) return key;
+        const lower = lowerFirst(key);
+        return lower in target ? lower : key;
+    };
+
     return new Proxy(component, {
         get(target, key) {
-            const value = target[key];
+            const resolved = resolveKey(target, key);
+            const value = target[resolved];
             return typeof value === 'function' ? value.bind(target) : value;
         },
         set(target, key, value) {
-            target[key] = value;
+            const resolved = resolveKey(target, key);
+            const descriptor = schema[resolved];
+            target[resolved] = descriptor && isPlainValue(value) ? coerce(value, descriptor) : value;
             return true;
         },
-        has(target, key) { return key in target; },
+        has(target, key) { return resolveKey(target, key) in target; },
     });
+}
+
+function isPlainValue(value) {
+    return typeof value === 'string'
+        || Array.isArray(value)
+        || (value !== null && typeof value === 'object' && value.constructor === Object);
+}
+
+function lowerFirst(name) {
+    return name.length > 0 && name[0] !== name[0].toLowerCase()
+        ? name[0].toLowerCase() + name.slice(1)
+        : name;
 }
 
 function stringify(value) {
@@ -303,7 +428,7 @@ function stringify(value) {
     return String(value);
 }
 
-/** The lifecycle functions a script may define. Nothing else is ever called. */
+/** The lifecycle functions a script may define. Nothing else is ever called by the engine. */
 export const SCRIPT_HOOKS = Object.freeze([
     'onAwake', 'onStart', 'onUpdate', 'onFixedUpdate', 'onLateUpdate', 'onDestroy',
     'onCollisionEnter', 'onCollisionStay', 'onCollisionExit',

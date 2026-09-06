@@ -51,9 +51,8 @@ function onTriggerEnter(other) {
 
     // Apply the pickup effect to the player. ArenaPlayer.js exposes an
     // applyPickup(type) function for this purpose.
-    if (other.applyPickup) {
-        other.applyPickup(pickupType);
-    }
+    var player = other.getComponent("ScriptComponent");
+    if (player) player.invoke("applyPickup", pickupType);
 
     // Notify the ArenaManager that a pickup was collected so it can update
     // the active pickup count.

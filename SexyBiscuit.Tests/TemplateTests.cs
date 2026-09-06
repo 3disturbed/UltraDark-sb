@@ -85,6 +85,54 @@ public class ProjectTemplateTests
         }
     }
 
+    [Theory]
+    [MemberData(nameof(AllTemplateScenes))]
+    public void EveryTemplateSceneRunsItsScriptsWithoutErrors(string relativePath)
+    {
+        // The scenes loaded, but their scripts had never run natively: with no project root
+        // set no ScriptPath resolved, and the bridge lacked half of what the scripts call. A
+        // scene that loads but whose scripts throw is the failure a player meets, and the
+        // browser suite runs the same sixty frames, so a template that passes both runs in
+        // both engines.
+        string templateDir = Path.GetDirectoryName(Path.GetDirectoryName(Path.Combine(TemplatesRoot, relativePath)))!;
+        string? previousRoot = SexyBiscuit.Engine.Core.ProjectPaths.Root;
+        SexyBiscuit.Engine.Core.ProjectPaths.Root = templateDir;
+
+        var diagnostics = new List<SexyBiscuit.Engine.Scripting.ScriptDiagnostic>();
+        using var capture = SexyBiscuit.Engine.Scripting.ScriptDiagnostics.Capture(diagnostics);
+
+        var scene = SceneSerializer.LoadFromFile(Path.Combine(TemplatesRoot, relativePath));
+        try
+        {
+            for (int frame = 0; frame < 60; frame++)
+            {
+                scene.Update(1f / 60f);
+                scene.FixedUpdate(1f / 60f);
+                scene.LateUpdate(1f / 60f);
+            }
+
+            var scripts = scene.Layers.SelectMany(l => l.Actors)
+                               .SelectMany(a => a.GetAllComponents())
+                               .OfType<SexyBiscuit.Engine.Scripting.ScriptComponent>()
+                               .ToList();
+
+            if (scripts.Count > 0)
+                Assert.Contains(scripts, s => s.Runtime != null);
+
+            var errors = diagnostics.Where(d => d.Level == SexyBiscuit.Engine.Scripting.ScriptDiagnosticLevel.Error)
+                                    .Select(d => d.ToString())
+                                    .Distinct()
+                                    .ToList();
+            Assert.True(errors.Count == 0,
+                $"{relativePath} produced script errors:\n  " + string.Join("\n  ", errors));
+        }
+        finally
+        {
+            scene.Destroy();
+            SexyBiscuit.Engine.Core.ProjectPaths.Root = previousRoot;
+        }
+    }
+
     [Fact]
     public void EveryTemplateSceneTearsDownWithoutThrowing()
     {

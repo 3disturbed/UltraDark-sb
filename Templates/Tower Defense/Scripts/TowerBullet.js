@@ -46,13 +46,15 @@ var timer = 0;
 // Lifecycle callbacks
 // =============================================================================
 
-function onStart() {
-    // -- Read properties set by Tower.js --------------------------------------
-    if (actor.bulletDamage !== undefined) damage = actor.bulletDamage;
-    if (actor.targetX !== undefined) targetX = actor.targetX;
-    if (actor.targetY !== undefined) targetY = actor.targetY;
-    if (actor.splashRadius !== undefined) splashRadius = actor.splashRadius;
+// Called by Tower.js right after it attaches this script; runs before onStart.
+function configure(newDamage, newTargetX, newTargetY, newSplashRadius) {
+    damage = newDamage;
+    targetX = newTargetX;
+    targetY = newTargetY;
+    splashRadius = newSplashRadius;
+}
 
+function onStart() {
     // -- Calculate direction toward target ------------------------------------
     var dx = targetX - actor.transform.x;
     var dy = targetY - actor.transform.y;
@@ -142,9 +144,8 @@ function applyDamage() {
 // with an enemy before the distance check triggers, apply damage here.
 function onCollisionEnter(other) {
     if (other.tag === "Enemy") {
-        if (other.takeDamage) {
-            other.takeDamage(damage);
-        }
+        var enemy = other.getComponent("ScriptComponent");
+        if (enemy) enemy.invoke("takeDamage", damage);
         actor.destroy();
     }
 }

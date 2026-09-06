@@ -7,7 +7,7 @@ var offsetX     = 0;
 var offsetY     = 0;
 
 function onUpdate(dt) {
-    var target = Scene.findByTag(targetTag);
+    var target = Scene.findFirstByTag(targetTag);
     if (!target) return;
 
     var goalX = target.transform.x + offsetX;
@@ -21,7 +21,7 @@ function onUpdate(dt) {
     actor.transform.y = cy + (goalY - cy) * smoothSpeed * dt;
 
     // Also move the main camera so the viewport follows
-    var cam = Scene.findByTag("MainCamera");
+    var cam = Scene.findFirstByTag("MainCamera");
     if (cam) {
         cam.transform.x = actor.transform.x;
         cam.transform.y = actor.transform.y;

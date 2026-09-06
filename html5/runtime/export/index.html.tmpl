@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover lets the game reach under a notch; the safe-area insets
+     in the stylesheet keep the controls out from under it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<meta name="theme-color" content="{{themeColor}}">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>{{title}}</title>
+{{pwaHead}}<link rel="stylesheet" href="engine/runtime/runtime.css">
+</head>
+<body>
+
+<!-- The project's own files sit at the root of the export, so the runtime's
+     asset root is "./" and StartScene resolves exactly as it does natively. -->
+<div id="game" data-project="./" data-scene="{{scene}}" data-stats="{{stats}}"></div>
+
+<button id="fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+
+<script type="module">
+import { boot } from './engine/runtime/Runtime.js';
+
+const runtime = await boot();
+
+const button = document.getElementById('fullscreen');
+button.addEventListener('click', () => {
+    if (document.fullscreenElement) runtime.exitFullscreen();
+    else runtime.enterFullscreen({ orientation: 'landscape' });
+});
+
+// A phone in portrait is worth a nudge, but not a block: the game runs either
+// way. The banner sits over the bottom edge, and rotating or tapping it clears it.
+let hintDismissed = false;
+const orientationHint = () => {
+    document.body.classList.toggle(
+        'wants-landscape',
+        !hintDismissed
+            && window.matchMedia('(orientation: portrait) and (max-width: 820px)').matches);
+};
+
+document.getElementById('rotate-hint').addEventListener('pointerdown', () => {
+    hintDismissed = true;
+    orientationHint();
+});
+
+orientationHint();
+window.addEventListener('resize', orientationHint);
+window.addEventListener('orientationchange', orientationHint);
+{{pwaBoot}}</script>
+
+<div id="rotate-hint" role="status">
+    <div>↻</div>
+    <p>Rotate your device for the best view</p>
+</div>
+
+</body>
+</html>

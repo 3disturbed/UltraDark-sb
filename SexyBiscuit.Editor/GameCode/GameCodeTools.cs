@@ -485,9 +485,11 @@ public sealed class GameCodeTools
 
             if (includeDiagnostics)
             {
-                view["errors"]   = Diagnostics(result.Errors.Take(50));
-                view["warnings"] = Diagnostics(result.Warnings.Take(50));
-                if (result.ErrorCount > 50) view["errorsOmitted"] = result.ErrorCount - 50;
+                // The first errors are the ones that matter; the rest are usually the same one again.
+                view["errors"]   = Diagnostics(result.Errors.Take(20));
+                view["warnings"] = Diagnostics(result.Warnings.Take(5));
+                if (result.ErrorCount > 20)  view["errorsOmitted"]   = result.ErrorCount - 20;
+                if (result.WarningCount > 5) view["warningsOmitted"] = result.WarningCount - 5;
             }
         }
 

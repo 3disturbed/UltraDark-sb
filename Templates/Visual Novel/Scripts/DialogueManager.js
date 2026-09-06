@@ -18,7 +18,7 @@
 //
 // The story data is embedded directly in this file because each script
 // in SexyBiscuit runs in its own isolated Jint runtime. To create your
-// own stories, edit the "story" array below. See StoryData.js for a
+// own stories, edit the "story" array below. See Docs/StoryData.js for a
 // complete authoring reference guide.
 // ============================================================================
 
@@ -576,16 +576,16 @@ function updatePortraits(speaker) {
     // Determine which portrait to highlight based on the speaker.
     if (speaker === "Keeper" || speaker === "???") {
         // Keeper speaks from the left -- brighten left, dim right.
-        leftSR.Color = { R: 220, G: 220, B: 240, A: 255 };
-        rightSR.Color = { R: 120, G: 110, B: 110, A: 180 };
+        leftSR.tint = { R: 220, G: 220, B: 240, A: 255 };
+        rightSR.tint = { R: 120, G: 110, B: 110, A: 180 };
     } else if (speaker === "Narrator" || speaker === "System") {
         // Narrator and System dim both portraits to draw focus to the text.
-        leftSR.Color = { R: 140, G: 140, B: 155, A: 180 };
-        rightSR.Color = { R: 155, G: 140, B: 140, A: 180 };
+        leftSR.tint = { R: 140, G: 140, B: 155, A: 180 };
+        rightSR.tint = { R: 155, G: 140, B: 140, A: 180 };
     } else {
         // Any other character speaks from the right -- brighten right, dim left.
-        leftSR.Color = { R: 120, G: 120, B: 135, A: 180 };
-        rightSR.Color = { R: 240, G: 220, B: 220, A: 255 };
+        leftSR.tint = { R: 120, G: 120, B: 135, A: 180 };
+        rightSR.tint = { R: 240, G: 220, B: 220, A: 255 };
     }
 }
 

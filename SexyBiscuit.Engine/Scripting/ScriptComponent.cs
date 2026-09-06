@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Jint.Native;
 using Jint.Runtime;
 using SexyBiscuit.Engine.Core;
@@ -16,11 +15,11 @@ namespace SexyBiscuit.Engine.Scripting;
 ///   <item><c>onFixedUpdate(dt)</c></item>
 ///   <item><c>onLateUpdate(dt)</c></item>
 ///   <item><c>onDestroy()</c></item>
-///   <item><c>onCollisionEnter(data)</c> — data = <c>{ other, contactPoint:{x,y}, normal:{x,y}, relativeVelocity }</c></item>
-///   <item><c>onTriggerEnter(other)</c> — other = actor proxy object</item>
+///   <item><c>onCollisionEnter/Stay/Exit(data)</c> — data = <c>{ other, contactPoint:{x,y}, normal:{x,y}, relativeVelocity, tag, name }</c></item>
+///   <item><c>onTriggerEnter/Stay/Exit(other)</c> — other = actor proxy object</item>
 /// </list>
 ///
-/// JavaScript errors are caught and written to the diagnostic log; they never crash the engine.
+/// JavaScript errors are caught and reported through <see cref="ScriptDiagnostics"/>; they never crash the engine.
 /// </summary>
 public sealed class ScriptComponent : Component
 {
@@ -35,7 +34,9 @@ public sealed class ScriptComponent : Component
     /// <remarks>
     /// Changing it on an attached component reloads the script immediately: the scene loader
     /// attaches first and sets properties second, and the editor's tools do the same, so a
-    /// script that only ran when the path was set before attach never ran at all.
+    /// script that only ran when the path was set before attach never ran at all. When the actor
+    /// is not yet in a scene the load waits for <see cref="Start"/>, so <c>onAwake</c> can use
+    /// <c>Scene.*</c> — the order the browser runtime uses.
     /// </remarks>
     public string ScriptPath
     {
@@ -46,21 +47,30 @@ public sealed class ScriptComponent : Component
             if (_scriptPath == value) return;
             _scriptPath = value;
 
-            if (Actor == null) return;
+            if (Actor == null || Actor.Scene == null) return;
 
             InitialiseRuntime();
             TryCall("onAwake");
+            _awoken = true;
             if (_started) TryCall("onStart");
         }
     }
     private string _scriptPath = string.Empty;
     private bool   _started;
+    private bool   _awoken;
+
+    // invoke() calls made before the script loaded — a spawner configuring a script it has
+    // just attached to an actor that is not yet in a scene. Replayed after onAwake, before onStart.
+    private List<(string Function, JsValue[] Args)>? _pendingInvokes;
 
     /// <summary>
-    /// The active Jint runtime for this component. Null until <see cref="Awake"/> completes
+    /// The active Jint runtime for this component. Null until the script has loaded
     /// successfully. Replaced with a fresh instance on each hot-reload.
     /// </summary>
     public JintRuntime? Runtime { get; private set; }
+
+    /// <summary>The last load error, or null when the script loaded. Surfaced by the editor's inspector.</summary>
+    public string? Error { get; private set; }
 
     // -------------------------------------------------------------------------
     // Lifecycle — Component overrides
@@ -69,17 +79,30 @@ public sealed class ScriptComponent : Component
     public override void Awake()
     {
         // No path yet is the normal case for a component restored from a scene file; the
-        // setter picks it up a moment later.
-        if (string.IsNullOrWhiteSpace(_scriptPath)) return;
+        // setter picks it up a moment later. No scene yet means the actor is still being
+        // built, and Start is the first moment Scene.* can answer.
+        if (string.IsNullOrWhiteSpace(_scriptPath) || Actor.Scene == null) return;
 
         InitialiseRuntime();
         TryCall("onAwake");
+        _awoken = true;
     }
 
     public override void Start()
     {
         _started = true;
-        if (Runtime == null && !string.IsNullOrWhiteSpace(_scriptPath)) InitialiseRuntime();
+
+        if (Runtime == null && !string.IsNullOrWhiteSpace(_scriptPath))
+        {
+            InitialiseRuntime();
+            if (Runtime != null && !_awoken)
+            {
+                TryCall("onAwake");
+                _awoken = true;
+            }
+        }
+
+        ReplayPendingInvokes();
         TryCall("onStart");
     }
 
@@ -95,64 +118,51 @@ public sealed class ScriptComponent : Component
     public override void OnDestroy()
         => TryCall("onDestroy");
 
-    public override void OnCollisionEnter(CollisionData data)
+    public override void OnCollisionEnter(CollisionData data) => DispatchCollision("onCollisionEnter", data);
+    public override void OnCollisionStay(CollisionData data)  => DispatchCollision("onCollisionStay",  data);
+    public override void OnCollisionExit(CollisionData data)  => DispatchCollision("onCollisionExit",  data);
+    public override void OnTriggerEnter(Actor other)          => DispatchTrigger("onTriggerEnter", other);
+    public override void OnTriggerStay(Actor other)           => DispatchTrigger("onTriggerStay",  other);
+    public override void OnTriggerExit(Actor other)           => DispatchTrigger("onTriggerExit",  other);
+
+    // -------------------------------------------------------------------------
+    // Cross-script calls
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Calls a top-level function the script defines and returns its result, or <c>undefined</c>
+    /// when there is no such function or it throws. This is what another script reaches through
+    /// <c>getComponent("ScriptComponent").invoke(name, ...args)</c>.
+    /// </summary>
+    public JsValue Invoke(string function, params JsValue[] args)
     {
-        if (Runtime == null || !Runtime.HasFunction("onCollisionEnter")) return;
+        if (Runtime == null)
+        {
+            // Not loaded yet but about to be (the actor has no scene, so the load waits for
+            // Start): keep the call, as the browser runtime does while it fetches the file.
+            if (!string.IsNullOrWhiteSpace(_scriptPath) && Actor != null && Actor.Scene == null)
+                (_pendingInvokes ??= new()).Add((function, args));
+            return JsValue.Undefined;
+        }
 
         try
         {
-            // Build a structured JS data object so the script never needs to
-            // know about any C# types.
-            var dataObj = Runtime.NewObject();
-
-            // other — wrap the colliding actor as a proxy
-            var otherProxy = Runtime.Bridge.WrapActorAsProxy(data.Other);
-            dataObj.Set("other", otherProxy);
-
-            // contactPoint — {x, y}
-            var cpObj = Runtime.NewObject();
-            cpObj.Set("x", new JsNumber(data.ContactPoint.X));
-            cpObj.Set("y", new JsNumber(data.ContactPoint.Y));
-            dataObj.Set("contactPoint", cpObj);
-
-            // normal — {x, y}
-            var nObj = Runtime.NewObject();
-            nObj.Set("x", new JsNumber(data.Normal.X));
-            nObj.Set("y", new JsNumber(data.Normal.Y));
-            dataObj.Set("normal", nObj);
-
-            // relativeVelocity
-            dataObj.Set("relativeVelocity", new JsNumber(data.RelativeVelocity));
-
-            Runtime.CallFunctionWithJsArgs("onCollisionEnter", dataObj);
+            return Runtime.Invoke(function, args);
         }
         catch (JavaScriptException ex)
         {
-            LogScriptError("onCollisionEnter", ex.Message);
+            LogScriptError(function, ex.Message);
+        }
+        catch (ExecutionCanceledException)
+        {
+            LogScriptError(function, "Execution cancelled — statement limit exceeded (100 000).");
         }
         catch (Exception ex)
         {
-            LogScriptError("onCollisionEnter", ex.Message);
+            LogScriptError(function, ex.Message);
         }
-    }
 
-    public override void OnTriggerEnter(Actor other)
-    {
-        if (Runtime == null || !Runtime.HasFunction("onTriggerEnter")) return;
-
-        try
-        {
-            var otherProxy = Runtime.Bridge.WrapActorAsProxy(other);
-            Runtime.CallFunctionWithJsArgs("onTriggerEnter", otherProxy);
-        }
-        catch (JavaScriptException ex)
-        {
-            LogScriptError("onTriggerEnter", ex.Message);
-        }
-        catch (Exception ex)
-        {
-            LogScriptError("onTriggerEnter", ex.Message);
-        }
+        return JsValue.Undefined;
     }
 
     // -------------------------------------------------------------------------
@@ -177,25 +187,69 @@ public sealed class ScriptComponent : Component
     // Internals
     // -------------------------------------------------------------------------
 
+    private void ReplayPendingInvokes()
+    {
+        if (_pendingInvokes == null) return;
+        var pending = _pendingInvokes;
+        _pendingInvokes = null;
+        foreach (var (function, args) in pending) Invoke(function, args);
+    }
+
+    private void DispatchCollision(string hook, CollisionData data)
+    {
+        if (Runtime == null || !Runtime.HasFunction(hook)) return;
+
+        try
+        {
+            Runtime.CallFunctionWithJsArgs(hook, Runtime.Bridge.WrapCollisionData(data));
+        }
+        catch (JavaScriptException ex)
+        {
+            LogScriptError(hook, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            LogScriptError(hook, ex.Message);
+        }
+    }
+
+    private void DispatchTrigger(string hook, Actor other)
+    {
+        if (Runtime == null || !Runtime.HasFunction(hook)) return;
+
+        try
+        {
+            Runtime.CallFunctionWithJsArgs(hook, Runtime.Bridge.WrapActorAsProxy(other));
+        }
+        catch (JavaScriptException ex)
+        {
+            LogScriptError(hook, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            LogScriptError(hook, ex.Message);
+        }
+    }
+
     private void InitialiseRuntime()
     {
+        Error = null;
+
         if (string.IsNullOrWhiteSpace(ScriptPath))
         {
             Runtime = null;
             return;
         }
 
-        // Read the JS source. Surface file-system errors as debug log entries
-        // so a missing script does not crash the engine.
+        // Read the JS source. A missing script is reported, never thrown.
         string source;
         try
         {
-            source = File.ReadAllText(Core.ProjectPaths.Resolve(ScriptPath));
+            source = File.ReadAllText(ProjectPaths.Resolve(ScriptPath));
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Script Error] {ScriptPath}: could not read file — {ex.Message}");
-            Runtime = null;
+            Fail(null, $"could not read file — {ex.Message}");
             return;
         }
 
@@ -203,24 +257,31 @@ public sealed class ScriptComponent : Component
         // and ScriptBridge, ensuring they always share the same engine instance.
         try
         {
-            Runtime = new JintRuntime(Actor);
-            Runtime.LoadScript(source);
+            var runtime = new JintRuntime(Actor);
+            runtime.Bridge.ScriptPath = ScriptPath;
+            runtime.LoadScript(source);
+            Runtime = runtime;
         }
         catch (JavaScriptException ex)
         {
             // Parse / execution error in the script itself.
-            System.Diagnostics.Debug.WriteLine($"[Script Error] {ScriptPath}: {ex.Message}");
-            Runtime = null;
+            Fail("load", ex.Message);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Script Error] {ScriptPath}: {ex.Message}");
-            Runtime = null;
+            Fail("load", ex.Message);
         }
     }
 
+    private void Fail(string? hook, string message)
+    {
+        Runtime = null;
+        Error   = message;
+        ScriptDiagnostics.Report(ScriptDiagnosticLevel.Error, ScriptPath, hook, message);
+    }
+
     /// <summary>
-    /// Safely calls a lifecycle function by name, catching and logging any
+    /// Safely calls a lifecycle function by name, catching and reporting any
     /// JS or CLR exception without crashing the engine.
     /// </summary>
     private void TryCall(string functionName, params object[] args)
@@ -237,7 +298,7 @@ public sealed class ScriptComponent : Component
         }
         catch (ExecutionCanceledException)
         {
-            // MaxStatements limit was reached — log and continue.
+            // MaxStatements limit was reached — report and continue.
             LogScriptError(functionName, "Execution cancelled — statement limit exceeded (100 000).");
         }
         catch (Exception ex)
@@ -247,5 +308,5 @@ public sealed class ScriptComponent : Component
     }
 
     private void LogScriptError(string functionName, string message)
-        => System.Diagnostics.Debug.WriteLine($"[Script Error] {ScriptPath} ({functionName}): {message}");
+        => ScriptDiagnostics.Report(ScriptDiagnosticLevel.Error, ScriptPath, functionName, message);
 }

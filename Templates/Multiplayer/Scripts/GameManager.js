@@ -14,7 +14,13 @@ function spawnPlayer(networkId, name) {
     var player = Scene.createActor(name);
     player.transform.x = 400 + Math.random() * 200;
     player.transform.y = 300 + Math.random() * 200;
-    // In a full implementation, add SpriteRenderer + NetworkObject components
+    player.tag = "Player";
+
+    // A created actor is empty: a sprite so it can be seen, and the player script,
+    // told which network id it is before its onStart runs.
+    Scene.addComponent(player, "SpriteRenderer", { Tint: networkId === Network.localId ? "#66CCFF" : "#FF9966" });
+    var script = Scene.addComponent(player, "ScriptComponent", { ScriptPath: "Scripts/NetworkPlayer.js" });
+    if (script) script.invoke("configure", networkId);
     log("Spawned player: " + name + " at (" +
         Math.floor(player.transform.x) + ", " +
         Math.floor(player.transform.y) + ")");

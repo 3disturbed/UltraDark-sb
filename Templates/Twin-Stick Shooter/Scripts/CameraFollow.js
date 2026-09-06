@@ -1,8 +1,7 @@
 // CameraFollow.js — Smooth camera follow for the twin-stick shooter
-// Attach this script to the Main Camera actor if you want the camera to
-// track the player. By default the Arena scene uses a fixed camera at the
-// center of the 1280x720 arena, but this script can be added for larger
-// arenas where scrolling is needed.
+// Attached to the Main Camera actor in the Arena scene. Remove the component
+// from the camera for a fixed view of a small arena; keep it for a larger one
+// where scrolling is needed.
 
 // =============================================================================
 // Tuning variables

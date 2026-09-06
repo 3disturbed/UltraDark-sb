@@ -77,11 +77,15 @@ export const Keys = Object.freeze({
     Delete: 'Delete', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
 });
 
-/** Mouse buttons, matching `Input/MouseButton.cs`. */
+/**
+ * Mouse buttons, matching `Input/MouseButton.cs` and `MouseEvent.button`: both put the
+ * middle button at 1 and the right button at 2. (This table once had them the other way
+ * round, so a script asking for the right button got the wheel.)
+ */
 export const MouseButton = Object.freeze({
     Left: 0,
-    Right: 1,
-    Middle: 2,
+    Middle: 1,
+    Right: 2,
     XButton1: 3,
     XButton2: 4,
 });

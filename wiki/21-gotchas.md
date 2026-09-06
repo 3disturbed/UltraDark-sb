@@ -279,20 +279,21 @@ An array is never falsy, so `if (!target) return;` never fires.
 ### Only eight lifecycle hooks are dispatched
 
 `onAwake`, `onStart`, `onUpdate`, `onFixedUpdate`, `onLateUpdate`, `onDestroy`,
-`onCollisionEnter`, `onTriggerEnter`. There is **no** `onTriggerExit`,
-`onCollisionExit`, `onCollisionStay` or `onTriggerStay` in script.
+`onCollisionEnter/Stay/Exit`, `onTriggerEnter/Stay/Exit` — all twelve are dispatched, and any
+other top-level function is reachable through `getComponent("ScriptComponent").invoke(name)`.
 
-### The bundled templates target a wider API
+### The bridge is a contract shared with the browser
 
-`log()`, `Input.isKeyPressed`, `actor.getComponent`, `Scene.createActor`,
-`Network.*` and friends do not exist in the bridge. Full table in
-[11. Scripting](11-scripting.md#what-the-bundled-templates-assume--and-what-breaks).
+`html5/src/scripting/bridge-api.json` lists every global and member; a test on each side
+holds its bridge to the file, and the template smoke tests run every bundled script under
+both engines. A member that exists on one side only is a failing build, not a runtime
+surprise. See [11. Scripting](11-scripting.md#the-scripting-contract).
 
-### Script errors are silent by default
+### Script errors go through ScriptDiagnostics
 
-Failures are written with `System.Diagnostics.Debug.WriteLine` as
-`[Script Error] …`, which is compiled out in `Release`. Add a `Trace` listener
-if you want them in a shipping build.
+Failures are published by `ScriptDiagnostics.Report` and reach the editor console with their
+level; with no subscriber they go to the process console, so a Release build still shows them.
+`ScriptDiagnostics.Capture(list)` collects them in a test.
 
 ---
 
@@ -421,26 +422,30 @@ type `/login` there once, then **Resume**.
 Including `Release`. Remove it from `DefineConstants` in
 `SexyBiscuit.Engine.csproj` if you are not shipping on Steam.
 
-### There is no `sbengine` CLI
+### Publishing needs the engine source and the .NET SDK
 
-The root `README.md` shows `sbengine build …` and a `--all` flag. Neither
-exists. Wrap `ExportPipeline.RunCli(args)` in a small console project — see
-[18. Build & Export](18-build-export.md#the-cli).
+A desktop build compiles the engine for the target runtime, so `sbengine` needs the
+engine checkout (run it from inside one, or set `SEXYBISCUIT_REPO`) and `dotnet`. A
+staged-only export (`--no-publish`, or the editor's Build button) needs neither. See
+[18. Build & Export](18-build-export.md#publishing-without-c).
 
-### `RunCli` ignores a trailing flag
+### An archive made on Windows loses the executable bit
 
-The parse loop is `for (i = 0; i < args.Length - 1; i++)`, so the final argument
-is never examined as a flag. Always pass flag/value pairs.
+Linux and macOS builds are packaged as `.tar.gz` for that reason; a `.zip` of a Unix
+binary made on Windows unpacks without `+x`. The release workflow builds each target on its
+own OS.
 
-### The export pipeline does not compile your game
+### The editor's build is a staged export
 
-It stages assets, scripts, scenes and metadata. Run `dotnet publish -r <rid>`
-into the same folder yourself.
+The Build Settings panel stages content only; **Build & Run** publishes as well. The
+platform folder goes under `outputDirectory` once — a `BuildSettings.json` that saved
+`dist\Windows_x64` is read as that folder, not doubled.
 
 ### Android and iOS are validated, not built
 
 No manifest generation, no APK/AAB packaging, no Xcode project. The pipeline
-checks for a keystore path and a team id, then stages content.
+checks for a keystore path and a team id, then stages content. The installable web build
+is the mobile build until a native target exists.
 
 ### Saves default to the working directory
 
@@ -463,7 +468,6 @@ Guard with `File.Exists`.
 Described in the root `README.md`, not present in the source at the time of
 writing:
 
-- `sbengine` CLI and `--all`
 - Automatic `steamcmd` upload
 - Android manifest / keystore manager / APK packaging
 - iOS Xcode project generation and icon scaling

@@ -1,0 +1,146 @@
+# Builds one game for every target and publishes the archives — as workflow artifacts, and to
+# the upload target when asked. Every game repo is a copy of the engine repo, so this file
+# ships with it. An agent runs `gh workflow run release.yml -f game=Games/Foo`, then
+# `gh run watch --exit-status`, and reads the one-line-per-target summary; the build log never
+# enters its context.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: The game folder, relative to the repository (e.g. Games/Foo)
+        required: true
+        type: string
+      configuration:
+        description: Debug, Development or Release
+        default: Release
+        type: string
+      upload:
+        description: Send the archives to the upload target (needs SB_UPLOAD_URL and SB_UPLOAD_TOKEN secrets)
+        default: false
+        type: boolean
+      channel:
+        description: The release channel sent with an upload
+        default: dev
+        type: string
+  push:
+    tags:
+      # release/<game-slug>-v1.2.3 — the slug is the folder name under Games/, the version the build's.
+      - 'release/*'
+
+concurrency:
+  group: release-${{ inputs.game || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve game and version
+    runs-on: ubuntu-latest
+    outputs:
+      game: ${{ steps.pick.outputs.game }}
+      version: ${{ steps.pick.outputs.version }}
+      configuration: ${{ steps.pick.outputs.configuration }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            ref="${GITHUB_REF#refs/tags/release/}"          # foo-v1.2.3
+            slug="${ref%-v*}"; version="${ref##*-v}"
+            echo "game=Games/${slug}" >> "$GITHUB_OUTPUT"
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+            echo "configuration=Release" >> "$GITHUB_OUTPUT"
+          else
+            echo "game=${{ inputs.game }}" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "configuration=${{ inputs.configuration }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: ${{ matrix.platform }}
+    needs: resolve
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  platform: web }
+          - { os: ubuntu-latest,  platform: linux-x64 }
+          - { os: windows-latest, platform: win-x64 }
+          - { os: macos-latest,   platform: osx-arm64 }
+    env:
+      SEXYBISCUIT_REPO: ${{ github.workspace }}
+      SB_UPLOAD_URL: ${{ secrets.SB_UPLOAD_URL }}
+      SB_UPLOAD_TOKEN: ${{ secrets.SB_UPLOAD_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build the CLI
+        run: dotnet build SexyBiscuit.Build/SexyBiscuit.Build.csproj -c Release
+
+      - name: Export ${{ matrix.platform }}
+        shell: bash
+        run: |
+          extra=""
+          [ -n "${{ needs.resolve.outputs.version }}" ] && extra="$extra --version ${{ needs.resolve.outputs.version }}"
+          [ "${{ inputs.upload }}" = "true" ] && extra="$extra --upload"
+          dotnet run --no-build --project SexyBiscuit.Build -c Release -- \
+            --project "${{ needs.resolve.outputs.game }}" \
+            --platform ${{ matrix.platform }} \
+            --config ${{ needs.resolve.outputs.configuration }} \
+            --output dist \
+            --report "dist/build-report-${{ matrix.platform }}.json" \
+            --quiet $extra
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: |
+            ${{ needs.resolve.outputs.game }}/dist/*.zip
+            ${{ needs.resolve.outputs.game }}/dist/*.tar.gz
+            ${{ needs.resolve.outputs.game }}/dist/build-report-*.json
+          if-no-files-found: error
+
+  summary:
+    name: Summary
+    needs: [resolve, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: reports
+
+      - name: One line per target
+        shell: bash
+        run: |
+          failed=0
+          {
+            echo "## ${{ needs.resolve.outputs.game }}"
+            echo '```'
+            for report in $(find reports -name 'build-report-*.json' | sort); do
+              python3 - "$report" <<'PY'
+          import json, sys, os
+          r = json.load(open(sys.argv[1]))
+          for t in r["targets"]:
+              name = (t.get("rid") or t["platform"]).lower().ljust(10)
+              verdict = "ok    " if t["success"] else "FAILED"
+              artifact = os.path.basename(t["archive"]) if t.get("archive") else t.get("outputPath", "")
+              upload = f"  -> {t['uploadUrl']}" if t.get("uploadUrl") else ""
+              print(f"{name} {verdict} {t['seconds']:7.1f}s  {artifact}{upload}")
+              for e in (t.get("errors") or [])[:5]:
+                  print(f"  {t['platform']}: {e}")
+          sys.exit(0 if all(t["success"] for t in r["targets"]) else 1)
+          PY
+              [ $? -ne 0 ] && failed=1
+            done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit $failed

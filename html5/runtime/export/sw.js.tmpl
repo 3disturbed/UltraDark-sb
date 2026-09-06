@@ -1,0 +1,25 @@
+// Service worker for an exported SexyBiscuit web build.
+//
+// Every file of the build is fetched once at install and served from the cache
+// after that, so the game opens offline from the home screen. The cache name
+// carries the version and the commit: a new build is a new cache, and the old
+// one is dropped when the new worker takes over.
+const CACHE = "{{cacheName}}";
+const PRECACHE = {{precache}};
+
+self.addEventListener("install", (event) => {
+    event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener("activate", (event) => {
+    event.waitUntil(
+        caches.keys()
+            .then((names) => Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name))))
+            .then(() => self.clients.claim()));
+});
+
+self.addEventListener("fetch", (event) => {
+    if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) return;
+    event.respondWith(
+        caches.match(event.request, { ignoreSearch: true }).then((cached) => cached ?? fetch(event.request)));
+});

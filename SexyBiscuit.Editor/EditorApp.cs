@@ -196,6 +196,17 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         // Route Debug output to editor console
         System.Diagnostics.Trace.Listeners.Add(new EditorTraceListener());
+
+        // Script output no longer goes through Debug.WriteLine (which Release builds drop);
+        // it is published by the scripting runtime and shown here with its own level.
+        SexyBiscuit.Engine.Scripting.ScriptDiagnostics.Reported += diagnostic =>
+            ConsoleLog.Add(diagnostic.ToString(), diagnostic.Level switch
+            {
+                SexyBiscuit.Engine.Scripting.ScriptDiagnosticLevel.Error   => LogLevel.Error,
+                SexyBiscuit.Engine.Scripting.ScriptDiagnosticLevel.Warning => LogLevel.Warning,
+                _                                                          => LogLevel.Info,
+            });
+
         ConsoleLog.Add("SexyBiscuit Editor initialized.", LogLevel.Info);
 
         var settings = AssistantSettings.Load();

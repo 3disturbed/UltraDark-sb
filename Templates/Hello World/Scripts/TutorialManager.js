@@ -368,7 +368,7 @@ function lesson5_FindingActors() {
 
     // Scene.findByTag searches for actors by their tag property.
     // Tags are useful when you have many actors of the same type (e.g., "Enemy").
-    var target = Scene.findByTag("ClickTarget");
+    var target = Scene.findFirstByTag("ClickTarget");
 
     // Log the result of the tag-based search.
     Debug.log("Scene.findByTag('ClickTarget'): " + (target ? "Found! (" + target.name + ")" : "Not found"));
@@ -426,9 +426,9 @@ function lesson6_WorkingWithComponents() {
         // 0 means no gravity, 1 means normal, 2 means double gravity.
         Debug.log("Rigidbody2D.GravityScale: " + rb.GravityScale);
 
-        // IsStatic determines whether the physics engine moves this actor.
-        // Static actors don't move but can still be collided with.
-        Debug.log("Rigidbody2D.IsStatic: " + rb.IsStatic);
+        // bodyType says whether the physics engine moves this actor: Dynamic bodies
+        // respond to forces, Kinematic ones only move when a script moves them.
+        Debug.log("Rigidbody2D.bodyType: " + rb.bodyType);
     }
 
     // Now get the SpriteRenderer component, which controls how the actor looks.
@@ -438,7 +438,7 @@ function lesson6_WorkingWithComponents() {
     if (sr) {
         // The Color property has R, G, B, A fields (0-255 each).
         // This logs the RGBA values so you can see the blue color defined in the scene.
-        Debug.log("SpriteRenderer.Color: R=" + sr.Color.R + " G=" + sr.Color.G + " B=" + sr.Color.B + " A=" + sr.Color.A);
+        Debug.log("SpriteRenderer.tint: r=" + sr.tint.r + " g=" + sr.tint.g + " b=" + sr.tint.b + " a=" + sr.tint.a);
     }
 
     // Explain the component model to help the user understand the architecture.

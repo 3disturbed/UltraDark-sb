@@ -216,11 +216,10 @@ function craft(recipe) {
             wall.transform.x = actor.transform.x + 40;
             wall.transform.y = actor.transform.y;
             var sr = wall.addComponent("SpriteRenderer");
-            if (sr) { sr.color = { R: 160, G: 160, B: 160, A: 255 }; }
-            var rb = wall.addComponent("Rigidbody2D");
-            if (rb) { rb.isStatic = true; }
+            if (sr) { sr.tint = { R: 160, G: 160, B: 160, A: 255 }; }
+            // A collider with no Rigidbody2D is static geometry on both engines.
             var col = wall.addComponent("BoxCollider2D");
-            if (col) { col.width = 32; col.height = 32; }
+            if (col) { col.size = { x: 32, y: 32 }; }
         }
         log("Crafted Stone Wall! Placed near you for defense.");
 

@@ -36,6 +36,14 @@ jobs:
       - name: Build editor
         run: dotnet build SexyBiscuit.Editor/SexyBiscuit.Editor.csproj -c Release --no-restore
 
+      # The build CLI, and a staged (not published) web export of a template through it.
+      - name: Build the CLI
+        run: dotnet build SexyBiscuit.Build/SexyBiscuit.Build.csproj -c Release --no-restore
+
+      - name: Export smoke
+        run: dotnet run --no-build --project SexyBiscuit.Build -c Release -- --project "Templates/Hello World" --platform web --no-publish --output "${{ runner.temp }}/sb-dist" --quiet
+        shell: bash
+
       # Headless smoke test: the MCP tool registry and the Claude Code plumbing load without a window.
       - name: Dump MCP tools
         run: dotnet SexyBiscuit.Editor/bin/Release/net8.0/SexyBiscuit.Editor.dll --dump-mcp-tools --markdown > /dev/null
@@ -43,6 +51,38 @@ jobs:
 
       - name: Test
         run: dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj -c Release --no-restore --verbosity normal
+
+  # The HTML5 port has its own suite, and it is the only thing that catches the two
+  # engines drifting apart: the interop and contract tests read the C# sources.
+  html5:
+    name: HTML5 tests, lint and template validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test
+        run: npm test
+        working-directory: html5
+
+      - name: Lint
+        run: npm run lint
+        working-directory: html5
+
+      # Every bundled template must validate cleanly; a game repo adds its own
+      # `npm run validate -- ../Games/<name> --strict` here.
+      - name: Validate templates
+        run: npm run validate
+        working-directory: html5
+
+      # The web exporter is what the prototype phase ships with; stage one template.
+      - name: Export smoke
+        run: node tools/export.js "../Templates/Hello World" --pwa --out /tmp/sb-web --quiet
+        working-directory: html5
 
   warnings-as-errors:
     name: Warning check

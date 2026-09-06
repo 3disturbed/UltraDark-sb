@@ -56,15 +56,29 @@ placeholder.
 
 ## Exporting a project to the web
 
-`BuildPlatform.Web` stages `html5/src` and `html5/runtime` into the output as
-`engine/`, then writes an `index.html` pointing at the project's own files:
+Two exporters produce the same build. With node alone:
 
 ```bash
-dotnet run --project SexyBiscuit.Engine -- --export --platform web
+node html5/tools/export.js Games/<Name> --pwa
 ```
 
-or pick **Web** in the editor's Build Settings panel. The result is static files;
-serve them from anything. It will not run from `file://`.
+stages `html5/src` and `html5/runtime` into `Games/<Name>/dist/Web/engine/`, copies the
+project's scenes, scripts, assets and settings beside them, writes the page, and with
+`--pwa` a web manifest, icons and a service worker so the build installs to a phone's
+home screen and runs offline. It zips the folder beside itself and writes
+`build-report.json`. From an engine checkout with .NET, `BuildPlatform.Web` — the editor's
+Build Settings panel, or the build CLI — does the same staging. Both fill the templates
+under `html5/runtime/export/`, so there is one page, not two.
+
+The result is static files; serve them from anything. It will not run from `file://`,
+and a service worker needs HTTPS or localhost.
+
+```bash
+node html5/tools/upload.js Games/<Name>/dist/<slug>-<version>-web.zip --game "<Name>"
+```
+
+POSTs the zip and its metadata to `$SB_UPLOAD_URL` with `$SB_UPLOAD_TOKEN` and prints the
+URL. `html5/README.md` lists every tool and its flags.
 
 `Web` is deliberately the last value in `BuildPlatform`: the editor's platform
 dropdown maps its selection by ordinal, so inserting a value anywhere else would
@@ -155,15 +169,15 @@ two fingers against a previous-position table that the same method had already
 advanced to the current positions, so it measured the distance against itself.
 The previous positions now come from each touch's own `Delta`.
 
-## Where the JavaScript bridge is wider than the C# one
+## The scripting contract is shared
 
-`html5/src/scripting/ScriptBridge.js` implements everything
-`Scripting/TypeScriptDefinitions.cs` declares, and more. The additions are the
-API the forty-five bundled template scripts already assume and do not get: `log()`
-as a bare global, `Input.isKeyHeld` / `isKeyPressed` / `isMouseHeld` /
-`scrollDelta`, `actor.getComponent`, `actor.transform`, `actor.transform3d`, the
-`Stay` and `Exit` collision and trigger hooks, and `Physics` and `Time` globals.
-
-Those scripts run under the HTML5 runtime and still do not run under Jint. See
-[11. JavaScript Scripting](11-scripting.md) for what the C# bridge actually
-provides, and `wiki/21-gotchas.md` for the list of what breaks.
+`html5/src/scripting/ScriptBridge.js` and `SexyBiscuit.Engine/Scripting/ScriptBridge.cs`
+install the same globals with the same members: `log()` as a bare global, the key and mouse
+queries, `actor.getComponent` and `actor.transform`, `Scene.createActor` / `addComponent` /
+`destroy`, all twelve collision and trigger hooks, and the `Physics`, `Time` and `Network`
+globals. The list is `html5/src/scripting/bridge-api.json`; `html5/tests/bridge.test.js` and
+`ScriptBridgeParityTests` hold each bridge to it in both directions, and the template smoke
+tests (`tests/templates.test.js`, `ProjectTemplateTests`) run every bundled script under both
+engines. A script that runs in the browser runs natively unchanged, which is what makes
+"prototype in the browser, ship native" a build step rather than a rewrite. See
+[11. JavaScript Scripting](11-scripting.md#the-scripting-contract).

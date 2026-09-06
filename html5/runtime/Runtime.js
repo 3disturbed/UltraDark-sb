@@ -222,11 +222,18 @@ export async function boot(overrides = {}) {
         ?? document.getElementById('game')
         ?? document.body;
 
+    // The query string overrides the page's data attributes, so one served
+    // runtime page can open any project: ?project=/Games/Foo/&scene=Scenes/Main
+    // is the hand-off URL a playtester gets.
+    const params = new URLSearchParams(globalThis.location?.search ?? '');
+
     const runtime = new Runtime({
         mount,
-        projectRoot: mount.dataset?.project ?? '',
-        scene: mount.dataset?.scene || null,
-        showStats: mount.dataset?.stats === 'true',
+        projectRoot: params.get('project') ?? mount.dataset?.project ?? '',
+        scene: params.get('scene') ?? (mount.dataset?.scene || null),
+        showStats: params.has('stats')
+            ? params.get('stats') !== 'false'
+            : mount.dataset?.stats === 'true',
         touchControls: mount.dataset?.touchControls !== 'false',
         ...overrides,
     });

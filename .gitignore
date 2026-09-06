@@ -29,3 +29,9 @@ Desktop.ini
 SexyBiscuit.Editor/dist/
 SexyBiscuit.Editor/imgui.ini
 SexyBiscuit.Editor/imgui.layout-version
+
+## Build output of any project or game (web exports, publishes, archives)
+dist/
+
+## Per-project scratch folders (generated player project, usage logs, autosaves)
+.sexybiscuit/

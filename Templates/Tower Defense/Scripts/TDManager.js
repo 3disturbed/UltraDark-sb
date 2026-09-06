@@ -233,7 +233,7 @@ function spawnEnemy() {
         // Visual appearance — enemies are red squares
         var sprite = enemy.addComponent("SpriteRenderer");
         if (sprite) {
-            sprite.Color = { R: 220, G: 50, B: 50, A: 255 };
+            sprite.tint = { R: 220, G: 50, B: 50, A: 255 };
         }
 
         // Physics body with no gravity (top-down movement)
@@ -245,8 +245,7 @@ function spawnEnemy() {
         // Collision detection for tower bullets
         var col = enemy.addComponent("BoxCollider2D");
         if (col) {
-            col.Width = 24;
-            col.Height = 24;
+            col.size = { x: 24, y: 24 };
         }
 
         // Attach the path-following behavior script

@@ -22,8 +22,9 @@ public sealed class SceneResources
 
     /// <summary>What every client is told when it connects.</summary>
     public const string Instructions =
-        "SexyBiscuit editor. Call get_project_info first, then get_scene_summary to learn actor ids " +
-        "(ids change after undo, redo or load — re-query rather than remembering them). Units: 3D positions in " +
+        "SexyBiscuit editor. Call get_context first; get_scene_summary lists actors one per line and get_actor inspects " +
+        "one (ids change after undo, redo or load — re-query rather than remembering them); apply_scene_edits runs " +
+        "several edits in one call. Units: 3D positions in " +
         "world units (metres), 2D in pixels; rotations in degrees [pitch, yaw, roll]; colours '#RRGGBB' or '#RRGGBBAA' " +
         "or a colour name. A renderable 3D scene needs a light or a Skybox, something with a MeshRenderer, and a Camera " +
         "tagged MainCamera3D (place_actor 'Camera'); Play also needs a Player Start and a Game Mode. Every change shows " +
@@ -108,7 +109,7 @@ public sealed class SceneResources
     [McpPrompt("build_level", "Build a level in the open scene from a short brief.")]
     public string BuildLevel([McpParam("What the level should contain and feel like")] string brief)
         => $"Build this level in the open SexyBiscuit scene: {brief}\n\n" +
-           "Start with get_project_info and get_scene_summary, then place actors with spawn_primitive, place_actor and " +
+           "Start with get_context, then place actors with apply_scene_edits (spawn_primitive, place_actor and " +
            "set_material, check your work with capture_viewport, and save with save_scene when it looks right. " +
            "Tell me what you built and what you would add next.";
 }

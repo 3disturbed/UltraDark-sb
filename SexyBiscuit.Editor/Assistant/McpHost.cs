@@ -66,6 +66,7 @@ public sealed class McpHost : IDisposable
         Registry.RegisterInstance(new ComponentTools(SceneHost), engine);
         Registry.RegisterInstance(new MaterialTools(SceneHost), engine);
         Registry.RegisterInstance(new UndoTools(Undo), engine);
+        Registry.RegisterInstance(new BatchTools(SceneHost, Registry), engine);
         Registry.RegisterInstance(new EditorTools(this), editor);
 
         Resources.RegisterInstance(new SceneResources(SceneHost, Undo, Registry));

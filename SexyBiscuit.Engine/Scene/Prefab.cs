@@ -41,6 +41,14 @@ public static class Prefab
         => InstantiateInternal(prefabPath, position, rotation);
 
     /// <summary>
+    /// Instantiates a prefab into <paramref name="scene"/> rather than the host's active scene.
+    /// A script running in a scene that is not the active one — a test, a headless tick, a
+    /// scene being previewed — spawns into the scene its actor lives in.
+    /// </summary>
+    public static Actor Instantiate(string prefabPath, Core.Scene scene, Vector2? position = null, float? rotation = null)
+        => InstantiateInternal(prefabPath, position, rotation, scene);
+
+    /// <summary>
     /// Instantiates a prefab and returns it cast to <typeparamref name="T"/>.
     /// Throws <see cref="InvalidCastException"/> if the actor is not of that type.
     /// Note: the Actor type written to JSON must match <typeparamref name="T"/> for a
@@ -113,7 +121,7 @@ public static class Prefab
     // Internal implementation
     // -------------------------------------------------------------------------
 
-    private static Actor InstantiateInternal(string prefabPath, Vector2? position, float? rotation)
+    private static Actor InstantiateInternal(string prefabPath, Vector2? position, float? rotation, Core.Scene? scene = null)
     {
         string json  = GetOrLoadJson(prefabPath);
         Actor  actor = DeserializeActor(json);
@@ -124,8 +132,8 @@ public static class Prefab
         if (rotation.HasValue)
             actor.Transform.LocalRotation = rotation.Value;
 
-        // Add to the active scene. Fall back gracefully when no scene is active.
-        var activeScene = EngineHost.Current?.SceneManager.ActiveScene;
+        // Add to the requested scene, else the active one. Fall back gracefully when there is neither.
+        var activeScene = scene ?? EngineHost.Current?.SceneManager.ActiveScene;
         if (activeScene is not null)
         {
             activeScene.AddActor(actor);
