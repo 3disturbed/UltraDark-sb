@@ -47,6 +47,23 @@ public class NetworkObject : Component
     /// <summary>The spawn key, or the actor's name when none was set.</summary>
     public string SpawnKeyOrName => string.IsNullOrWhiteSpace(SpawnKey) ? Actor.Name : SpawnKey;
 
+    /// <summary>
+    /// Hands this object to a client, before it is spawned. The server decides ownership, so this
+    /// does nothing anywhere else.
+    /// </summary>
+    /// <remarks>
+    /// The setter is internal because the transport assigns ownership when a spawn packet arrives.
+    /// A game mode that spawns a pawn for a joining client has to say who it belongs to, though,
+    /// and it lives outside this assembly.
+    /// </remarks>
+    public void AssignOwner(int clientId)
+    {
+        if (NetworkManager.Instance is not { IsServer: true }) return;
+
+        OwnerClientId = clientId;
+        IsOwner       = NetworkManager.Instance.LocalClientId == clientId;
+    }
+
     // -------------------------------------------------------------------------
     // Dirty tracking — one entry per [Replicated] member on Actor + Components
     // -------------------------------------------------------------------------
