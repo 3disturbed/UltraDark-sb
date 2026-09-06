@@ -16,199 +16,163 @@ share globals, and there is no `require` / `import` — one file, one actor.
 
 ---
 
-## The API that actually exists
+## The scripting contract
 
-This is the complete set of globals registered by
-`JintRuntime.RegisterGlobals()`. It is the source of truth; the `.d.ts` file
-produced by `TypeScriptDefinitions.Generate()` matches it exactly.
+The globals below are registered by `JintRuntime.RegisterGlobals()` and, member for member,
+by the HTML5 runtime's `html5/src/scripting/ScriptBridge.js`. The list itself lives in
+`html5/src/scripting/bridge-api.json`; a test on each side (`ScriptBridgeParityTests` and
+`html5/tests/bridge.test.js`) holds its bridge to that file in both directions, so the two can
+only drift apart by failing a build. A script that uses only what is here runs unchanged in the
+browser and natively. The `.d.ts` produced by `TypeScriptDefinitions.Generate()` matches it.
 
 ### `actor` — the actor owning this script
 
 ```js
-actor.name      // string, get/set
-actor.tag       // string, get/set
-actor.active    // boolean, get/set
-actor.destroy() // queue removal at end of frame
+actor.id                 // number, read-only
+actor.name               // string, get/set
+actor.tag                // string, get/set
+actor.active             // boolean, get/set
+actor.transform          // the same object as the `transform` global
+actor.transform3d        // Transform3D proxy, or null in a 2D scene
+actor.getComponent("Rigidbody2D")   // a component proxy, or null
+actor.addComponent("BoxCollider2D") // adds and returns a component proxy
+actor.destroy()          // queue removal at end of frame
 ```
 
-> `actor` has **no `transform` property**. The transform is a separate global.
-
-### `transform` — this actor's Transform
+### `transform` and `transform3d`
 
 ```js
-transform.x           // number, world X   (get/set)
-transform.y           // number, world Y   (get/set)
-transform.rotation    // number, radians   (get/set)
-transform.scaleX      // number           (get/set)
-transform.scaleY      // number           (get/set)
+transform.x, transform.y          // world position (get/set)
+transform.rotation                // radians (get/set)
+transform.scaleX, transform.scaleY
 transform.lookAt(x, y);
 transform.distanceTo({ x: 10, y: 20 });   // number
+
+transform3d.x, .y, .z             // world position; null without a Transform3D
+transform3d.rotX, .rotY, .rotZ    // Euler angles in degrees
+transform3d.lookAt(x, y, z);
+```
+
+### Component proxies
+
+`getComponent` returns a proxy over the component's declared properties — the same set the
+editor's inspector edits — under both the C# name and its camelCase form, so `rb.GravityScale`
+and `rb.gravityScale` are one property. Vectors read as `{x, y}`, colours as `{r, g, b, a}`, and
+either form (or `[x, y]`, `"#FF8040"`, `{R, G, B, A}`) is accepted on assignment. Public methods
+whose parameters are simple values are callable. Two extras the templates rely on:
+
+```js
+var rb = actor.getComponent("Rigidbody2D");
+rb.velocityX = 120;                 // shorthand over LinearVelocity
+rb.velocity = { x: 120, y: 0 };
+
+var other = Scene.find("Boss").getComponent("ScriptComponent");
+other.invoke("takeDamage", 5);      // any top-level function the other script defines
 ```
 
 ### `Input`
 
 ```js
-Input.isPressed("Jump");     // boolean — went down this frame
-Input.isHeld("MoveX");       // boolean — active now
-Input.isReleased("Attack");  // boolean — came up this frame
-Input.getAxis("MoveX");      // number, −1..1
-Input.mouseX;                // number, read-only, screen pixels
-Input.mouseY;                // number, read-only
+Input.isPressed("Jump"); Input.isHeld("MoveX"); Input.isReleased("Attack");
+Input.getAxis("MoveX");                       // number, −1..1
+Input.mouseX, Input.mouseY                    // screen pixels
+Input.mouseDeltaX, Input.mouseDeltaY, Input.scrollDelta
+Input.isKeyDown("A"); Input.isKeyHeld("a"); Input.isKeyPressed("KeyA"); Input.isKeyReleased("Space");
+Input.isMouseDown(0); Input.isMouseHeld("Right"); Input.isMousePressed(2); Input.isMouseReleased(1);
+Input.touchCount; Input.getTouch(0);          // { id, x, y, phase } or null
+Input.joystickX, Input.joystickY              // the left on-screen stick
 ```
 
-Action names come from the [action map](07-input.md#action-maps).
+Key names accept XNA's spelling (`"A"`, `"D1"`, `"Left"`) and the browser's (`"KeyA"`,
+`"Digit1"`, `"ArrowLeft"`); `Input/KeyNames.cs` and `html5/src/input/Keys.js` share the table.
+Mouse buttons are 0 left, 1 middle, 2 right on both engines. Action names come from the
+[action map](07-input.md#action-maps).
 
 ### `Audio`
 
 ```js
-var h = Audio.play("Assets/Audio/theme.ogg");   // returns { id: number }
-Audio.playOneShot("Assets/Audio/hit.wav");
-Audio.stop(h);                                  // accepts the handle object or a raw id
+var music = Audio.play("Assets/Audio/theme.ogg", true);   // { id }, id 0 when nothing played
+Audio.playOneShot("Assets/Audio/hit.wav", 0.8);
+Audio.stop(music);
+Audio.setVolume(0.5);                                     // master bus
 ```
-
-`Audio.play` from script never loops and always uses the default bus.
 
 ### `Scene`
 
 ```js
-var boss = Scene.find("Boss");            // ActorProxy | null
-var coins = Scene.findByTag("Coin");      // ActorProxy[]  — always an array
-var a = Scene.instantiate("Prefabs/Bullet.prefab", 100, 200);   // ActorProxy
-Scene.load("Scenes/Level2");
+Scene.name
+Scene.find("Player")             // actor proxy or null
+Scene.findAll("Coin")            // every actor with that name
+Scene.findByTag("Enemy")         // an array — an empty one is still truthy
+Scene.findFirstByTag("Player")   // one actor or null
+Scene.createActor("Spark", x, y)
+Scene.addComponent(proxy, "SpriteRenderer", { Tint: "#FF0000" })
+Scene.destroy(proxy)             // or Scene.destroyActor(proxy)
+Scene.instantiate("Prefabs/Bullet.json", x, y)   // a prefab file, else an empty actor
+Scene.load("Scenes/Level2")
 ```
 
-An **ActorProxy** is a lightweight wrapper — a different shape from the `actor`
-global:
+Queries resolve through the scene the actor is in, so they work in a test, a headless tool or
+a scene that is not the active one. A found actor is `{ id, name, tag, active,
+transform: { x, y, rotation }, getComponent(), destroy() }`, and null once destroyed.
+
+### `Physics`, `Time`, `Network`
 
 ```js
-proxy.name          // string, get/set
-proxy.tag           // string, get/set
-proxy.active        // boolean, get/set
-proxy.transform.x   // number, get/set
-proxy.transform.y   // number, get/set
-proxy.destroy()
+Physics.raycast(ox, oy, dx, dy, maxDistance)   // { actor, x, y, normalX, normalY, distance } or null
+Physics.overlapCircle(x, y, r)                 // actor proxies
+Physics.overlapBox(x, y, w, h)
+
+Time.deltaTime, Time.unscaledDeltaTime, Time.time, Time.frameCount, Time.fps
+Time.timeScale = 0.5;
+
+Network.localId, Network.isServer, Network.isConnected
+Network.isLocalPlayer(id)                       // true for id 0 when there is no network
+Network.startServer(), Network.connect(), Network.sendToAll(), Network.broadcast()
 ```
 
-> `Scene.instantiate` **ignores the prefab file**. It creates a bare `Actor`
-> named after the file's base name at `(x, y)` and adds it to the active scene —
-> no components. Use it as "spawn an empty actor at a position"; do real prefab
-> instantiation from C# with `Prefab.Instantiate`.
+`Network` is a stub on both engines: it lets a multiplayer template run as a one-player game
+and warns once that no transport is attached.
 
-> `Scene.load` calls `SceneManager.LoadScene`, which
-> [creates an empty scene](02-core-architecture.md#loadscene-does-not-read-the-file--verified)
-> rather than reading the file.
-
-### `Debug`
+### `Debug`, `log`, `warn`, `error`, `Vector2`
 
 ```js
-Debug.log("hello", 42);
-Debug.warn("careful");
-Debug.error("broken");
+Debug.log("hp", hp); log("same thing"); warn("careful"); error("bad");
+Vector2.create(x, y); Vector2.add(a, b); Vector2.sub(a, b); Vector2.scale(v, s);
+Vector2.normalize(v); Vector2.dot(a, b); Vector2.distance(a, b); Vector2.length(v);
 ```
 
-Output goes to `Console.WriteLine` and `System.Diagnostics.Debug.WriteLine`,
-prefixed with `[Script]`, `[Script WARN]`, `[Script ERROR]`. In the editor this
-lands in the Console panel via the trace listener.
-
-### `Vector2`
-
-Value-object helpers. Vectors are plain `{x, y}` objects.
-
-```js
-var a = Vector2.create(3, 4);
-var b = Vector2.create(1, 0);
-
-Vector2.add(a, b);          // {x, y}
-Vector2.sub(a, b);
-Vector2.scale(a, 2);
-Vector2.normalize(a);       // {0,0} for a zero-length input
-Vector2.dot(a, b);          // number
-Vector2.distance(a, b);     // number
-Vector2.length(a);          // number
-```
-
-Standard JavaScript built-ins (`Math`, `JSON`, `Array`, `String`, …) are all
-available — this is a real ECMAScript engine.
-
----
+Log output goes through `ScriptDiagnostics` (below), not `Debug.WriteLine`, so it survives a
+Release build.
 
 ## Lifecycle hooks
 
-Define any of these as top-level functions. Only these eight names are scanned
-and cached; anything else is never called by the engine.
-
-| Function | When |
-|---|---|
-| `onAwake()` | when the component attaches (immediately on `AddComponent`) |
-| `onStart()` | on the first update after the actor is added to a layer |
-| `onUpdate(dt)` | every frame |
-| `onFixedUpdate(dt)` | every fixed step |
-| `onLateUpdate(dt)` | every frame, after all updates |
-| `onDestroy()` | when the component or actor is destroyed |
-| `onCollisionEnter(data)` | on physics contact begin |
-| `onTriggerEnter(other)` | on sensor overlap begin |
+A script defines any of these at top level; the engine calls the ones it finds
+(`JintRuntime.KnownHooks`, the same twelve as the browser's `SCRIPT_HOOKS`):
 
 ```js
-var speed = 200;
-var elapsed = 0;
-
-function onStart() {
-    Debug.log("spawned at", transform.x, transform.y);
-}
-
-function onUpdate(dt) {
-    elapsed += dt;
-    transform.x += Input.getAxis("MoveX") * speed * dt;
-    transform.y -= Input.getAxis("MoveY") * speed * dt;
-
-    if (Input.isPressed("Attack")) {
-        Audio.playOneShot("Assets/Audio/swing.wav");
-    }
-}
-
-function onCollisionEnter(data) {
-    // data = { other, contactPoint: {x,y}, normal: {x,y}, relativeVelocity }
-    if (data.other.tag === "Hazard") {
-        Debug.warn("ouch, impact " + data.relativeVelocity);
-        actor.destroy();
-    }
-}
-
-function onTriggerEnter(other) {
-    if (other.tag === "Coin") other.destroy();
-}
+function onAwake() {}            // once, when the script loads — after the actor has joined its scene
+function onStart() {}            // once, on the first frame
+function onUpdate(dt) {}
+function onFixedUpdate(dt) {}
+function onLateUpdate(dt) {}
+function onDestroy() {}
+function onCollisionEnter(data) {}   // data = { other, contactPoint, normal, relativeVelocity, tag, name }
+function onCollisionStay(data) {}
+function onCollisionExit(data) {}
+function onTriggerEnter(other) {}    // other = actor proxy
+function onTriggerStay(other) {}
+function onTriggerExit(other) {}
 ```
 
-### Hooks that do **not** exist
+`data.tag` and `data.name` forward to `data.other`, so `if (data.tag === "Ground")` works.
+Anything else a script defines at top level is reachable from another script through
+`getComponent("ScriptComponent").invoke(name, ...args)`, and from C# through
+`ScriptComponent.Invoke`.
 
-`onCollisionStay`, `onCollisionExit`, `onTriggerStay` and `onTriggerExit` are
-**never dispatched to scripts**, even though the underlying `Component` supports
-them. `ScriptComponent` overrides only `OnCollisionEnter` and `OnTriggerEnter`.
-
-To get exit events in script, subclass `ScriptComponent`… you can't — it is
-`sealed`. Write a small C# component that forwards instead:
-
-```csharp
-public sealed class TriggerExitBridge : Component
-{
-    public override void OnTriggerExit(Actor other)
-    {
-        var script = GetComponent<ScriptComponent>();
-        script?.Runtime?.CallFunction("onTriggerExitCustom", other.Name);
-    }
-}
-```
-
-```js
-function onTriggerExitCustom(otherName) { /* ... */ }
-```
-
-`JintRuntime.HasFunction` only knows the eight canonical names, and
-`CallFunction` early-outs on unknown ones — so route custom callbacks through
-`Runtime.CallFunctionWithJsArgs` after checking existence yourself, or simply
-call `Runtime.Evaluate("typeof onTriggerExitCustom === 'function'")`.
-
----
+The load waits until the actor is in a scene: components awake when attached, which is before
+the actor joins a scene, so `onAwake` fires from `Start` and can use `Scene.*`. A component added
+to an actor already in the scene loads at once.
 
 ## Attaching a script
 
@@ -257,15 +221,22 @@ scene.AddActor(enemy);
 process working directory** — the same rule as [assets](13-assets.md#paths).
 Copy `Scripts/` to the output directory in your `.csproj`.
 
-### Error handling
+### Error handling and diagnostics
 
-Every call is wrapped. A JS syntax error, a runtime exception, or a CLR
-exception is caught, written to the diagnostic log as
-`[Script Error] <path> (<function>): <message>`, and the game continues. A file
-that fails to parse leaves `Runtime == null` and the component silently does
-nothing — check the log if a script "isn't running".
+A JavaScript error in any hook is caught, reported and the frame continues; a parse error or a
+missing file leaves `Runtime` null and sets `ScriptComponent.Error`. Everything a script says —
+`log()`, `warn()`, `error()` and the runtime's own errors — goes through one sink:
 
----
+```csharp
+ScriptDiagnostics.Reported += d => Console.WriteLine(d);   // level, script path, hook, message
+
+var seen = new List<ScriptDiagnostic>();
+using (ScriptDiagnostics.Capture(seen)) scene.Update(dt);  // a test reads what the scripts said
+```
+
+With no subscriber the messages go to the process console, so a shipped Release game still
+reports a failing script (they used to go through `Debug.WriteLine`, which Release drops). The
+editor subscribes and shows them in its console with their own level.
 
 ## Sandbox limits
 
@@ -355,158 +326,49 @@ VS Code then gives full completion and hover types for `actor`, `transform`,
 
 ---
 
-## What the bundled templates assume — and what breaks
+## The bundled templates run on both engines
 
-The 15 project templates in `Templates/` were written against a **larger API
-than the bridge implements**. If you copy a template script, expect these calls
-to be `undefined` and to throw a `TypeError` at runtime:
+The 15 project templates in `Templates/` are the reference scripts for this contract. Two
+tests run every one of them for sixty frames and fail on the first script error:
+`ProjectTemplateTests.EveryTemplateSceneRunsItsScriptsWithoutErrors` under Jint and
+`html5/tests/templates.test.js` in the browser engine. Before the contract existed they used a
+wider browser-only surface and had never run natively; `log()`, `actor.getComponent`,
+`Input.isKeyHeld`, `Scene.createActor` and the Stay/Exit hooks are all part of the contract now.
 
-| Used in templates | Status | Use instead |
-|---|---|---|
-| `log(...)` | ✗ not a global | `Debug.log(...)` |
-| `actor.transform.x` | ✗ `actor` has no `transform` | the `transform` global |
-| `actor.getComponent("Rigidbody2D")` | ✗ not implemented | move physics to C#, or extend the bridge |
-| `Input.isKeyPressed("E")` | ✗ not implemented | define an action; `Input.isPressed("Interact")` |
-| `Input.isKeyHeld("A")` / `isKeyDown` | ✗ not implemented | `Input.isHeld("MoveX")` / `getAxis` |
-| `Input.isMouseHeld` / `isMousePressed` | ✗ not implemented | bind a mouse action in the action map |
-| `Input.scrollDelta` | ✗ not implemented | extend the bridge |
-| `Scene.createActor(...)` | ✗ not implemented | `Scene.instantiate(name, x, y)` |
-| `Scene.destroy(a)` / `destroyActor` | ✗ not implemented | `a.destroy()` |
-| `Scene.addComponent(...)` | ✗ not implemented | add components in C# |
-| `Scene.findAll(...)` | ✗ not implemented | `Scene.findByTag(...)` |
-| `Scene.findByTag(t)` used as one actor | ⚠ returns an **array** | `Scene.findByTag(t)[0]` |
-| `Network.*` | ✗ no network bridge | drive networking from C# |
-| custom fields on `actor` (`actor.hp = 5`) | ⚠ writes a JS property on a fresh proxy object; not persisted to the C# actor | keep state in module-level `var`s |
-| `onTriggerExit` | ✗ never dispatched | forward from a C# component |
+Two habits from the old scripts are worth unlearning:
 
-`Templates/Top-Down RPG/Scripts/CameraFollow.js` shows two of these at once:
-
-```js
-// As shipped — does not work:
-var target = Scene.findByTag("Player");        // an ARRAY, never falsy
-if (!target) return;
-var targetX = target.transform.x;              // undefined → NaN
-```
-
-```js
-// Corrected:
-var found = Scene.findByTag("Player");
-if (found.length === 0) return;
-var target = found[0];
-var targetX = target.transform.x + offsetX;
-```
-
-Treat the templates as **scene-layout references**, and write scripts against
-the table at the top of this page.
-
----
+- `Scene.findByTag(t)` returns an array; use `Scene.findFirstByTag(t)` for one actor.
+- Putting a function on an actor proxy (`actor.takeDamage = ...`) and calling it from another
+  script through `other.takeDamage` does nothing on either engine: proxies are fresh objects.
+  Define `function takeDamage(amount)` at top level and call
+  `other.getComponent("ScriptComponent").invoke("takeDamage", amount)`.
 
 ## Extending the bridge
 
-The clean way to add missing API is to widen `ScriptBridge`. It builds each
-proxy as a plain JS object and hangs C# delegates off it.
+Add to both sides or neither: the member in `ScriptBridge.cs`, the same member in
+`html5/src/scripting/ScriptBridge.js`, and its entry in `html5/src/scripting/bridge-api.json`.
+The parity tests fail until all three agree, and the `.d.ts` in `TypeScriptDefinitions.cs` and
+this page should follow.
 
-Two helpers do all the work:
-
-```csharp
-// A callable JS function from a C# lambda:
-private JsValue Fn(string name, Func<JsValue, JsValue[], JsValue> body, int length = 0)
-    => JsValue.FromObject(_engine, (Delegate)body);
-
-// A get/set accessor property:
-private static void Accessor(ObjectInstance target, string name,
-    Func<JsValue, JsValue[], JsValue> getter,
-    Func<JsValue, JsValue[], JsValue>? setter,
-    JintEngine engine);
-```
-
-To add `Input.isKeyPressed(name)`, edit `BuildInputProxy` in
-`SexyBiscuit.Engine/Scripting/ScriptBridge.cs`:
+On the C# side each proxy is a plain JS object with delegates hung off it:
 
 ```csharp
-obj.Set("isKeyPressed", Fn("isKeyPressed", (_, args) =>
-{
-    var input = GetInput();
-    if (input == null) return JsBoolean.False;
-    return Enum.TryParse<Keys>(args.At(0).ToString(), ignoreCase: true, out var key)
-           && input.IsKeyPressed(key)
-        ? JsBoolean.True : JsBoolean.False;
-}, length: 1));
+// A callable: body(thisObject, arguments)
+obj.Set("shout", Fn("shout", (_, args) => { Console.WriteLine(args.At(0)); return JsValue.Undefined; }, length: 1));
+
+// A property with a getter and an optional setter
+Accessor(obj, "hp", getter: (_, _) => new JsNumber(_hp), setter: (_, args) => { _hp = (float)args.At(0).AsNumber(); return JsValue.Undefined; }, _engine);
 ```
 
-To add a `Physics` global, build a proxy and register it:
+`Fn` builds a `Jint.Runtime.Interop.ClrFunction`, which is what makes `arguments` an array of
+the call's arguments. `JsValue.FromObject(engine, delegate)` looks similar but maps each
+JavaScript argument onto a delegate parameter in turn, so the first argument lands in
+`thisObject` and `arguments` is null — the bug that kept every bridge call with an argument from
+working before the contract existed.
 
-```csharp
-// in ScriptBridge
-public ObjectInstance PhysicsProxy { get; }
-
-private ObjectInstance BuildPhysicsProxy()
-{
-    var obj = NewObj();
-
-    obj.Set("setVelocity", Fn("setVelocity", (_, args) =>
-    {
-        var rb = _actor.GetComponent<Rigidbody2D>();
-        if (rb != null)
-            rb.LinearVelocity = new Vector2(
-                (float)args.At(0).AsNumber(),
-                (float)args.At(1).AsNumber());
-        return JsValue.Undefined;
-    }, length: 2));
-
-    obj.Set("raycast", Fn("raycast", (_, args) =>
-    {
-        var origin = new Vector2((float)args.At(0).AsNumber(), (float)args.At(1).AsNumber());
-        var dir    = new Vector2((float)args.At(2).AsNumber(), (float)args.At(3).AsNumber());
-        float dist = (float)args.At(4).AsNumber();
-
-        if (!PhysicsSystem2D.Instance.Raycast(origin, dir, dist, out var hit) || hit.Actor == null)
-            return JsValue.Null;
-
-        var result = NewObj();
-        result.Set("actor",    WrapActorAsProxy(hit.Actor));
-        result.Set("distance", new JsNumber(hit.Distance));
-        return result;
-    }, length: 5));
-
-    return obj;
-}
-```
-
-```csharp
-// in JintRuntime.RegisterGlobals()
-_engine.SetValue("Physics", Bridge.PhysicsProxy);
-```
-
-Then add the same names to `TypeScriptDefinitions.DtsContent` and to
-`RefreshFunctionCache`'s `knownEntryPoints` if you added a lifecycle hook, so
-IntelliSense and dispatch stay in sync.
-
-### The lightweight alternative: `SetGlobal`
-
-If you only need to expose one value or callback to one script, you do not have
-to touch the bridge:
-
-```csharp
-var sc = actor.AddScript("Scripts/Boss.js");
-sc.Runtime?.SetGlobal("bossConfig", new { Hp = 500, Phases = 3 });
-sc.Runtime?.SetGlobal("dealDamage", (Action<int>)(dmg => player.Hp -= dmg));
-```
-
-```js
-function onStart() {
-    Debug.log("boss hp " + bossConfig.Hp);
-}
-function onUpdate(dt) {
-    if (someCondition) dealDamage(10);
-}
-```
-
-`SetGlobal` uses `_engine.SetValue`, which marshals CLR objects through Jint's
-interop — the script gets a real wrapper, not a hand-built proxy. Do this after
-`Awake()` has built the runtime, and re-apply after a hot reload.
-
----
+For a one-off value a game wants to hand a script, `JintRuntime.SetGlobal(name, value)` is the
+lightweight alternative: it exposes a C# value or delegate as a global without touching the
+bridge (and without appearing in the contract, so the browser will not have it).
 
 ## When to use script and when to use C#
 

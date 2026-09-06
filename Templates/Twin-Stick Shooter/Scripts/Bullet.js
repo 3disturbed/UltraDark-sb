@@ -69,9 +69,8 @@ function onCollisionEnter(other) {
     // script exposes a takeDamage function that handles health reduction and
     // death/score notifications.
     if (other.tag === "Enemy") {
-        if (other.takeDamage) {
-            other.takeDamage(damage);
-        }
+        var enemy = other.getComponent("ScriptComponent");
+        if (enemy) enemy.invoke("takeDamage", damage);
         actor.destroy();
         return;
     }

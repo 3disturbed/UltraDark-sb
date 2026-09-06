@@ -3,10 +3,16 @@
 
 var moveSpeed = 200;
 var isLocal = false;
+var networkId = -1;
+
+// Called by GameManager.js right after it attaches this script; runs before onStart.
+function configure(id) {
+    networkId = id;
+}
 
 function onStart() {
     // Check if this is the local player
-    isLocal = Network.isLocalPlayer(actor);
+    isLocal = Network.isLocalPlayer(networkId);
 
     if (isLocal) {
         log("Local player spawned. Use WASD to move.");

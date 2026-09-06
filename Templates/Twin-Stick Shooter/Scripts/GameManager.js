@@ -228,12 +228,13 @@ function spawnEnemy(x, y) {
         enemy.transform.y = y;
         enemy.tag = "Enemy";
 
-        // Note: In the current engine API, dynamically created actors receive
-        // their components through the Scene.createActor pipeline. The actor
-        // name "Enemy" should be configured as a prefab, or components can be
-        // added via the scene configuration. For this template, the GameManager
-        // sets up the actor's tag and position; the engine handles component
-        // attachment based on the actor archetype.
+        // A dynamically created actor is empty: a red sprite, a body that ignores
+        // gravity so it can chase in every direction, a collider so bullets and the
+        // player can hit it, and the script that drives it.
+        Scene.addComponent(enemy, "SpriteRenderer", { Tint: "#E04040" });
+        Scene.addComponent(enemy, "Rigidbody2D", { GravityScale: 0, FreezeRotation: true });
+        Scene.addComponent(enemy, "BoxCollider2D", { Size: [28, 28] });
+        Scene.addComponent(enemy, "ScriptComponent", { ScriptPath: "Scripts/EnemyAI.js" });
 
         enemiesAlive++;
     }

@@ -103,7 +103,7 @@ export { Easing, getEasing, EASE_TYPES } from './animation/TweenEasing.js';
 
 // ---- Scripting --------------------------------------------------------------
 export { ScriptComponent } from './scripting/ScriptComponent.js';
-export { createScriptGlobals, wrapActor, wrapComponent, SCRIPT_HOOKS } from './scripting/ScriptBridge.js';
+export { createScriptGlobals, wrapActor, unwrapActor, wrapCollisionData, wrapComponent, SCRIPT_HOOKS } from './scripting/ScriptBridge.js';
 
 // ---- Compatibility ----------------------------------------------------------
 export { installCSharpAliases, aliasInstanceFields, areCSharpAliasesInstalled } from './compat/CSharpNaming.js';

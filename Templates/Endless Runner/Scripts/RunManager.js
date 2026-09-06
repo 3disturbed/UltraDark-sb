@@ -24,6 +24,10 @@
 // Base horizontal speed in pixels per second. Obstacles move left at this rate.
 var scrollSpeed = 300;
 
+// Read by Obstacle.js through getComponent("ScriptComponent").invoke("getScrollSpeed"),
+// so an obstacle spawned late matches the world's current pace.
+function getScrollSpeed() { return scrollSpeed; }
+
 // Additional speed added every 10 seconds of play. This makes the game
 // progressively harder the longer the player survives.
 var speedIncrease = 15;
@@ -186,15 +190,14 @@ function spawnObstacle() {
         // Track the obstacle for bookkeeping (optional cleanup, speed sync).
         obstacles.push(obstacle);
 
-        // Note: In the current engine API, components (SpriteRenderer,
-        // BoxCollider2D, ScriptComponent) cannot be added from JavaScript at
-        // runtime. The obstacle actor is created with transform and tag only.
-        //
-        // For full visual + physics obstacles, you would define an obstacle
-        // prefab in the scene file and use Scene.instantiate(). For this
-        // template we rely on the RunManager to perform distance-based
-        // collision checks (see below) so the gameplay still works without
-        // runtime component creation.
+        // A created actor is empty: a coloured block to see, and the script that
+        // scrolls it, told the current speed before its onStart runs. Collision
+        // stays distance-based in this manager (see below).
+        Scene.addComponent(obstacle, "SpriteRenderer", {
+            Tint: { R: obsType.colorR, G: obsType.colorG, B: obsType.colorB, A: 255 },
+        });
+        var script = Scene.addComponent(obstacle, "ScriptComponent", { ScriptPath: "Scripts/Obstacle.js" });
+        if (script) script.invoke("configure", scrollSpeed);
     }
 
     // -- Distance-based collision check (fallback) ----------------------------

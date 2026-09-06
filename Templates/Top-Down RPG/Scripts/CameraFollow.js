@@ -7,7 +7,7 @@ var offsetX = 0;
 var offsetY = -50;
 
 function onUpdate(dt) {
-    var target = Scene.findByTag(targetTag);
+    var target = Scene.findFirstByTag(targetTag);
     if (!target) return;
 
     var targetX = target.transform.x + offsetX;

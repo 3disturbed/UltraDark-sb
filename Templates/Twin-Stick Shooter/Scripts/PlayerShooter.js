@@ -156,6 +156,13 @@ function shoot() {
         bullet.transform.y = spawnY;
         bullet.transform.rotation = angle;
         bullet.tag = "Bullet";
+
+        // A dynamically created actor is empty; give it a look, a solid body so it
+        // collides with enemies and walls, and the script that flies it.
+        Scene.addComponent(bullet, "SpriteRenderer", { Tint: "#FFE066" });
+        Scene.addComponent(bullet, "Rigidbody2D", { GravityScale: 0, FreezeRotation: true });
+        Scene.addComponent(bullet, "BoxCollider2D", { Size: [8, 8] });
+        Scene.addComponent(bullet, "ScriptComponent", { ScriptPath: "Scripts/Bullet.js" });
     }
 
     // Log "Pew!" only on the first shot to confirm shooting works without

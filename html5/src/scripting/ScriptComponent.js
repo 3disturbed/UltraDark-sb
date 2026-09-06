@@ -17,7 +17,7 @@
 import { Component } from '../core/Component.js';
 import { registerComponent } from '../core/TypeRegistry.js';
 import { PropertyType as P } from '../core/PropertyTypes.js';
-import { createScriptGlobals, SCRIPT_HOOKS } from './ScriptBridge.js';
+import { createScriptGlobals, wrapActor, wrapCollisionData, SCRIPT_HOOKS } from './ScriptBridge.js';
 
 /** Attaches a JavaScript file to an actor. */
 export class ScriptComponent extends Component {
@@ -29,6 +29,8 @@ export class ScriptComponent extends Component {
         super();
         this._scriptPath = '';
         this._hooks = {};
+        this._functions = {};       // every top-level function, for invoke()
+        this._pendingInvokes = [];  // invoke() calls made before the script loaded
         this._delegate = null;      // a Component instance, for module-style scripts
         this._started = false;
         this._loading = null;
@@ -76,12 +78,14 @@ export class ScriptComponent extends Component {
     fixedUpdate(dt) { this._call('onFixedUpdate', dt); }
     lateUpdate(dt) { this._call('onLateUpdate', dt); }
 
-    onCollisionEnter(data) { this._call('onCollisionEnter', data); }
-    onCollisionStay(data) { this._call('onCollisionStay', data); }
-    onCollisionExit(data) { this._call('onCollisionExit', data); }
-    onTriggerEnter(other) { this._call('onTriggerEnter', other); }
-    onTriggerStay(other) { this._call('onTriggerStay', other); }
-    onTriggerExit(other) { this._call('onTriggerExit', other); }
+    // A flat-function script gets the same wrapped shapes it would under Jint; a
+    // module-style Component subclass gets the engine's own objects.
+    onCollisionEnter(data) { this._call('onCollisionEnter', this._delegate ? data : wrapCollisionData(data)); }
+    onCollisionStay(data) { this._call('onCollisionStay', this._delegate ? data : wrapCollisionData(data)); }
+    onCollisionExit(data) { this._call('onCollisionExit', this._delegate ? data : wrapCollisionData(data)); }
+    onTriggerEnter(other) { this._call('onTriggerEnter', this._delegate ? other : wrapActor(other)); }
+    onTriggerStay(other) { this._call('onTriggerStay', this._delegate ? other : wrapActor(other)); }
+    onTriggerExit(other) { this._call('onTriggerExit', this._delegate ? other : wrapActor(other)); }
 
     onDestroy() {
         this._call('onDestroy');
@@ -90,11 +94,42 @@ export class ScriptComponent extends Component {
             this._delegate = null;
         }
         this._hooks = {};
+        this._functions = {};
     }
+
+    /**
+     * Calls a top-level function the script defines and returns its result — what
+     * another script reaches through `getComponent("ScriptComponent").invoke(name, ...args)`.
+     * Returns undefined when there is no such function or it throws.
+     */
+    invoke(name, ...args) {
+        // A script is fetched, so the spawner that just attached it and wants to
+        // configure it — `script.invoke("configure", damage)` — is early. The call
+        // waits and runs once the script is in, after onAwake and before onStart,
+        // which is the order the C# engine gives the same code.
+        if (!this._initialised || this._loading) {
+            this._pendingInvokes.push({ name, args });
+            return undefined;
+        }
+
+        const fn = this._functions[name] ?? this._hooks[name]
+            ?? (typeof this._delegate?.[name] === 'function' ? this._delegate[name].bind(this._delegate) : null);
+        if (!fn) return undefined;
+        try {
+            return fn(...args);
+        } catch (err) {
+            console.error(`[Script Error] ${this._scriptPath} (${name}): ${err.message}`);
+            return undefined;
+        }
+    }
+
+    /** The same as invoke(). */
+    call(name, ...args) { return this.invoke(name, ...args); }
 
     /** Reloads the script from source. Module-level state is lost, by design. */
     reload() {
         this._hooks = {};
+        this._functions = {};
         this._delegate = null;
         this._initialised = false;
         this._initialise();
@@ -102,6 +137,7 @@ export class ScriptComponent extends Component {
 
     _initialise() {
         this._hooks = {};
+        this._functions = {};
         this._delegate = null;
         this.error = null;
 
@@ -119,6 +155,7 @@ export class ScriptComponent extends Component {
                 this._loading = null;
                 this._instantiate(source);
                 this._call('onAwake');
+                this._replayPendingInvokes();
                 if (this._started) this._call('onStart');
             })
             .catch((err) => {
@@ -144,8 +181,18 @@ export class ScriptComponent extends Component {
         // Each script gets its own function scope, so two components running the
         // same file keep separate state — the isolation Jint gets from one engine
         // per component.
-        const collect = SCRIPT_HOOKS
-            .map((hook) => `${JSON.stringify(hook)}: typeof ${hook} === 'function' ? ${hook} : null`)
+        //
+        // Every top-level function is collected, not only the hooks, so another
+        // script can reach `takeDamage` through invoke(). The scan is deliberately
+        // loose — a nested helper, or the word in a comment, is caught too — because
+        // a name that is not a function at the top level collects as null and is
+        // dropped; `typeof` on an undeclared name is 'undefined', not an error.
+        const declared = new Set(SCRIPT_HOOKS);
+        for (const match of source.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g)) {
+            declared.add(match[1]);
+        }
+        const collect = [...declared]
+            .map((name) => `${JSON.stringify(name)}: typeof ${name} === 'function' ? ${name} : null`)
             .join(',\n    ');
 
         const body = `${source}\n\nreturn {\n    ${collect}\n};`;
@@ -154,8 +201,10 @@ export class ScriptComponent extends Component {
             // eslint-disable-next-line no-new-func
             const factory = new Function(...names, body);
             const found = factory(...names.map((n) => globals[n]));
-            for (const [hook, fn] of Object.entries(found)) {
-                if (fn) this._hooks[hook] = fn;
+            for (const [name, fn] of Object.entries(found)) {
+                if (!fn) continue;
+                if (SCRIPT_HOOKS.includes(name)) this._hooks[name] = fn;
+                this._functions[name] = fn;
             }
         } catch (err) {
             this.error = err.message;
@@ -208,11 +257,19 @@ export class ScriptComponent extends Component {
      */
     setSource(source) {
         this._hooks = {};
+        this._functions = {};
         this._delegate = null;
         this._initialised = true;
         this._instantiate(source);
         this._call('onAwake');
+        this._replayPendingInvokes();
         if (this._started) this._call('onStart');
+    }
+
+    _replayPendingInvokes() {
+        const pending = this._pendingInvokes;
+        this._pendingInvokes = [];
+        for (const { name, args } of pending) this.invoke(name, ...args);
     }
 
     /** The hook names the loaded script actually defines. */

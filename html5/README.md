@@ -12,7 +12,7 @@ ES modules served over HTTP.
 ## Running it
 
 ```bash
-node html5/tools/serve.js
+node html5/tools/serve.js            # add --watch to reload every open tab on a change
 ```
 
 Then open:
@@ -20,18 +20,40 @@ Then open:
 - **editor** — <http://localhost:8080/html5/editor/>
 - **player** — <http://localhost:8080/html5/runtime/>
 
-On a phone, use the machine's LAN address in place of `localhost`. The server has
-no dependencies and serves the whole repository, so the editor can open the
-projects under `Templates/` directly.
+A project opens by URL: `/html5/runtime/?project=/Games/Foo/&scene=Scenes/Main`. The
+server prints the machine's LAN address so a phone can open the same URL. It has no
+dependencies and serves the whole repository, so the editor can open the projects
+under `Templates/` directly.
 
 A server is not optional even for local files: browsers refuse to load ES modules
 from a `file://` path.
 
 ```bash
 cd html5
-npm test     # 59 tests, node --test
-npm run lint # parses every module, checks the shader sources
+npm test           # node --test; reads the real Templates/ and the C# sources
+npm run lint       # parses every module, checks the shader sources
+npm run validate   # every template, or `-- <projectDir>`: scenes load, scripts compile and stay in the contract
 ```
+
+---
+
+## The tools
+
+`html5/tools/` is the toolchain a prototype is made with on a machine that has node
+(22 or later) and nothing else. Every tool is dependency-free, has a `--help`-shaped
+usage line, and is importable — `tests/tools.test.js` runs them end to end.
+
+| Tool | What it does |
+|---|---|
+| `validate.js [projectDir...] [--strict]` | Loads every scene through the real deserialiser, checks every referenced script exists, compiles every script and holds each one to the shared scripting contract (`src/scripting/bridge-api.json`). One line per problem, `OK` when there are none; `--strict` fails on warnings too. The bundled templates are the default. |
+| `serve.js [port] [root] [--watch]` | The static server above. `--watch` injects a two-line reload snippet into every page and reloads when a scene, script, asset or page changes. |
+| `export.js <projectDir> [--pwa] [--out <dir>] [--version <v>] [--config <c>] [--no-zip]` | Stages a web build — the runtime, the project's files and the page — into `dist/Web/`, zips it beside the folder and writes `build-report.json`. `--pwa` adds a manifest, icons and a service worker so the build installs to a home screen and runs offline. |
+| `upload.js <file> [--url <u>] [--game <n>] [--version <v>] [--platform <p>] [--config <BuildSettings.json>] [--field a=b]` | One multipart POST to `$SB_UPLOAD_URL` with `Authorization: Bearer $SB_UPLOAD_TOKEN` carrying the file and its metadata (game, version, platform, configuration, commit, channel, sha256). Prints `upload <platform> <status> <url>`. Field names map through `upload.fields` in `BuildSettings.json`. |
+| `check.js` | The lint: parses every module and checks the shader sources. |
+
+The exporter and the C# `BuildPlatform.Web` fill the same page templates under
+`runtime/export/` (`index.html.tmpl`, `manifest.webmanifest.tmpl`, `sw.js.tmpl`), so the
+two exports are one build.
 
 ---
 
@@ -128,18 +150,19 @@ shapes: the `actor`, `transform`, `Input`, `Audio`, `Scene`, `Debug` and
 Each script gets its own scope, so two components running the same file keep
 separate state — the isolation Jint gets from one engine per component.
 
-**It is deliberately a superset.** The C# bridge exposes seven globals and no
-`getComponent`, which is why none of the forty-five bundled template scripts have
-ever run: they call `log()`, `Input.isKeyHeld`, `actor.getComponent` and
-`actor.transform`, none of which exist there. All of those work here, along with
-`onCollisionStay` / `onCollisionExit` / `onTriggerStay` / `onTriggerExit`
-(dispatched, where the C# `ScriptComponent` forwards only the two `Enter` hooks),
-a `Physics` global, a `Time` global, and `actor.transform3d`. A script written
-against the narrower documented surface is unaffected.
+**It is the shared contract.** `src/scripting/bridge-api.json` lists every global, member
+and hook; `tests/bridge.test.js` holds this bridge to the file and the C# suite's
+`ScriptBridgeParityTests` holds the Jint bridge to the same file, in both directions. The
+surface includes what the bundled template scripts use — `log()` as a bare global,
+`Input.isKeyHeld`, `actor.getComponent`, `actor.transform`, `Scene.createActor` /
+`addComponent` / `destroy`, the `Stay` and `Exit` hooks, `Physics`, `Time`, a `Network`
+stub — and `tests/templates.test.js` runs every template's scripts for sixty frames, as the
+C# suite does under Jint. A script that passes both runs under both engines.
 
-One shim is worth knowing about: the collision payload carries `tag` and `name`
-forwarding to `other`, so both `data.other.tag` (the documented form) and
-`data.tag` (what the templates assume) work.
+The collision payload carries `tag` and `name` forwarding to `other`, so both
+`data.other.tag` and `data.tag` work. A component proxy accepts either spelling of a
+property (`rb.gravityScale`, `rb.GravityScale`) and coerces file-form values
+(`"#FF0000"`, `[1, 2]`) the way a scene file's are.
 
 New scripts can also be ES modules exporting a `Component` subclass, which is the
 class-based API this engine prefers.

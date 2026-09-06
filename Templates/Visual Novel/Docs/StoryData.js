@@ -1,5 +1,5 @@
 // ============================================================================
-// StoryData.js — Story Authoring Reference Guide
+// Docs/StoryData.js — Story Authoring Reference Guide
 // ============================================================================
 // This file is a REFERENCE for how to author stories in the SexyBiscuit
 // visual novel template. It is NOT attached to any actor in the scene.

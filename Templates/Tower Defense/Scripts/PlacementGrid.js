@@ -75,7 +75,7 @@ function onUpdate(dt) {
     }
 
     // -- Tower placement on click ---------------------------------------------
-    if (Input.isMouseButtonPressed(0)) {
+    if (Input.isMousePressed(0)) {
         var mouseX = Input.mouseX;
         var mouseY = Input.mouseY;
 
@@ -143,21 +143,16 @@ function placeTower(gridX, gridY, worldX, worldY, towerData, manager) {
         // Visual appearance — colored square matching the tower type
         var sprite = tower.addComponent("SpriteRenderer");
         if (sprite) {
-            sprite.Color = towerData.color;
+            sprite.tint = towerData.color;
         }
 
-        // Attach the tower combat script
+        // Attach the tower combat script and hand it this type's stats.
+        // configure() runs before the tower's onStart on either engine.
         var script = tower.addComponent("ScriptComponent");
         if (script) {
             script.ScriptPath = "Scripts/Tower.js";
+            script.invoke("configure", towerData.range, towerData.damage, towerData.cooldown, towerData.name);
         }
-
-        // Store tower stats as custom properties for Tower.js to read.
-        // Tower.js reads these in its onStart to configure combat behavior.
-        tower.towerRange = towerData.range;
-        tower.towerDamage = towerData.damage;
-        tower.towerCooldown = towerData.cooldown;
-        tower.towerType = towerData.name;
 
         log("Placed " + towerData.name + " tower at (" + worldX + ", " + worldY + ")! Gold remaining: " + manager.getGold());
     }

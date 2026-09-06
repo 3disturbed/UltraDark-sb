@@ -28,6 +28,11 @@ var timer = 0;
 // to attribute kills in the scoreboard.
 var ownerName = "";
 
+// Read by ArenaPlayer.js through getComponent("ScriptComponent").invoke(...):
+// a function defined at top level is the only thing another script can reach.
+function getOwnerName() { return ownerName; }
+function getDamage() { return damage; }
+
 // Direction components calculated from the bullet's rotation on spawn.
 // Set once in onStart and never changed.
 var dirX = 0;
@@ -71,9 +76,8 @@ function onCollisionEnter(other) {
     // ArenaPlayer.js script handles health reduction and death.
     if (other.tag === "Player") {
         if (other.name !== ownerName) {
-            if (other.takeDamage) {
-                other.takeDamage(damage, ownerName);
-            }
+            var player = other.getComponent("ScriptComponent");
+            if (player) player.invoke("takeDamage", damage, ownerName);
             actor.destroy();
             return;
         }

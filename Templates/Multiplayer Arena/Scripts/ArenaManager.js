@@ -343,8 +343,7 @@ function onNetworkMessage(type, data) {
     // -- Hit notification (used for remote damage) ----------------------------
     if (type === "playerHit") {
         var target = players[data.targetId];
-        if (target && target.actor && target.actor.takeDamage) {
-            target.actor.takeDamage(data.damage, data.attackerName);
-        }
+        var hitScript = target && target.actor ? target.actor.getComponent("ScriptComponent") : null;
+        if (hitScript) hitScript.invoke("takeDamage", data.damage, data.attackerName);
     }
 }

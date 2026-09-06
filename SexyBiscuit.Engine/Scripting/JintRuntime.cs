@@ -1,9 +1,9 @@
-using System.Diagnostics;
 using Jint;
 using Jint.Native;
-using Jint.Native.Function;
 using Jint.Native.Object;
+using System.Text.RegularExpressions;
 using Jint.Runtime;
+using Jint.Runtime.Interop;
 using SexyBiscuit.Engine.Core;
 
 using JintEngine = Jint.Engine;
@@ -31,6 +31,22 @@ namespace SexyBiscuit.Engine.Scripting;
 public sealed class JintRuntime
 {
     // -------------------------------------------------------------------------
+    // The contract
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// The lifecycle functions a script may define. Nothing else is ever called by the engine;
+    /// anything else a script defines is reachable through <see cref="Invoke"/>. The browser
+    /// runtime's <c>SCRIPT_HOOKS</c> is the same list, and a test on each side pins them together.
+    /// </summary>
+    public static readonly string[] KnownHooks =
+    {
+        "onAwake", "onStart", "onUpdate", "onFixedUpdate", "onLateUpdate", "onDestroy",
+        "onCollisionEnter", "onCollisionStay", "onCollisionExit",
+        "onTriggerEnter", "onTriggerStay", "onTriggerExit",
+    };
+
+    // -------------------------------------------------------------------------
     // Fields
     // -------------------------------------------------------------------------
     private readonly JintEngine _engine;
@@ -46,6 +62,8 @@ public sealed class JintRuntime
     // Cached set of lifecycle function names confirmed to be callable in the
     // loaded script. Refreshed after every LoadScript call.
     private readonly HashSet<string> _definedFunctions = new(StringComparer.Ordinal);
+
+    private static readonly Regex Identifier = new(@"^[A-Za-z_$][A-Za-z0-9_$]*$", RegexOptions.Compiled);
 
     // -------------------------------------------------------------------------
     // Construction
@@ -129,6 +147,23 @@ public sealed class JintRuntime
     }
 
     /// <summary>
+    /// Calls any top-level function the script defines — not only a lifecycle hook — and returns
+    /// its result. This is what another script's <c>getComponent("ScriptComponent").invoke("takeDamage", 5)</c>
+    /// lands on. Returns <c>undefined</c> when no such function exists.
+    /// </summary>
+    public JsValue Invoke(string name, params JsValue[] args)
+    {
+        if (string.IsNullOrEmpty(name) || !Identifier.IsMatch(name)) return JsValue.Undefined;
+
+        // Only a defined function is callable; anything else is a quiet no-op, as a hook is.
+        bool callable;
+        try { callable = _engine.Evaluate($"typeof {name} === 'function'").AsBoolean(); }
+        catch (JavaScriptException) { return JsValue.Undefined; }
+
+        return callable ? _engine.Invoke(name, args) : JsValue.Undefined;
+    }
+
+    /// <summary>
     /// Returns true if a callable function with <paramref name="name"/> is defined
     /// at the global scope of the loaded script.
     /// </summary>
@@ -149,12 +184,12 @@ public sealed class JintRuntime
         }
         catch (JavaScriptException ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[JintRuntime] Evaluate JS error: {ex.Message}");
+            ScriptDiagnostics.Report(ScriptDiagnosticLevel.Error, Bridge.ScriptPath, "evaluate", ex.Message);
             return null;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[JintRuntime] Evaluate CLR error: {ex.Message}");
+            ScriptDiagnostics.Report(ScriptDiagnosticLevel.Error, Bridge.ScriptPath, "evaluate", ex.Message);
             return null;
         }
     }
@@ -198,6 +233,21 @@ public sealed class JintRuntime
         _engine.SetValue("Scene",     Bridge.SceneProxy);
         _engine.SetValue("Debug",     Bridge.DebugProxy);
         _engine.SetValue("Vector2",   Bridge.Vector2Proxy);
+        _engine.SetValue("Physics",   Bridge.PhysicsProxy);
+        _engine.SetValue("Time",      Bridge.TimeProxy);
+        _engine.SetValue("Network",   Bridge.NetworkProxy);
+
+        // The bundled scripts call log() with no namespace.
+        _engine.SetValue("log",   Bridge.DebugProxy.Get("log"));
+        _engine.SetValue("warn",  Bridge.DebugProxy.Get("warn"));
+        _engine.SetValue("error", Bridge.DebugProxy.Get("error"));
+
+        // transform3d is a getter: it is null until the actor has a Transform3D, and a
+        // script tests it with `if (transform3d)` before reaching in.
+        Func<JsValue, JsValue[], JsValue> getter = (_, _) => Bridge.Transform3DValue();
+        _engine.SetValue("__sbTransform3d", new ClrFunction(_engine, "transform3d", getter));
+        _engine.Execute(
+            "Object.defineProperty(this, 'transform3d', { get: __sbTransform3d, enumerable: true, configurable: true });");
     }
 
     /// <summary>
@@ -209,13 +259,7 @@ public sealed class JintRuntime
     {
         _definedFunctions.Clear();
 
-        ReadOnlySpan<string> knownEntryPoints = new[]
-        {
-            "onAwake", "onStart", "onUpdate", "onFixedUpdate",
-            "onLateUpdate", "onDestroy", "onCollisionEnter", "onTriggerEnter"
-        };
-
-        foreach (var name in knownEntryPoints)
+        foreach (var name in KnownHooks)
         {
             try
             {

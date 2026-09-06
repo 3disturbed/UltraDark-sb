@@ -15,7 +15,7 @@ import {
     deserialize, serialize, Scene, Actor, Transform3D, MissingComponent,
     SpriteRenderer, Camera2D, Rigidbody2D, BoxCollider2D, ScriptComponent,
     Light3D, MeshRenderer, Color, Vector2, Vector3, Quaternion,
-    EngineConfig, resolveComponent, ActionMap, GamepadState,
+    EngineConfig, resolveComponent, ActionMap, GamepadState, SCRIPT_HOOKS,
 } from '../src/index.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -349,4 +349,17 @@ test('a gamepad reads the axis names a C# bindings file uses', () => {
     assert.ok(pad.getAxis('LeftX') > 0.5, 'LeftX read nothing');
     assert.ok(pad.getAxis('RightX') < -0.2, 'RightX read nothing');
     assert.equal(pad.getAxis('NoSuchAxis'), 0);
+});
+
+test('the C# runtime dispatches every hook the JavaScript bridge does', () => {
+    // A script written against the browser's hook list has to fire under Jint too.
+    // JintRuntime.KnownHooks is read from source so the two cannot drift apart.
+    const csharp = fs.readFileSync(
+        path.join(repoRoot, 'SexyBiscuit.Engine', 'Scripting', 'JintRuntime.cs'), 'utf8');
+
+    const block = csharp.match(/KnownHooks\s*=\s*\{([^}]*)\}/);
+    assert.ok(block, 'could not find JintRuntime.KnownHooks');
+
+    const hooks = [...block[1].matchAll(/"(\w+)"/g)].map((m) => m[1]).sort();
+    assert.deepEqual(hooks, [...SCRIPT_HOOKS].sort());
 });

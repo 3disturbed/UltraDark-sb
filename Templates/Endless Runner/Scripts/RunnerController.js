@@ -86,7 +86,7 @@ function onUpdate(dt) {
         // Shrink the collider to the duck height
         var col = actor.getComponent("BoxCollider2D");
         if (col) {
-            col.Height = duckHeight;
+            col.size = { x: col.size.x, y: duckHeight };
         }
     }
 
@@ -100,7 +100,7 @@ function onUpdate(dt) {
 
             var col = actor.getComponent("BoxCollider2D");
             if (col) {
-                col.Height = normalHeight;
+                col.size = { x: col.size.x, y: normalHeight };
             }
         }
     }

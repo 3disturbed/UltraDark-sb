@@ -328,9 +328,11 @@ function onCollisionEnter(other) {
     // -- Bullet hit -----------------------------------------------------------
     // Only take damage from bullets that were not fired by this player.
     if (other.tag === "Bullet") {
-        if (other.ownerName && other.ownerName !== playerName) {
-            var bulletDamage = other.damage || 20;
-            takeDamage(bulletDamage, other.ownerName);
+        var bullet = other.getComponent("ScriptComponent");
+        var owner = bullet ? bullet.invoke("getOwnerName") : "";
+        if (owner && owner !== playerName) {
+            var bulletDamage = (bullet && bullet.invoke("getDamage")) || 20;
+            takeDamage(bulletDamage, owner);
         }
     }
 }

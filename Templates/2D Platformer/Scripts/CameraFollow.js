@@ -1,5 +1,5 @@
 // CameraFollow.js — Smooth camera follow for 2D games
-// Attach this script to the Camera actor
+// Attached to the Main Camera actor in Level1.scene.
 
 var targetTag = "Player";
 var smoothSpeed = 5.0;
@@ -7,7 +7,7 @@ var offsetX = 0;
 var offsetY = -50;
 
 function onUpdate(dt) {
-    var target = Scene.findByTag(targetTag);
+    var target = Scene.findFirstByTag(targetTag);
     if (!target) return;
 
     var targetX = target.transform.x + offsetX;

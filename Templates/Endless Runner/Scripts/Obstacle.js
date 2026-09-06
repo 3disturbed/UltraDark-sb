@@ -20,19 +20,18 @@ var speed = 300;
 // Lifecycle callbacks
 // =============================================================================
 
+// Called by RunManager.js right after it attaches this script; runs before onStart.
+function configure(newSpeed) {
+    if (newSpeed > 0) speed = newSpeed;
+}
+
 function onStart() {
-    // Try to read the current scroll speed from the RunManager so this
-    // obstacle matches the world's pace. Scene.find returns the actor
-    // proxy; we access the script variable through it.
+    // Ask the RunManager for the current scroll speed so this obstacle matches
+    // the world's pace; another script's variables are reached through invoke.
     var manager = Scene.find("RunManager");
-    if (manager) {
-        // The RunManager exposes scrollSpeed as a script-level variable.
-        // If the lookup succeeds, use it; otherwise fall back to the default.
-        var managerSpeed = manager.scrollSpeed;
-        if (managerSpeed && managerSpeed > 0) {
-            speed = managerSpeed;
-        }
-    }
+    var managerScript = manager ? manager.getComponent("ScriptComponent") : null;
+    var managerSpeed = managerScript ? managerScript.invoke("getScrollSpeed") : 0;
+    if (managerSpeed > 0) speed = managerSpeed;
 }
 
 function onUpdate(dt) {

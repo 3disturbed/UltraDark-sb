@@ -163,7 +163,7 @@ function spawnNightEnemy() {
         }
 
         var col = enemy.addComponent("BoxCollider2D");
-        if (col) { col.width = 24; col.height = 24; }
+        if (col) { col.size = { x: 24, y: 24 }; }
 
         var sc = enemy.addComponent("ScriptComponent");
         if (sc) { sc.scriptPath = "Scripts/EnemyWander.js"; }

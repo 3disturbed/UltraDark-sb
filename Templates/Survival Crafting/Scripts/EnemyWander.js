@@ -25,7 +25,7 @@ function onStart() {
 }
 
 function onUpdate(dt) {
-    var player = Scene.findByTag("Player");
+    var player = Scene.findFirstByTag("Player");
     if (!player) {
         wander(dt);
         return;
@@ -84,7 +84,7 @@ function takeDamage(amount) {
     health -= amount;
     if (health <= 0) {
         // Notify the WorldManager that an enemy was killed
-        var manager = Scene.findByTag("Manager");
+        var manager = Scene.findFirstByTag("Manager");
         if (manager) {
             var ms = manager.getComponent("ScriptComponent");
             if (ms) { ms.call("onEnemyKilled"); }
