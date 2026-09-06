@@ -164,15 +164,18 @@ public class PlayerController : Controller
     {
         float invert = InvertLookY ? -1f : 1f;
 
-        var mouse = input.MouseDelta;
+        // Through this player's own view, so a second player's pad turns their pawn and the one
+        // mouse does not turn everybody's.
+        var player = input.GetPlayer(PlayerIndex);
+
+        var mouse = player.MouseDelta;
         if (mouse != Vector2.Zero)
         {
             pawn.AddControllerYawInput(mouse.X * LookSensitivity);
             pawn.AddControllerPitchInput(mouse.Y * LookSensitivity * invert);
         }
 
-        var pad = input.GetGamepad(PlayerIndex);
-        if (pad.IsConnected)
+        if (player.Gamepad is { IsConnected: true } pad)
         {
             var look = pad.RightStick;
             if (look != Vector2.Zero)
@@ -182,6 +185,13 @@ public class PlayerController : Controller
             }
         }
     }
+
+    /// <summary>
+    /// This player's own view of the devices and the action map: their pad, and only the shared
+    /// keyboard and mouse when they own them. Also the way an on-screen button or a remote
+    /// player's replicated input reaches the same actions a device would.
+    /// </summary>
+    protected PlayerInput? Player => Input?.GetPlayer(PlayerIndex);
 
     /// <summary>
     /// Translate input into movement intent here. Called every frame while a pawn is possessed
