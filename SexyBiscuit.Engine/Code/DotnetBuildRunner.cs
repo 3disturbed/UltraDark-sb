@@ -159,50 +159,7 @@ public sealed class DotnetBuildRunner
     private async Task<RunOutcome> RunAsync(IReadOnlyList<string> args, string? workingDirectory, TimeSpan timeout,
                                             IProgress<string>? progress, CancellationToken cancellation)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName               = _dotnet.Path,
-            UseShellExecute        = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError  = true,
-            CreateNoWindow         = true,
-            WorkingDirectory       = workingDirectory ?? Environment.CurrentDirectory,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding  = Encoding.UTF8,
-        };
-        foreach (var arg in args) psi.ArgumentList.Add(arg);
-        foreach (var (name, value) in BuildEnvironment) psi.Environment[name] = value;
-
-        var lines = new List<string>();
-        var gate  = new object();
-
-        using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        process.OutputDataReceived += (_, e) => { if (e.Data == null) return; lock (gate) lines.Add(e.Data); progress?.Report(e.Data); };
-        process.ErrorDataReceived  += (_, e) => { if (e.Data == null) return; lock (gate) lines.Add(e.Data); progress?.Report(e.Data); };
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        using var timeoutCts = new CancellationTokenSource(timeout);
-        using var linked     = CancellationTokenSource.CreateLinkedTokenSource(cancellation, timeoutCts.Token);
-
-        bool timedOut = false, cancelled = false;
-        try
-        {
-            await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            timedOut  = timeoutCts.IsCancellationRequested && !cancellation.IsCancellationRequested;
-            cancelled = cancellation.IsCancellationRequested;
-            try { process.Kill(entireProcessTree: true); } catch { }
-            try { await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
-        }
-
-        // Drain the async readers before reading the lines.
-        try { process.WaitForExit(); } catch { }
-
-        lock (gate) return new RunOutcome(process.HasExited ? process.ExitCode : -1, lines.ToArray(), timedOut, cancelled);
+        var run = await ProcessRunner.RunAsync(_dotnet.Path, args, workingDirectory, timeout, progress, BuildEnvironment, cancellation).ConfigureAwait(false);
+        return new RunOutcome(run.ExitCode, run.Lines, run.TimedOut, run.Cancelled);
     }
 }

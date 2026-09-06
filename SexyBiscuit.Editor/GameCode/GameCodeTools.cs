@@ -154,10 +154,144 @@ public sealed class GameCodeTools
         return result;
     }
 
+    // -------------------------------------------------------------------------
+    // Tests
+    // -------------------------------------------------------------------------
+
+    [McpTool("run_tests",
+        "Run a test suite and return the totals and the failing names, not the log. project: 'engine' (the engine's " +
+        "xunit suite), 'templates' (only the template smoke tests, which run every template's scripts on the C# engine), " +
+        "'html5' (npm test in html5/: the JavaScript engine and the tools) or 'lint' (npm run lint). filter narrows " +
+        "engine tests by name (FullyQualifiedName~filter) or html5 tests by pattern. Blocks until the run finishes or " +
+        "waitSeconds pass; the first run after a change includes a build.",
+        MainThread = false, Label = "Run tests")]
+    public async Task<McpToolResult> RunTests(
+        [McpParam("engine, templates, html5 or lint")] string project = "engine",
+        [McpParam("Name filter")] string? filter = null,
+        [McpParam("Seconds to wait before giving up")] int waitSeconds = 600,
+        CancellationToken cancellation = default)
+    {
+        var repo = _code.Repo
+            ?? throw new McpToolException("The engine source was not found.", "Set the engine repository in the assistant settings or SEXYBISCUIT_REPO.");
+        var timeout  = TimeSpan.FromSeconds(Math.Clamp(waitSeconds, 10, 3600));
+        var started  = DateTime.UtcNow;
+        var progress = new Progress<string>(line => { if (IsWorthLogging(line)) ConsoleLog.Add("[test] " + line, LogLevel.Info); });
+        string kind  = project.Trim().ToLowerInvariant();
+
+        TestSummary summary;
+        string      command;
+        int         exitCode;
+        bool        timedOut;
+
+        switch (kind)
+        {
+            case "engine":
+            case "templates":
+            {
+                var dotnet = DotnetLocator.Find() ?? throw new McpToolException("The .NET SDK was not found.", "Install the .NET 8 SDK.");
+                var args = new List<string> { "test", repo.TestsCsproj, "--nologo" };
+                string? effective = kind == "templates" ? "TemplateTests" : filter;
+                if (!string.IsNullOrWhiteSpace(effective)) { args.Add("--filter"); args.Add($"FullyQualifiedName~{effective.Trim()}"); }
+                command = "dotnet " + string.Join(' ', args);
+
+                var run = await new DotnetBuildRunner(dotnet).RunDotnetAsync(args, repo.Root, timeout, progress, cancellation);
+                summary  = TestResultParsers.ParseDotnet(run.Lines);
+                exitCode = run.ExitCode;
+                timedOut = run.TimedOut;
+                break;
+            }
+            case "html5":
+            case "lint":
+            {
+                string html5 = Path.Combine(repo.Root, "html5");
+                ProcessRun run;
+                if (kind == "html5" && !string.IsNullOrWhiteSpace(filter))
+                {
+                    string node = NodeLocator.FindNode() ?? throw new McpToolException("node was not found.", "Install node 22 or newer.");
+                    var args = new List<string> { "--test", "--test-name-pattern", filter.Trim(), "tests/" };
+                    command = "node " + string.Join(' ', args);
+                    run = await ProcessRunner.RunAsync(node, args, html5, timeout, progress, null, cancellation);
+                }
+                else
+                {
+                    string npm = NodeLocator.FindNpm() ?? throw new McpToolException("npm was not found.", "Install node 22 or newer.");
+                    var args = kind == "lint" ? new List<string> { "run", "lint" } : new List<string> { "test" };
+                    command = "npm " + string.Join(' ', args);
+                    run = await ProcessRunner.RunAsync(npm, args, html5, timeout, progress, null, cancellation);
+                }
+
+                summary  = kind == "lint" ? LintSummary(run) : TestResultParsers.ParseNode(run.Lines);
+                exitCode = run.ExitCode;
+                timedOut = run.TimedOut;
+                break;
+            }
+            default:
+                throw new McpToolException($"Unknown project '{project}'.", "Use engine, templates, html5 or lint.");
+        }
+
+        var view = new JsonObject
+        {
+            ["project"]  = kind,
+            ["command"]  = command,
+            ["passed"]   = summary.Passed,
+            ["failed"]   = summary.Failed,
+            ["skipped"]  = summary.Skipped,
+            ["total"]    = summary.Total,
+            ["duration"] = summary.Duration ?? $"{(DateTime.UtcNow - started).TotalSeconds:0} s",
+            ["exitCode"] = exitCode,
+            ["ok"]       = summary.Success && exitCode == 0,
+        };
+        if (timedOut) view["timedOut"] = true;
+        if (summary.Failing.Count > 0)
+        {
+            view["failing"] = new JsonArray(summary.Failing.Take(20).Select(f => (JsonNode)new JsonObject { ["name"] = f.Name, ["message"] = f.Message }).ToArray());
+            if (summary.Failing.Count > 20) view["failingOmitted"] = summary.Failing.Count - 20;
+        }
+        if (summary.BuildErrors.Count > 0)
+            view["buildErrors"] = new JsonArray(summary.BuildErrors.Take(10).Select(e => (JsonNode)e).ToArray());
+
+        string headline = summary.Incomplete
+            ? timedOut ? $"{kind}: timed out after {timeout.TotalSeconds:0} s"
+                       : $"{kind}: no test summary (exit {exitCode}){(summary.BuildErrors.Count > 0 ? ", the build failed" : "")}"
+            : $"{kind}: {summary.Passed} passed, {summary.Failed} failed" +
+              (summary.Skipped > 0 ? $", {summary.Skipped} skipped" : "") + $" of {summary.Total}" +
+              (summary.Duration != null ? $" in {summary.Duration}" : "");
+
+        ConsoleLog.Add("[test] " + headline, summary.Success ? LogLevel.Info : LogLevel.Warning);
+        var result = McpToolResult.Json(view, headline);
+        if (summary.Incomplete) result.IsError = true;
+        return result;
+    }
+
+    /// <summary>The lint run as a summary: one "test" per module checked, one failure per reported problem.</summary>
+    private static TestSummary LintSummary(ProcessRun run)
+    {
+        int modules = 0;
+        var problems = new List<FailingTest>();
+        foreach (var line in run.Lines)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(line, @"(\d+) modules? checked");
+            if (m.Success) { modules = int.Parse(m.Groups[1].Value); continue; }
+            if (line.Contains("No problems found", StringComparison.OrdinalIgnoreCase)) continue;
+            if (line.Contains("error", StringComparison.OrdinalIgnoreCase) || line.Contains("problem", StringComparison.OrdinalIgnoreCase))
+                problems.Add(new FailingTest(line.Trim(), null));
+        }
+        if (run.ExitCode != 0 && problems.Count == 0)
+            problems.Add(new FailingTest($"lint exited with code {run.ExitCode}", run.Lines.LastOrDefault(l => l.Trim().Length > 0)?.Trim()));
+        int total = Math.Max(modules, problems.Count);
+        return new TestSummary(total - problems.Count, problems.Count, 0, total, null, problems, Array.Empty<string>());
+    }
+
+    private static bool IsWorthLogging(string line)
+        => line.StartsWith("  Failed ", StringComparison.Ordinal)
+        || line.StartsWith("Passed!", StringComparison.Ordinal) || line.StartsWith("Failed!", StringComparison.Ordinal)
+        || line.StartsWith("not ok", StringComparison.Ordinal) || line.TrimStart().StartsWith("✖", StringComparison.Ordinal)
+        || line.Contains(": error ", StringComparison.Ordinal);
+
     [McpTool("get_build_status",
         "Status and diagnostics of a build started by build_project, reload_game_code, create_code_project, run_standalone " +
         "or rebuild_engine_and_restart (the latest when build_id is omitted). For an engine rebuild, state 'restarting' " +
-        "means the editor is about to restart — stop calling tools, wait 15-30 seconds, then call get_project_info.",
+        "means the editor is about to restart — stop calling tools, wait 15-30 seconds, then call get_context.",
         MainThread = false)]
     public McpToolResult GetBuildStatus([McpParam("A build id from an earlier result")] string? buildId = null)
     {
@@ -414,7 +548,7 @@ public sealed class GameCodeTools
         "without restarting. On success the editor saves the scene, writes a resume file, and restarts a couple of " +
         "seconds after this result is delivered; it reopens the same project and scene, restores the selection, and " +
         "resumes the assistant session. While it restarts, MCP calls fail for 10-30 seconds: stop calling tools, wait, " +
-        "then call get_project_info until it answers, and re-list tools. Never repeat the rebuild.",
+        "then call get_context until it answers, and re-list tools. Never repeat the rebuild.",
         MainThread = false, Label = "Rebuild the engine and restart")]
     public async Task<McpToolResult> RebuildEngineAndRestart(
         [McpParam("Debug, Release or Development; defaults to the running editor's")] string? configuration = null,
@@ -430,7 +564,7 @@ public sealed class GameCodeTools
         {
             view["status"]      = "restart_scheduled";
             view["eta_seconds"] = 3;
-            view["instruction"] = "Stop calling tools now. The editor restarts in a few seconds and resumes this project and scene; you will be resumed too. Wait 15-30 seconds, then call get_project_info until it answers.";
+            view["instruction"] = "Stop calling tools now. The editor restarts in a few seconds and resumes this project and scene; you will be resumed too. Wait 15-30 seconds, then call get_context until it answers.";
             return McpToolResult.Json(view, "Engine and editor rebuilt. Restarting the editor.");
         }
 

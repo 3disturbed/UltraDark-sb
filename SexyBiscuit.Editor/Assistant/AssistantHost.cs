@@ -76,6 +76,10 @@ public sealed class AssistantHost : IDisposable
     public UserInteraction    Interaction { get; }
     public ClaudeCodeSession? Session     { get; private set; }
     public SessionRecord?     Record      { get; private set; }
+
+    /// <summary>The session meter: per-turn tokens, cost and tool result sizes for the current process.</summary>
+    public SessionUsage       Usage       { get; private set; } = new();
+    private long _usageCursor;
     public bool               Disabled    { get; }
     public McpHost            Mcp         => _mcp;
 
@@ -466,6 +470,8 @@ public sealed class AssistantHost : IDisposable
         _sessionExitHandled = false;
         _stoppedByUser      = false;
         _lastProcessCost    = 0;
+        Usage               = new SessionUsage();
+        _usageCursor        = Transcript.Entries.Count > 0 ? Transcript.Entries[^1].Id : 0;
 
         Transcript.AddSystem(resumeId != null
             ? $"Resuming session {Short(resumeId)} with {info.Display}{(fork ? " (forked)" : "")}."
@@ -659,7 +665,32 @@ public sealed class AssistantHost : IDisposable
         Record.LifetimeCostUsd += Math.Max(0, delta);
         Record.Turns++;
         Record.LastUsedUtc = DateTime.UtcNow;
+
+        // The tool calls since the previous turn belong to this one; the result entry is already in.
+        var calls = Transcript.Entries.OfType<ToolCallEntry>().Where(e => e.Id > _usageCursor).ToList();
+        if (Transcript.Entries.Count > 0) _usageCursor = Transcript.Entries[^1].Id;
+        var turn = Usage.Record(result, Math.Max(0, delta), calls);
+        Record.LifetimeContextTokens   += turn.ContextTokens;
+        Record.LifetimeOutputTokens    += turn.OutputTokens;
+        Record.LifetimeCacheReadTokens += turn.CacheReadTokens;
+        AppendUsageLine(_projectRoot, turn);
+
         Settings.RememberSession(_projectRoot, Record);
+    }
+
+    /// <summary>One line per turn in <c>&lt;project&gt;/.sexybiscuit/usage.jsonl</c>, the file <c>npm run usage</c> reads.</summary>
+    private static void AppendUsageLine(string projectRoot, TurnUsage turn)
+    {
+        try
+        {
+            string dir = Path.Combine(projectRoot, ".sexybiscuit");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "usage.jsonl"), turn.ToJsonLine() + "\n");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Assistant] usage.jsonl not written: {ex.Message}");
+        }
     }
 
     /// <summary>Called from <see cref="EditorApp.OnExiting"/>: releases waiters, stops the process, saves.</summary>

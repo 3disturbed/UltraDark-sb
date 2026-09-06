@@ -44,9 +44,10 @@ jobs:
         run: dotnet run --no-build --project SexyBiscuit.Build -c Release -- --project "Templates/Hello World" --platform web --no-publish --output "${{ runner.temp }}/sb-dist" --quiet
         shell: bash
 
-      # Headless smoke test: the MCP tool registry and the Claude Code plumbing load without a window.
+      # Headless smoke test: the MCP tool registry and the Claude Code plumbing load without a
+      # window, and the full tool catalogue stays under budget (a session pays it once).
       - name: Dump MCP tools
-        run: dotnet SexyBiscuit.Editor/bin/Release/net8.0/SexyBiscuit.Editor.dll --dump-mcp-tools --markdown > /dev/null
+        run: dotnet SexyBiscuit.Editor/bin/Release/net8.0/SexyBiscuit.Editor.dll --dump-mcp-tools --all --markdown --budget 45000 > /dev/null
         shell: bash
 
       - name: Test

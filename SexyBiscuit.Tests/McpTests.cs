@@ -757,6 +757,7 @@ public class McpRegistryTests
         Assert.True(entries[0].Mutating);
         Assert.Equal(ActivityState.Succeeded, entries[0].State);
         Assert.Equal("tester", entries[0].Client);
+        Assert.True(entries[0].ResultChars > 0, "the log keeps the result size so the meter can charge it to the tool");
 
         Assert.Equal(ActivityState.Failed, entries[1].State);
         Assert.Contains("Deliberate failure", entries[1].Summary);

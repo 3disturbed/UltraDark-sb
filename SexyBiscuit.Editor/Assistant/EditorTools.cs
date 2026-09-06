@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Xna.Framework;
 using SexyBiscuit.Editor.GameCode;
@@ -520,6 +521,119 @@ public sealed class EditorTools
         ["timeScale"]  = Time.TimeScale,
         ["sceneName"]  = App.Engine?.SceneManager.ActiveScene?.Name,
     };
+
+    // -------------------------------------------------------------------------
+    // Reports
+    // -------------------------------------------------------------------------
+
+    [McpTool("run_scene_report",
+        "Play the open scene for a few seconds and report what happened in about a hundred tokens: frames and fps, " +
+        "script errors, console warnings and errors (deduplicated, newest last) and the actor count at the end. Play " +
+        "mode is exited and the scene restored afterwards. Use it in place of play, wait, read_console and stop.",
+        MainThread = false, Label = "Play the scene and report")]
+    public async Task<McpToolResult> RunSceneReport(
+        [McpParam("Seconds to play, 0.5 to 60")] double seconds = 3,
+        [McpParam("Load this scene first, project-relative")] string? scene = null,
+        [McpParam("Maximum console lines returned")] int maxLines = 10,
+        CancellationToken cancellation = default)
+    {
+        seconds  = Math.Clamp(seconds, 0.5, 60);
+        maxLines = Math.Clamp(maxLines, 0, 50);
+
+        if (scene != null)
+        {
+            var load = await _host.Dispatcher.InvokeAsync(
+                () => _host.Registry.InvokeInline("load_scene", JsonSerializer.SerializeToElement(new { path = scene }), new McpCallContext { Cancellation = cancellation }),
+                cancellation);
+            if (load.IsError) return load;
+        }
+
+        var start = await _host.Dispatcher.InvokeAsync(() =>
+        {
+            RequireScene();
+            if (EditorState.IsPlaying) throw new McpToolException("Already in play mode.", "Call stop first.");
+            long sinceSequence = ConsoleLog.NextSequence - 1;
+            long frame0        = Time.FrameCount;
+            App.EnterPlayMode();
+            return (sinceSequence, frame0);
+        }, cancellation);
+
+        bool cancelled = false;
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(seconds), cancellation);
+        }
+        catch (OperationCanceledException)
+        {
+            cancelled = true;
+        }
+
+        // Collect and leave play mode in one hop, whatever happened, so the scene is always restored.
+        var report = await _host.Dispatcher.InvokeAsync(() =>
+        {
+            long  frames = Time.FrameCount - start.frame0;
+            float fps    = Time.Fps;
+            int   actors = App.Engine?.SceneManager.ActiveScene?.Layers.Sum(l => l.Actors.Count) ?? 0;
+            var   since  = ConsoleLog.EntriesSince(start.sinceSequence);
+            if (EditorState.IsPlaying) App.ExitPlayMode();
+            return (frames, fps, actors, since);
+        }, CancellationToken.None);
+
+        if (cancelled) throw new OperationCanceledException(cancellation);
+
+        var notable = report.since.Where(e => e.Level >= LogLevel.Warning).ToList();
+        int errors       = notable.Count(e => e.Level >= LogLevel.Error);
+        int warnings     = notable.Count(e => e.Level == LogLevel.Warning);
+        int scriptErrors = notable.Count(e => e.Level >= LogLevel.Error && e.Message.StartsWith("[Script", StringComparison.Ordinal));
+
+        // One line per distinct message, counted, in order of last occurrence.
+        var lines = new JsonArray();
+        var grouped = notable
+            .GroupBy(e => (e.Level, e.Message))
+            .Select(g => (g.Key.Level, g.Key.Message, Count: g.Count(), Last: g.Max(e => e.Sequence)))
+            .OrderBy(g => g.Last)
+            .ToList();
+        foreach (var g in grouped.Skip(Math.Max(0, grouped.Count - maxLines)))
+            lines.Add($"{g.Level.ToString().ToLowerInvariant()}{(g.Count > 1 ? $" ×{g.Count}" : "")}: {g.Message}");
+
+        var view = new JsonObject
+        {
+            ["seconds"]        = Math.Round(seconds, 1),
+            ["frames"]         = report.frames,
+            ["fps"]            = MathF.Round(report.fps, 1),
+            ["actors"]         = report.actors,
+            ["errors"]         = errors,
+            ["warnings"]       = warnings,
+            ["scriptErrors"]   = scriptErrors,
+            ["lines"]          = lines,
+            ["latestSequence"] = ConsoleLog.NextSequence - 1,
+        };
+        if (grouped.Count > maxLines) view["linesOmitted"] = grouped.Count - maxLines;
+
+        string summary = $"{seconds:0.#} s, {report.frames} frames at {report.fps:0} fps; {errors} error(s), {warnings} warning(s)" +
+                         (scriptErrors > 0 ? $", {scriptErrors} from scripts" : "") + $"; {report.actors} actors at the end.";
+        return McpToolResult.Json(view, summary);
+    }
+
+    [McpTool("get_session_usage",
+        "This session's token meter, about seventy tokens: turns, context per API call, cache share, output tokens, " +
+        "the size of the tool results, cost, the last turn, and the tools that returned the most. Read it to see what " +
+        "a task cost before repeating the pattern.",
+        MainThread = false)]
+    public McpToolResult GetSessionUsage([McpParam("How many tools to list")] int topTools = 5)
+    {
+        var host = AssistantHost.Instance;
+        if (host == null || host.Usage.TurnCount == 0)
+        {
+            return McpToolResult.Json(new JsonObject
+            {
+                ["turns"] = 0,
+                ["note"]  = "No completed turns yet; the meter counts the embedded assistant's turns. For a terminal session run npm run usage -- <transcript> in html5/.",
+            });
+        }
+
+        return McpToolResult.Json(host.Usage.Summary(Math.Clamp(topTools, 0, 20)), host.Usage.SummaryLine());
+    }
 
     // -------------------------------------------------------------------------
     // Output Log

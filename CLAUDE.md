@@ -46,9 +46,12 @@ with `--watch`. Do not read the engine source to write a game; read `wiki/11-scr
 template's own scripts. No screenshots: the validator and the tests are the checker.
 
 When running inside the editor (the `sexybiscuit` MCP server is connected): the editor process
-is already running this code. Engine changes only take effect after `rebuild_engine_and_restart`;
-game-project changes after `reload_game_code`. Scene edits go through the MCP tools, not by
-editing `.scene` files, so the editor, undo and the viewport stay in step. Tool results are short
+is already running this code. Start with `get_context`; ask for more only when a task needs it.
+Engine changes only take effect after `rebuild_engine_and_restart`; game-project changes after
+`reload_game_code`; `run_tests` runs a suite and returns totals and failing names. Scene edits
+go through the MCP tools, not by editing `.scene` files, so the editor, undo and the viewport
+stay in step; batch them with `apply_scene_edits`. Verify at milestones with `run_scene_report`
+or one `capture_viewport`, not after every edit. Ship with `export_build`. Tool results are short
 on purpose; trust them. See `wiki/25-ai-assistant-mcp.md` for the tool catalogue.
 
 The HTML5 port is documented in `html5/README.md` and `wiki/26-html5.md`. Both engines' action

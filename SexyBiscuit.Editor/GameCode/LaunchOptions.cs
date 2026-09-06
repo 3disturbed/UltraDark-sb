@@ -42,6 +42,12 @@ public sealed class LaunchOptions
     /// <summary>With the dump: markdown instead of JSON.</summary>
     public bool Markdown { get; set; }
 
+    /// <summary>With the dump: include the editor-only tool classes, so the catalogue is the one a running editor serves.</summary>
+    public bool DumpAll { get; set; }
+
+    /// <summary>With the dump: fail when the compact tools/list JSON is longer than this many characters.</summary>
+    public int? Budget { get; set; }
+
     /// <summary>True when the process should not open a window at all.</summary>
     public bool IsHeadless => AssistantSelfTest || DumpMcpTools;
 
@@ -86,6 +92,8 @@ public sealed class LaunchOptions
                 case "--timeout":            options.SelfTestTimeoutSeconds = int.TryParse(Next(), out int t) ? t : 180; break;
                 case "--dump-mcp-tools":     options.DumpMcpTools = true; break;
                 case "--markdown":           options.Markdown = true; break;
+                case "--all":                options.DumpAll = true; break;
+                case "--budget":             options.Budget = int.TryParse(Next(), out int budget) ? budget : null; break;
                 default:                     options.Unknown.Add(arg); break;
             }
         }

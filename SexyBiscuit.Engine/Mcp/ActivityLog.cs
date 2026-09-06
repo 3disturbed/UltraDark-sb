@@ -19,7 +19,11 @@ public sealed record ActivityEntry(
     ActivityState State,
     TimeSpan      Duration,
     string        Summary,
-    string?       Client);
+    string?       Client)
+{
+    /// <summary>Size of the result — text characters plus decoded image bytes — before any display truncation.</summary>
+    public long ResultChars { get; init; }
+}
 
 /// <summary>
 /// A thread-safe ring buffer of tool calls. Tools begin and complete entries from whatever
@@ -62,7 +66,7 @@ public sealed class ActivityLog
         return entry.Seq;
     }
 
-    public void Complete(long seq, ActivityState state, string summary)
+    public void Complete(long seq, ActivityState state, string summary, long resultChars = 0)
     {
         ActivityEntry updated;
         lock (_lock)
@@ -73,9 +77,10 @@ public sealed class ActivityLog
             var old = _entries[index];
             updated = old with
             {
-                State    = state,
-                Duration = DateTime.UtcNow - old.StartedUtc,
-                Summary  = summary,
+                State       = state,
+                Duration    = DateTime.UtcNow - old.StartedUtc,
+                Summary     = summary,
+                ResultChars = resultChars,
             };
             _entries[index] = updated;
             Interlocked.Increment(ref _version);
