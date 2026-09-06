@@ -51,10 +51,16 @@ public sealed class GamepadState
     // -------------------------------------------------------------------------
     // Frame update (called by InputManager)
     // -------------------------------------------------------------------------
-    internal void Update(float dt)
+    internal void Update(float dt) => Update(dt, GamePad.GetState(PlayerIndex));
+
+    /// <summary>
+    /// The same frame step against a supplied state. <c>GamePad.GetState</c> needs a window, so a
+    /// test that wants to prove per-player routing has to hand the state in.
+    /// </summary>
+    internal void Update(float dt, XnaGamePadState state)
     {
         _previous = _current;
-        _current  = GamePad.GetState(PlayerIndex);
+        _current  = state;
 
         // Tick active rumble timer.
         if (_rumbleTimeRemaining > 0f)

@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "couch-coop",
+  "name": "Couch Co-op",
+  "version": "1.0.0",
+  "summary": "Several players on one machine, joining by pressing a button, sharing one camera.",
+  "description": "Watches unclaimed gamepads for a join press, spawns and possesses a player for each, and gives every player their own devices so one mouse does not turn everybody's pawn. A camera rig frames all the living players at once, which is how Overcooked and Castle Crashers do it; split-screen is a separate piece of engine work.",
+  "tags": ["multiplayer", "co-op", "local", "gamepad", "camera"],
+  "engines": ["csharp"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": ["input-mapping"],
+  "provides": {
+    "components": ["LocalPlayers", "CoopCameraRig", "PlayerColours"],
+    "actorClasses": [],
+    "scripts": [],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Add a LocalPlayers component to the actor that carries the GameMode.",
+    "Add a CoopCameraRig to the camera tagged MainCamera3D so it frames everyone.",
+    "Give the scene at least as many Player Start actors as MaxPlayers, or players will share one."
+  ]
+}

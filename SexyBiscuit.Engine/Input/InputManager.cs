@@ -13,7 +13,7 @@ namespace SexyBiscuit.Engine.Input;
 /// Provides per-frame keyboard/mouse/gamepad queries plus a string-keyed
 /// action-map layer with rebinding and persistence.
 /// </summary>
-public sealed class InputManager
+public sealed class InputManager : IInputSource
 {
     // -------------------------------------------------------------------------
     // Configuration
@@ -83,8 +83,12 @@ public sealed class InputManager
 
         // --- Touch ---
         Touch.Update();
+
+        // The virtual layer's edges advance once a frame, whoever is pushing it.
+        foreach (var player in _players) player?.Tick();
     }
 
+    private readonly PlayerInput?[] _players = new PlayerInput?[4];
     private bool _primed;
 
     // The per-frame state step, separated from the hardware reads so it can be tested.
@@ -313,247 +317,70 @@ public sealed class InputManager
     /// True on the frame the action transitions from inactive to active
     /// (equivalent to "button pressed" semantics).
     /// </summary>
-    public bool IsPressed(string action)
-    {
-        if (!_actionMap.Actions.TryGetValue(action, out var act)) return false;
-        return act.Bindings.Any(EvaluatePressed);
-    }
+    public bool IsPressed(string action) => GetPlayer(0).IsPressed(action);
 
-    /// <summary>True while any binding for the action is continuously active.</summary>
-    public bool IsHeld(string action)
-    {
-        if (!_actionMap.Actions.TryGetValue(action, out var act)) return false;
-        return act.Bindings.Any(EvaluateHeld);
-    }
+    /// <summary>True while any binding for <paramref name="action"/> is held.</summary>
+    public bool IsHeld(string action) => GetPlayer(0).IsHeld(action);
 
-    /// <summary>True on the frame the action transitions from active to inactive.</summary>
-    public bool IsReleased(string action)
-    {
-        if (!_actionMap.Actions.TryGetValue(action, out var act)) return false;
-        return act.Bindings.Any(EvaluateReleased);
-    }
+    /// <summary>True on the frame any binding for <paramref name="action"/> comes up.</summary>
+    public bool IsReleased(string action) => GetPlayer(0).IsReleased(action);
 
     /// <summary>
-    /// Returns the axis value (-1..1) for the action.
-    /// For digital bindings the value is -1, 0, or +1.
-    /// Returns the first non-zero value across all bindings, or 0.
+    /// The action's value from -1 to 1. The first binding with a non-zero value wins, so a stick
+    /// at rest falls through to the keys behind it.
     /// </summary>
-    public float GetAxis(string action)
+    public float GetAxis(string action) => GetPlayer(0).GetAxis(action);
+
+    // =========================================================================
+    // Players
+    // =========================================================================
+
+    // The whole machine's view of the devices, for the evaluator. Implemented explicitly so the
+    // manager's public surface does not change by a character.
+    GamepadState? IInputSource.ActiveGamepad => _gamepads[0];
+    TouchManager? IInputSource.ActiveTouch   => Touch;
+
+    /// <summary>The live action map, so a rebinding screen can read and edit it.</summary>
+    /// <remarks>
+    /// <see cref="RebindAction"/> replaces every binding an action has, which is right for "bind
+    /// this to that" and wrong for editing one slot of several. Editing this map in place is how a
+    /// rebinding UI keeps an action's gamepad and touch alternates.
+    /// </remarks>
+    public ActionMap ActionMap => _actionMap;
+
+    /// <summary>
+    /// One player's view of the devices. Player zero owns every device and pad zero, so the
+    /// manager's own queries -- which go through it -- behave exactly as they always have.
+    /// </summary>
+    public PlayerInput GetPlayer(int playerIndex)
     {
-        if (!_actionMap.Actions.TryGetValue(action, out var act)) return 0f;
-        foreach (var binding in act.Bindings)
+        ValidatePlayerIndex(playerIndex);
+        return _players[playerIndex] ??= new PlayerInput(this, playerIndex);
+    }
+
+    /// <summary>The player views that have been asked for, in index order.</summary>
+    public IEnumerable<PlayerInput> Players => _players.Where(p => p != null)!;
+
+    /// <summary>Feeds one gamepad a state directly, so per-player routing can be tested.</summary>
+    internal void SampleGamepad(int playerIndex, Microsoft.Xna.Framework.Input.GamePadState state)
+    {
+        ValidatePlayerIndex(playerIndex);
+        _gamepads[playerIndex].Update(0f, state);
+    }
+
+    /// <summary>Keys that went down this frame, for a "press anything to join" screen.</summary>
+    public IReadOnlyList<Keys> PressedKeys
+    {
+        get
         {
-            var v = EvaluateAxis(binding);
-            if (v != 0f) return v;
+            var pressed = new List<Keys>();
+            foreach (var key in _kbCurrent.GetPressedKeys())
+                if (!_kbPrevious.IsKeyDown(key)) pressed.Add(key);
+            return pressed;
         }
-        return 0f;
     }
 
-    // =========================================================================
-    // Action evaluation internals
-    // =========================================================================
 
-    private bool EvaluateHeld(InputBinding b) => b.Device switch
-    {
-        "keyboard" => EvalKeyboardHeld(b),
-        "mouse"    => EvalMouseHeld(b),
-        "gamepad"  => EvalGamepadHeld(b),
-        "touch"    => EvalTouchHeld(b),
-        _          => false
-    };
-
-    private bool EvaluatePressed(InputBinding b) => b.Device switch
-    {
-        "keyboard" => EvalKeyboardPressed(b),
-        "mouse"    => EvalMousePressed(b),
-        "gamepad"  => EvalGamepadPressed(b),
-        "touch"    => EvalTouchPressed(b),
-        _          => false
-    };
-
-    private bool EvaluateReleased(InputBinding b) => b.Device switch
-    {
-        "keyboard" => EvalKeyboardReleased(b),
-        "mouse"    => EvalMouseReleased(b),
-        "gamepad"  => EvalGamepadReleased(b),
-        "touch"    => EvalTouchReleased(b),
-        _          => false
-    };
-
-    private float EvaluateAxis(InputBinding b)
-    {
-        float raw = b.Device switch
-        {
-            "keyboard" => EvalKeyboardAxis(b),
-            "mouse"    => EvalMouseAxis(b),
-            "gamepad"  => EvalGamepadAxis(b),
-            "touch"    => EvalTouchAxis(b),
-            _          => 0f
-        };
-        raw *= b.Scale;
-        if (b.Invert) raw = -raw;
-        return raw;
-    }
-
-    // -----------------------------------------------------------------------
-    // Keyboard evaluation
-    // -----------------------------------------------------------------------
-
-    private bool EvalKeyboardHeld(InputBinding b)
-    {
-        if (b.Key != null && TryParseKey(b.Key, out var k)) return IsKeyDown(k);
-        if (b.PosKey != null && TryParseKey(b.PosKey, out var pk)) return IsKeyDown(pk);
-        if (b.NegKey != null && TryParseKey(b.NegKey, out var nk)) return IsKeyDown(nk);
-        return false;
-    }
-
-    private bool EvalKeyboardPressed(InputBinding b)
-    {
-        if (b.Key != null && TryParseKey(b.Key, out var k)) return IsKeyPressed(k);
-        if (b.PosKey != null && TryParseKey(b.PosKey, out var pk)) return IsKeyPressed(pk);
-        if (b.NegKey != null && TryParseKey(b.NegKey, out var nk)) return IsKeyPressed(nk);
-        return false;
-    }
-
-    private bool EvalKeyboardReleased(InputBinding b)
-    {
-        if (b.Key != null && TryParseKey(b.Key, out var k)) return IsKeyReleased(k);
-        if (b.PosKey != null && TryParseKey(b.PosKey, out var pk)) return IsKeyReleased(pk);
-        if (b.NegKey != null && TryParseKey(b.NegKey, out var nk)) return IsKeyReleased(nk);
-        return false;
-    }
-
-    private float EvalKeyboardAxis(InputBinding b)
-    {
-        float v = 0f;
-        if (b.PosKey != null && TryParseKey(b.PosKey, out var pk) && IsKeyDown(pk)) v += 1f;
-        if (b.NegKey != null && TryParseKey(b.NegKey, out var nk) && IsKeyDown(nk)) v -= 1f;
-        if (v == 0f && b.Key != null && TryParseKey(b.Key, out var k) && IsKeyDown(k)) v = 1f;
-        return v;
-    }
-
-    // -----------------------------------------------------------------------
-    // Mouse evaluation
-    // -----------------------------------------------------------------------
-
-    private bool EvalMouseHeld(InputBinding b)
-    {
-        if (b.Button != null && TryParseMouseButton(b.Button, out var mb)) return IsMouseButtonDown(mb);
-        return false;
-    }
-
-    private bool EvalMousePressed(InputBinding b)
-    {
-        if (b.Button != null && TryParseMouseButton(b.Button, out var mb)) return IsMouseButtonPressed(mb);
-        return false;
-    }
-
-    private bool EvalMouseReleased(InputBinding b)
-    {
-        if (b.Button != null && TryParseMouseButton(b.Button, out var mb)) return IsMouseButtonReleased(mb);
-        return false;
-    }
-
-    private float EvalMouseAxis(InputBinding b) => b.Axis switch
-    {
-        "MouseX" => MouseDelta.X,
-        "MouseY" => MouseDelta.Y,
-        "Scroll" => ScrollDelta,
-        _        => 0f
-    };
-
-    // -----------------------------------------------------------------------
-    // Gamepad evaluation (player 0 only for action map)
-    // -----------------------------------------------------------------------
-
-    private bool EvalGamepadHeld(InputBinding b)
-    {
-        var gp = _gamepads[0];
-        if (!gp.IsConnected) return false;
-        if (b.Button != null && TryParseGpButton(b.Button, out var btn)) return gp.IsButtonDown(btn);
-        if (b.Axis   != null)
-        {
-            var v = gp.GetAxis(b.Axis);
-            return MathF.Abs(v) > 0.3f;
-        }
-        return false;
-    }
-
-    private bool EvalGamepadPressed(InputBinding b)
-    {
-        var gp = _gamepads[0];
-        if (!gp.IsConnected) return false;
-        if (b.Button != null && TryParseGpButton(b.Button, out var btn)) return gp.IsButtonPressed(btn);
-        return false;
-    }
-
-    private bool EvalGamepadReleased(InputBinding b)
-    {
-        var gp = _gamepads[0];
-        if (!gp.IsConnected) return false;
-        if (b.Button != null && TryParseGpButton(b.Button, out var btn)) return gp.IsButtonReleased(btn);
-        return false;
-    }
-
-    private float EvalGamepadAxis(InputBinding b)
-    {
-        var gp = _gamepads[0];
-        if (!gp.IsConnected) return 0f;
-        if (b.Axis != null) return gp.GetAxis(b.Axis);
-        return 0f;
-    }
-
-    // -----------------------------------------------------------------------
-    // Touch evaluation
-    // -----------------------------------------------------------------------
-    //
-    // Touch was reachable only through Input.Touch directly, so no action could be
-    // driven by a thumbstick and every action-map-driven game was unplayable on a
-    // phone without bypassing the action map. A binding names one of the joystick
-    // axes, or names none at all and reads as a tap anywhere on the screen.
-
-    private bool EvalTouchHeld(InputBinding b)
-    {
-        if (b.Axis != null) return MathF.Abs(EvalTouchAxis(b)) > 0.3f;
-
-        // No axis: any finger on the screen counts as the button being held.
-        return Touch.Touches.Any(t => t.Phase is not (TouchPhase.Ended or TouchPhase.Cancelled));
-    }
-
-    private bool EvalTouchPressed(InputBinding b)
-    {
-        if (b.Axis != null) return false;
-        return Touch.Touches.Any(t => t.Phase == TouchPhase.Began);
-    }
-
-    private bool EvalTouchReleased(InputBinding b)
-    {
-        if (b.Axis != null) return false;
-        return Touch.Touches.Any(t => t.Phase == TouchPhase.Ended);
-    }
-
-    private float EvalTouchAxis(InputBinding b) => b.Axis switch
-    {
-        "LeftJoystickX"  => Touch.LeftJoystick.Value.X,
-        "LeftJoystickY"  => Touch.LeftJoystick.Value.Y,
-        "RightJoystickX" => Touch.RightJoystick.Value.X,
-        "RightJoystickY" => Touch.RightJoystick.Value.Y,
-        "PinchDelta"     => Touch.PinchDelta,
-        _                => 0f
-    };
-
-    // =========================================================================
-    // Parsing helpers
-    // =========================================================================
-
-    private static bool TryParseKey(string name, out Keys key)
-        => Enum.TryParse(name, ignoreCase: true, out key);
-
-    private static bool TryParseMouseButton(string name, out MouseButton btn)
-        => Enum.TryParse(name, ignoreCase: true, out btn);
-
-    private static bool TryParseGpButton(string name, out Buttons btn)
-        => Enum.TryParse(name, ignoreCase: true, out btn);
 
     // =========================================================================
     // Mouse button → ButtonState helpers

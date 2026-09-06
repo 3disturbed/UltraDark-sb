@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "remote-players",
+  "name": "Remote Players",
+  "version": "1.0.0",
+  "summary": "Host or join over the network: connecting clients become possessed players.",
+  "description": "Wires the engine's transport to the gameplay layer. A client that connects is spawned, possessed and added to the scoreboard; its input reaches the server through the same actions a local player uses; and remote pawns interpolate so they move smoothly at the twenty hertz send rate. Listen server, dedicated server or client, chosen on one component.",
+  "tags": ["multiplayer", "networking", "online", "lan"],
+  "engines": ["csharp"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": ["input-mapping"],
+  "provides": {
+    "components": ["NetSession", "NetTransform"],
+    "actorClasses": ["NetworkGameMode", "NetPlayerController"],
+    "scripts": [],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Add a NetSession component to an actor in the start scene and set its Mode.",
+    "Use NetworkGameMode instead of GameMode, or subclass it: NetSession warns when you have not.",
+    "Add a NetTransform to any actor whose position other machines need to see."
+  ]
+}

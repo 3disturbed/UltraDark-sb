@@ -98,9 +98,10 @@ and resizable. Drag a panel by its tab to rearrange; the layout persists in
 
 ## Panels
 
-Twelve panels are wired into `EditorApp.DrawPanels`, plus the Render Stats
+Thirteen panels are wired into `EditorApp.DrawPanels`, plus the Render Stats
 overlay. The Assistant and C# Project panels have a page of their own,
-[25. AI Assistant & MCP](25-ai-assistant-mcp.md); the short version is below.
+[25. AI Assistant & MCP](25-ai-assistant-mcp.md), and so does the Cookie Jar,
+[28. The CookieJar](28-the-cookiejar.md); the short versions are below.
 
 ### Hierarchy
 
@@ -225,6 +226,15 @@ questions and permission prompts, an Activity tab over every MCP call, and a
 Diagnostics tab. <kbd>F8</kbd> focuses it, <kbd>Shift</kbd>+<kbd>F8</kbd> stops
 Claude, `EditorState.ShowAssistant` toggles it. The whole story is
 [25. AI Assistant & MCP](25-ai-assistant-mcp.md).
+
+### Cookie Jar
+
+The module library. **Browse** searches every jar and installs a cookie into the
+open project; **Installed** lists what this project has, and flags any file that
+has been edited since; **Jars** adds a folder or a repository, and is the only
+place a cloned jar can be trusted; **Bake** turns files from this project into a
+new cookie. Off by default (`EditorState.ShowCookieJar`), reachable from View
+and from Tools. The whole story is [28. The CookieJar](28-the-cookiejar.md).
 
 ---
 

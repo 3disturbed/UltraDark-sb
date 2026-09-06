@@ -67,6 +67,7 @@ effects, and [CONTRIBUTING](CONTRIBUTING.md) for build, test and style expectati
 24. [Testing & CI](#24-testing--ci)
 25. [AI Assistant & MCP](#25-ai-assistant--mcp)
 26. [HTML5 / Web](#26-html5--web)
+28. [The CookieJar](#28-the-cookiejar)
 
 ---
 
@@ -1620,6 +1621,32 @@ Full detail, including the API mapping table, what differs by necessity, and the
 three bugs this port found and fixed in the C# engine, is in
 [`html5/README.md`](html5/README.md) and the
 [HTML5 wiki page](wiki/26-html5.md).
+
+---
+
+## 28. The CookieJar
+
+Every game used to start from nothing: the character controller, the input map, the scoring loop
+typed again into a project nobody else could reuse. The CookieJar is where that work goes instead.
+
+A **cookie** is one reusable module — some C# or JavaScript, whatever assets and scene fragments it
+needs, and an `AGENT.md` saying how to wire it up. A **jar** is a folder or a git repository of
+them; the engine ships its own in `CookieJar/`. Installing copies a cookie into the open project,
+repoints its asset references, builds it, and records every file it wrote with a hash in
+`CookieJar.lock.json` — so removing it later deletes its own work and keeps anything you have
+edited since.
+
+The assistant is told to look there first, which is the point: finding a module costs about thirty
+tokens, and deriving one again costs thousands, every game.
+
+```bash
+dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --markdown | grep cookie
+```
+
+Installing a cookie compiles and runs its code, so a cloned jar is only fetched once you trust it
+in the editor's Cookie Jar panel. No tool can clone, enable or trust a jar.
+
+See the [CookieJar wiki page](wiki/28-the-cookiejar.md) and [`CookieJar/README.md`](CookieJar/README.md).
 
 ---
 
