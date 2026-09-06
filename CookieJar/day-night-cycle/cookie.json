@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "day-night-cycle",
+  "name": "Day / Night Cycle",
+  "version": "1.0.0",
+  "summary": "A clock that turns into pressure: phases, a darkness that follows the player, and a curve other scripts can read.",
+  "description": "Runs a day as a fraction from 0 to 1, announces phase changes once each, and dims the world through a tinted overlay pinned to the player -- which is how a script covers the view at all when the scripting contract exposes no viewport. Everything else reads getDarkness() and getDayNumber() and decides for itself what night means: more enemies, faster ones, colder, hungrier.",
+  "tags": ["time", "day-night", "atmosphere", "survival", "difficulty"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["DayNightCycle.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put DayNightCycle.js on a manager actor and tag it Clock.",
+    "Set followTag to whatever the overlay should stay centred on, usually Player.",
+    "Read getDarkness() and getDayNumber() from your spawner to make night mean something."
+  ]
+}

@@ -39,5 +39,14 @@ Rules worth knowing before you write one:
   before anything is written.
 - **Everything here is compiled in CI** against the engine in this repository, so a cookie that
   stops building is a broken build rather than a surprise for whoever installs it next.
+- **A JavaScript cookie declares `"engines": ["js"]`** and puts its scripts in `Scripts/`, written
+  against the shared scripting contract like any other game script. There is nothing to compile,
+  so the check is the validator instead: drop the scripts into a throwaway project, wire them into
+  a scene the way the `AGENT.md` says to, and run
+  `npm run validate -- <dir> --strict` from `html5/`. A cookie whose own documentation does not
+  validate is worse than no cookie.
+
+Phase 1 is JavaScript-only and it is where every game starts, so a mechanic worth reusing is
+usually worth a `js` cookie before it is worth a C# one.
 
 A cookie is one mechanic. A whole game start is a project template, and those live in `Templates/`.

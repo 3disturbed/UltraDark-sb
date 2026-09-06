@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "floating-status-bars",
+  "name": "Floating Status Bars",
+  "version": "1.0.0",
+  "summary": "Health, stamina and anything else as bars in world space, riding above an actor's head.",
+  "description": "The shared scripting contract has no viewport: a script cannot know how wide the window is, so it cannot pin anything to a screen corner. These bars sidestep that by living in the world and following an actor, which is correct at any resolution, on a phone as well as a desktop, and in a top-down game is where the player is already looking. Each bar is fed by naming a function on the target's own script, so no coupling beyond a name.",
+  "tags": ["ui", "hud", "health", "meters", "world-space"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["FloatingBars.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put FloatingBars.js on an empty actor -- it builds its own sprites at start.",
+    "Set targetTag to the actor the bars follow, usually Player.",
+    "List the getter names in `sources`: each must exist on the target's script and return 0..1."
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "noise-and-hearing",
+  "name": "Noise and Hearing",
+  "version": "1.0.0",
+  "summary": "Sound, not sight, is what draws the enemy: they walk to where the noise was, not to where you are.",
+  "description": "A hub broadcasts a noise at a point with a radius; every listener inside it remembers that position and goes to look. Because the memory is a place rather than a target, running away works, throwing something works, and standing still works — which is the whole reason stealth is interesting. Includes a drop-in investigator AI with a sight cone you can slip behind, wander, chase and a wall-sliding unstick, all inside the shared scripting contract so it runs on both engines.",
+  "tags": ["ai", "stealth", "sound", "senses", "survival", "horror"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["NoiseDirector.js", "NoiseInvestigator.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put NoiseDirector.js on one manager actor and tag it Director.",
+    "Put NoiseInvestigator.js on anything that should hear, and tag those actors Enemy.",
+    "Call emitNoise(x, y, radius) on the director whenever the player does something audible — footsteps on a timer, and every hit, shot or door."
+  ]
+}
