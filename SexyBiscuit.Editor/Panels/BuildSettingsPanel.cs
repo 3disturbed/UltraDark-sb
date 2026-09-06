@@ -391,12 +391,17 @@ public sealed class BuildSettingsPanel
         _buildErrors = new List<string>();
         _buildStatus = "Building...";
 
+        // The export resolves every path against the open project, never the editor's
+        // working directory — which is what used to stage the editor's own assets.
+        _config.ProjectRoot = EditorState.ProjectPath;
+
         Task.Run(() =>
         {
             try
             {
-                var pipeline = new ExportPipeline();
-                var result   = pipeline.Export(_config);
+                var pipeline = new ExportPipeline { Output = null };
+                var result   = pipeline.ExportAsync(_config, new ExportOptions { Publish = runAfter, Package = false })
+                                       .GetAwaiter().GetResult();
 
                 _buildLog    = result.Log;
                 _buildErrors = result.Errors;
@@ -408,7 +413,7 @@ public sealed class BuildSettingsPanel
                 ConsoleLog.Add(_buildStatus, result.Success ? LogLevel.Info : LogLevel.Error);
 
                 if (result.Success && runAfter)
-                    LaunchBuild(result.OutputPath);
+                    LaunchBuild(result.ExecutablePath ?? result.OutputPath);
             }
             catch (Exception ex)
             {
@@ -423,8 +428,10 @@ public sealed class BuildSettingsPanel
     {
         try
         {
-            // Find first exe in output directory
-            var exes = Directory.GetFiles(outputPath, "*.exe", SearchOption.TopDirectoryOnly);
+            // A published binary is passed straight in; otherwise look for one in the folder.
+            var exes = File.Exists(outputPath)
+                ? new[] { outputPath }
+                : Directory.GetFiles(outputPath, "*.exe", SearchOption.TopDirectoryOnly);
             if (exes.Length > 0)
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo

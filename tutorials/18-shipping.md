@@ -62,46 +62,18 @@ Validation fails the build if `AppName`, `Version`, `OutputDirectory` or
 
 ## 3. A build CLI
 
-`ExportPipeline.RunCli(args)` is the whole tool.
+It exists: `SexyBiscuit.Build/` builds to `sbengine`, one line of `Main` over
+`ExportPipeline.RunCli`.
 
 ```bash
-dotnet new console -o Tools/Build
-cd Tools/Build
-dotnet add reference ../../SexyBiscuit.Engine/SexyBiscuit.Engine.csproj
-cd ../..
+dotnet build SexyBiscuit.Build/SexyBiscuit.Build.csproj -c Release
+dotnet run --no-build --project SexyBiscuit.Build -c Release -- --help
+dotnet run --no-build --project SexyBiscuit.Build -c Release -- --project Games/Foo --platform web
 ```
 
-`Tools/Build/Program.cs`:
-
-```csharp
-using SexyBiscuit.Engine.Build;
-
-internal static class Program
-{
-    private static void Main(string[] args) => ExportPipeline.RunCli(args);
-}
-```
-
-```bash
-dotnet run --project Tools/Build -- --platform windows-x64 --config release --output ./dist
-dotnet run --project Tools/Build -- --file BuildSettings.json
-```
-
-| Flag | Values |
-|---|---|
-| `--platform` | `windows-x64`, `windows-x86`, `linux-x64`, `macos-x64`, `macos-arm64`, `android`, `ios`, `steam-windows`, `steam-linux`, `steam-macos` |
-| `--config` | `debug`, `development`, `release` |
-| `--output` | output root, default `dist` |
-| `--keystore` | Android keystore path |
-| `--depot` | Steam depot id |
-| `--file` | load a saved `PlatformConfig`; other flags are ignored |
-
-Exit code is `0` on success and `1` on failure, so it drops into CI.
-
-> **Two things the root `README.md` gets wrong.** There is no `sbengine`
-> executable and no `--all` flag — build the wrapper above. And `RunCli`'s parse
-> loop is `for (i = 0; i < args.Length - 1; i++)`, so a flag in the final
-> argument position is never read. Always pass flag/value pairs.
+`--project` names the game folder; every path resolves against it. With no `--platform` the
+web build is made, because it works on any machine; the desktop targets need the engine
+checkout and the .NET SDK because they publish the engine for the target runtime.
 
 ## 4. Asset cooking
 
@@ -128,59 +100,16 @@ run. Set `IsIncrementalCook = false` to force a full rebuild.
 
 ## 5. The complete build script
 
-`build.sh`:
+There is no script to write. `--all` is the four targets a team plays on, published and
+packaged, with one line per target and `dist/build-report.json` at the end:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-PLATFORM=${1:-windows-x64}
-RID=${2:-win-x64}
-
-case "$PLATFORM" in
-  windows-x64) DIR=Windows_x64 ;;
-  linux-x64)   DIR=Linux_x64 ;;
-  macos-x64)   DIR=macOS_x64 ;;
-  macos-arm64) DIR=macOS_ARM64 ;;
-  *) echo "unknown platform: $PLATFORM" >&2; exit 1 ;;
-esac
-
-OUT="dist/$DIR"
-
-echo "==> Staging content"
-dotnet run --project Tools/Build -- \
-  --platform "$PLATFORM" --config release --output ./dist
-
-echo "==> Publishing binary"
-dotnet publish MyGame/MyGame.csproj \
-  -c Release \
-  -r "$RID" \
-  --self-contained true \
-  -p:PublishSingleFile=true \
-  -p:DebugType=none \
-  -o "$OUT"
-
-echo "==> Done: $OUT"
-ls -la "$OUT"
+dotnet run --no-build --project SexyBiscuit.Build -c Release -- --project Games/Foo --all --config release --version 1.2.0
 ```
 
-```bash
-chmod +x build.sh
-./build.sh windows-x64 win-x64
-./build.sh linux-x64   linux-x64
-./build.sh macos-arm64 osx-arm64
-```
-
-| `--platform` | .NET RID |
-|---|---|
-| `windows-x64` | `win-x64` |
-| `linux-x64` | `linux-x64` |
-| `macos-x64` | `osx-x64` |
-| `macos-arm64` | `osx-arm64` |
-
-`MonoGame.Framework.DesktopGL` ships **native SDL and OpenAL binaries per RID**,
-so always publish with an explicit `-r`, and test the output on a machine
-without the .NET SDK installed. This is the most common shipping failure.
+Add `--upload` to send the archives to the endpoint named in `BuildSettings.json` (token from
+`SB_UPLOAD_TOKEN`), and `--report <path>` for a second copy of the report. The exit code is 0
+only when every target succeeded.
 
 ## 6. Release configuration
 
@@ -306,76 +235,27 @@ Checklist:
 
 ## 10. Mobile
 
-Android and iOS are **validated but not built**. The pipeline checks for a
-keystore path and a team id, then stages content the same way as desktop. There
-is no manifest generation, no APK/AAB packaging and no Xcode project generation
-in the source — those parts of the root `README.md` describe intent.
-
-Shipping to mobile means adding MonoGame's Android/iOS project heads and your
-own packaging step. Budget real time for it.
+Android and iOS are **validated but not built**: the pipeline checks for a keystore path and a
+team id, then stages content the same way as desktop. The mobile build is the web build:
+`webInstallable` (on by default) adds a manifest, icons and a service worker, so the export
+installs to a phone's home screen from your site and runs offline. Upload it, open the URL on
+the phone, add it to the home screen. A native MonoGame Android/iOS target is a later
+milestone.
 
 ## 11. CI
 
-`.github/workflows/build.yml`:
+`.github/workflows/release.yml` ships with the repository. It builds one game on a matrix —
+ubuntu for the web and linux-x64 builds, windows for win-x64, macos for osx-arm64 — uploads
+the archives as workflow artifacts, sends them to the upload target when asked (the
+`SB_UPLOAD_URL` and `SB_UPLOAD_TOKEN` repository secrets), and prints the combined
+one-line-per-target summary.
 
-```yaml
-name: build
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-jobs:
-  desktop:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows-x64
-            rid: win-x64
-            dir: Windows_x64
-          - os: ubuntu-latest
-            platform: linux-x64
-            rid: linux-x64
-            dir: Linux_x64
-          - os: macos-latest
-            platform: macos-arm64
-            rid: osx-arm64
-            dir: macOS_ARM64
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      # Every project targets plain net8.0, so the whole solution builds on
-      # all three runners — the editor included.
-      - run: dotnet build SexyBiscuit.sln -c Release
-      - run: dotnet build MyGame -c Release
-
-      - run: dotnet test SexyBiscuit.Tests -c Release
-        continue-on-error: true
-
-      - name: Stage content
-        run: dotnet run --project Tools/Build -- --platform ${{ matrix.platform }} --config release --output ./dist
-
-      - name: Publish binary
-        run: >
-          dotnet publish MyGame/MyGame.csproj -c Release
-          -r ${{ matrix.rid }} --self-contained true
-          -p:PublishSingleFile=true -o dist/${{ matrix.dir }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.platform }}
-          path: dist/${{ matrix.dir }}
+```bash
+gh workflow run release.yml -f game=Games/Foo -f upload=true
+gh run watch --exit-status
 ```
+
+Pushing a tag `release/foo-v1.2.0` runs the same build with that version.
 
 ## 12. Testing the build
 
