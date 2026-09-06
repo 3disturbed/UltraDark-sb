@@ -71,6 +71,13 @@ line per target. A C# layer is added only for a documented reason (a feature the
 native performance), through the editor's MCP tools, and the JavaScript stays the source for the
 web build. Native mobile is a later engine milestone; the PWA is the mobile build until then.
 
+Inside the editor the same steps are tools that answer in a few lines instead of a log:
+`run_tests` (engine, templates, html5 or lint: totals and failing names), `run_scene_report`
+(play the scene for a few seconds: frames, fps, script errors, console warnings and errors),
+and `export_build` with `get_build_report` (every target, one line each, the archive size and
+the upload URL). `get_context` opens a session in about a hundred tokens; `apply_scene_edits`
+and `spawn_many` batch scene work into one call and one undo step.
+
 ## Token hygiene
 
 The rules the skills and `CLAUDE.md` encode, and the reason for each:
@@ -88,8 +95,14 @@ The rules the skills and `CLAUDE.md` encode, and the reason for each:
 The numbers this page rests on are estimates until measured. `npm run usage -- <transcript>`
 reads a Claude Code transcript and reports turns, context per call, the cache share and the
 tools that returned the most text; the editor writes the same per turn to
-`<project>/.sexybiscuit/usage.jsonl`. The benchmark is one fixed brief ("Hello World: add a
-coin the player collects, ship a web build") run before and after a change.
+`<project>/.sexybiscuit/usage.jsonl`, shows it in the cost tooltip, and answers
+`get_session_usage` with it in about seventy tokens. The benchmark is one fixed brief ("Hello
+World: add a coin the player collects, ship a web build") run before and after a change.
+
+One fixed cost is already measured: the full tool catalogue is 42,700 characters of compact
+JSON (about 10,700 tokens), paid once per session when Claude Code loads the tool set, and
+held under 45,000 by `--dump-mcp-tools --all --budget` in CI. The planned tool-surface merge
+(about 55 tools with descriptions under 120 characters) would bring it near 20,000.
 
 ## Per-game checklist
 

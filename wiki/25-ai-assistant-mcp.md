@@ -101,11 +101,13 @@ A prompt nobody answers is denied after ten minutes.
 
 The embedded session gets an appended system prompt (`ClaudeSystemPrompt.Embedded`): who it
 is, the project's name and root, the engine repository when one is found (also passed as
-`--add-dir`), and the working rules — start with `get_project_info` and `get_scene_summary`,
-prefer the tools to editing `.scene` JSON, C# lives in `Source/` and is followed by
-`reload_game_code`, `rebuild_engine_and_restart` is for engine changes only, `ask_user` is for
-decisions that are expensive to reverse, and plain text with bullets because the panel has one
-font. A terminal session receives the same guidance through MCP `initialize.instructions`,
+`--add-dir`), and the working rules — start with `get_context` and ask for more only when a
+task needs it, edit in batches with `apply_scene_edits` and trust the short results, prefer the
+tools to editing `.scene` JSON, C# lives in `Source/` and is followed by `reload_game_code`,
+`rebuild_engine_and_restart` is for engine changes only, verify at milestones (one
+`capture_viewport` at 640 px, `read_console` with `sinceSequence`) rather than after every
+edit, `ask_user` is for decisions that are expensive to reverse, and plain text with bullets
+because the panel has one font. A terminal session receives the same guidance through MCP `initialize.instructions`,
 plus "use `say` for anything the user should read and end every turn with `wait_for_user`".
 The repository root's `CLAUDE.md` orients either kind of session.
 
@@ -113,18 +115,25 @@ The repository root's `CLAUDE.md` orients either kind of session.
 
 ## The tools
 
-The `sexybiscuit` server exposes 68 tools (`mcp__sexybiscuit__<name>` inside Claude Code). This
-table comes from the running editor's `sexybiscuit://tools` resource; the engine-only subset
-prints with `dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --markdown`.
+The `sexybiscuit` server exposes 76 tools (`mcp__sexybiscuit__<name>` inside Claude Code). This
+table is generated: `dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --all --markdown`
+prints it without a window (`--all` adds the editor-only classes to the engine tools; the
+running editor serves the same list as the `sexybiscuit://tools` resource). Results are sized
+for an agent: one compact JSON text block led by a summary line, stubs (`id`, `name`, `layer`,
+`position`) from every mutating tool, one line per actor from `get_scene_summary`, and
+`get_context` for the state of things in about a hundred tokens. `apply_scene_edits` runs a
+list of edits in one call and one undo step; `run_scene_report`, `run_tests` and
+`export_build` return counts and one-line-per-target reports instead of logs.
 
 | Tool | Description | Parameters |
 |---|---|---|
 | `add_component` | Add a component to an actor by type name (short names such as 'Light3D' work). Companion components the type requires are added automatically and reported. properties sets initial values by property name. | `actor`: string<br>`componentType`: string<br>`properties`: any JSON value (optional) (optional) |
+| `apply_scene_edits` | Run several scene edits in one call and one undo step. ops is a JSON array; each op is a tool's arguments plus "op": spawn_actor, spawn_primitive, place_actor, duplicate_actor, set_transform, translate, rotate, look_at, set_properties, set_property, add_component, remove_component, set_material, rename_actor, set_actor, move_to_layer or destroy_actor. An actor argument may be "$n": the id spawned by op n (0-based). | `ops`: any JSON value<br>`stopOnError`: boolean (default false) |
 | `ask_user` | Ask the user a question in the editor and wait for the answer. Optional choices become buttons; the user can also type a free answer unless allow_free_text is false. Blocks until answered, or until timeout_seconds (default 900, 30-3600) passes. Returns {answer, choice_index, free_text}, or {status:'timeout'} / {status:'cancelled'}. Use it for decisions that are expensive to change later, not for routine choices. | `question`: string<br>`choices`: array of string (optional)<br>`allowFreeText`: boolean (default true)<br>`timeoutSeconds`: integer (default 900) |
 | `build_project` | Compile the project's C# code with dotnet build and return structured diagnostics {file, line, column, code, severity, message}. Waits up to wait_seconds (default 40); if the build is still running you get status 'running' and a build_id to poll with get_build_status. Building alone does not change the editor — call reload_game_code (which builds for you) to make the new code live. The game compiles against the engine build this editor runs; after editing engine source call rebuild_engine_and_restart instead. | `waitSeconds`: integer (default 40) |
 | `cancel_build` | Cancel a running build. | `buildId`: string |
-| `capture_scene_from` | Render the scene from a camera pose of your choosing, as a PNG, without moving any camera. Give lookAt or rotation [pitch, yaw, roll] degrees. | `position`: array of number<br>`lookAt`: array of number (optional)<br>`rotation`: array of number (optional)<br>`fov`: number (default 60)<br>`width`: integer (default 1024)<br>`height`: integer (default 576) |
-| `capture_viewport` | A PNG screenshot of the editor viewport as it is rendered right now, downscaled to maxWidth. Look at it to check your work. includeUi captures the whole editor window with its panels instead. | `maxWidth`: integer (default 1024)<br>`includeUi`: boolean (default false) |
+| `capture_scene_from` | Render the scene from a camera pose of your choosing, as a PNG, without moving any camera. Give lookAt or rotation [pitch, yaw, roll] degrees. | `position`: array of number<br>`lookAt`: array of number (optional)<br>`rotation`: array of number (optional)<br>`fov`: number (default 60)<br>`width`: integer (default 640)<br>`height`: integer (default 360) |
+| `capture_viewport` | A PNG screenshot of the editor viewport as it is rendered right now, downscaled to maxWidth. 640 px is enough to judge a scene and costs about a third of 1024; use 1024 only to read text. includeUi captures the whole editor window with its panels instead. | `maxWidth`: integer (default 640)<br>`includeUi`: boolean (default false) |
 | `clear_console` | Clear the Output Log. | — |
 | `create_class` | Generate a starter C# file for a component, actor, gamemode, playercontroller, character or tool (a static class with an [McpTool] method) under Source/<kind folder>/<Name>.cs in the project's namespace. Returns the path; edit it with your file tools, then call reload_game_code. Never overwrites an existing file. Creates the C# project first when the project has none. | `kind`: string<br>`name`: string<br>`namespace`: string (optional)<br>`folder`: string (optional) |
 | `create_code_project` | Add a C# project to the open SexyBiscuit project: <Name>.csproj at the project root, Source/ with starter classes (a GameMode, PlayerController and Character, a Spinner component, an example [McpTool] class), a per-machine SexyBiscuit.props pointing at this engine, and .gitignore. Existing files are never overwritten unless overwrite is true. By default it then builds, hot-loads the assembly, and swaps a plain GameMode in the scene for the project's own. | `overwrite`: boolean (default false)<br>`build`: boolean (default true)<br>`swapGameMode`: boolean (default true) |
@@ -132,24 +141,28 @@ prints with `dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --markd
 | `describe_component_type` | The editable properties of a component type: name, type, enum values, default value, documentation, and whether the property is saved in the scene file. | `componentType`: string |
 | `destroy_actor` | Remove an actor from the scene. Undo brings it back. | `actor`: string |
 | `duplicate_actor` | Clone an actor with all of its components and properties, offset by delta world units (pixels for 2D). The copy is placed in the same layer and becomes selected. | `actor`: string<br>`newName`: string (optional)<br>`offset`: array of number (optional) |
+| `export_build` | Export the open project from disk: stage assets, scenes and scripts per target, publish self-contained desktop players (publish=true; needs the engine source and the .NET SDK), archive them, and upload the archives (upload=true; needs SB_UPLOAD_URL and SB_UPLOAD_TOKEN, or the upload section of BuildSettings.json). platforms take BuildSettings names or RIDs — web, win-x64, osx-arm64, linux-x64 — and default to those four. Save the scene first. Waits up to waitSeconds and returns one line per target; a longer run returns a job id for get_build_report. | `platforms`: array of string (optional)<br>`configuration`: string (optional)<br>`publish`: boolean (default true)<br>`upload`: boolean (default false)<br>`version`: string (optional)<br>`waitSeconds`: integer (default 120) |
 | `find_actors` | Filter the open scene's actors by name substring, tag, component type, layer or class. Filters are optional and combine with AND. | `nameContains`: string (optional)<br>`tag`: string (optional)<br>`componentType`: string (optional)<br>`layer`: string (optional)<br>`class`: string (optional) |
 | `focus_actor` | Select an actor and move the editor camera to frame it. | `actor`: string |
-| `get_actor` | Everything about one actor: transform (rotation in degrees), components with their editable properties, bounds and selection state. actor is an id from get_scene_summary or an exact name. | `actor`: string |
-| `get_build_status` | Status and diagnostics of a build started by build_project, reload_game_code, create_code_project, run_standalone or rebuild_engine_and_restart (the latest when build_id is omitted). For an engine rebuild, state 'restarting' means the editor is about to restart — stop calling tools, wait 15-30 seconds, then call get_project_info. | `buildId`: string (optional) |
+| `get_actor` | One actor. detail 'full' (default): transform in degrees, every component with its editable properties, bounds, selection; 'row': id, name, class, layer, tag, component types, position. actor is an id or an exact name. | `actor`: string<br>`detail`: string (default "full") |
+| `get_build_report` | The report of an export_build run — the latest when jobId is omitted: state, and one line per target with the archive, its size, and the upload URL or the first errors. | `jobId`: string (optional) |
+| `get_build_status` | Status and diagnostics of a build started by build_project, reload_game_code, create_code_project, run_standalone or rebuild_engine_and_restart (the latest when build_id is omitted). For an engine rebuild, state 'restarting' means the editor is about to restart — stop calling tools, wait 15-30 seconds, then call get_context. | `buildId`: string (optional) |
 | `get_code_project` | Describe the open project's C# code project: csproj path, Source/ files, output DLL, the loaded assembly generation, whether it was compiled against the engine build this editor runs, and the last build. Read-only; use create_code_project to add one. | — |
+| `get_context` | Where things stand, in about a hundred tokens: project, scene (name, path, actor count, layers, dirty flag, checks), selection, play state, C# project and last build. Call this first; get_scene_summary, get_actor and get_project_info give more when a task needs it. | — |
 | `get_editor_camera` | The editor camera's pose and which view mode the viewport is in. | — |
 | `get_engine_repo` | Where the engine source is (repository root, engine/editor/test projects, solution), whether it is a git checkout and on which branch, the running editor's engine build id, and the exact dotnet commands to build the engine, the editor and the tests. Read this before editing engine code. | — |
 | `get_material` | Read a MeshRenderer material. | `actor`: string<br>`materialIndex`: integer (default 0) |
 | `get_play_state` | Playing and paused flags, fps, frame count, time scale and the scene name. | — |
-| `get_project_info` | Describe the open project and the editor: root folder, asset/script/scene folders, the open scene and whether it has unsaved changes, play mode, and the MCP URL. Call this first. With no project open it lists the templates create_project accepts and the recent projects open_project can take. | — |
+| `get_project_info` | Describe the open project and the editor: root folder, asset/script/scene folders, the open scene and whether it has unsaved changes, play mode, the MCP URL, and the templates create_project accepts with descriptions. get_context is the cheap version; use this for the folders and the template list. | — |
 | `get_property` | Read one property of a component (or of the actor itself with componentType 'Actor'). | `actor`: string<br>`componentType`: string<br>`property`: string |
-| `get_scene_json` | Full dump of the open scene. format 'view' gives readable actor views with editable component properties (rotations in degrees, colours as hex); 'file' gives the exact .scene JSON that save_scene would write. | `format`: string (default "view")<br>`layer`: string (optional)<br>`maxActors`: integer (default 200) |
-| `get_scene_summary` | Compact list of every actor in the open scene — id, name, class, layer, tag, component types, position — plus layer info and checks (main camera, light, player start, game mode). Ids change after undo, redo or load, so re-query rather than remembering them. | `includeComponents`: boolean (default true) |
+| `get_scene_json` | Full dump of the open scene. format 'view' gives readable actor views with editable component properties (rotations in degrees, colours as hex); 'file' gives the exact .scene JSON that save_scene would write. | `format`: string (default "view")<br>`layer`: string (optional)<br>`offset`: integer (default 0)<br>`maxActors`: integer (default 50) |
+| `get_scene_summary` | The scene at a glance: a header (layers, dirty flag, checks for camera, light, player start, game mode) then one line per actor — id, name, class, layer, tag, components, position. Page with offset and limit; compact=false gives the same as JSON. Ids change after undo, redo or load. | `compact`: boolean (default true)<br>`layer`: string (optional)<br>`offset`: integer (default 0)<br>`limit`: integer (default 100)<br>`includeComponents`: boolean (default true) |
 | `get_selection` | The actor and layer currently selected in the editor, if any. | — |
+| `get_session_usage` | This session's token meter, about seventy tokens: turns, context per API call, cache share, output tokens, the size of the tool results, cost, the last turn, and the tools that returned the most. Read it to see what a task cost before repeating the pattern. | `topTools`: integer (default 5) |
 | `list_actor_classes` | Actor classes you can place or name in spawn_actor's class: the engine's gameplay classes (Actor, GameMode, Character, PlayerController…) and the project's own, with source 'engine' or 'project', base class and doc summary. | `source`: string (optional) |
 | `list_actor_presets` | The palette presets with category, description and the components each one creates. | — |
-| `list_assets` | Files under the project's asset directories with a type: texture, audio, model, script, scene, font or other. | `subdirectory`: string (optional)<br>`extensions`: array of string (optional)<br>`limit`: integer (default 500) |
-| `list_component_types` | Every component type that can be added, grouped by category (Rendering, Physics, Gameplay, Audio, Animation, AI, UI, Scripting…) with a one-line description, its required companions and whether it comes from the engine or the project's own code. | `category`: string (optional)<br>`search`: string (optional) |
+| `list_assets` | Files under the project's asset directories with a type: texture, audio, model, script, scene, font or other. | `subdirectory`: string (optional)<br>`extensions`: array of string (optional)<br>`limit`: integer (default 100) |
+| `list_component_types` | The component types that can be added, grouped by category (Rendering, Physics, Gameplay, Audio, Animation, AI, UI, Scripting…). Names only by default; namesOnly=false adds a one-line description, required companions and whether each comes from the engine or the project. | `category`: string (optional)<br>`search`: string (optional)<br>`namesOnly`: boolean (default true) |
 | `list_scenes` | The .scene files in the project, as project-relative paths, marking the open one. | — |
 | `load_scene` | Load a .scene file — path relative to the project root, extension optional — and make it the open scene. Refused during play mode. Unsaved changes are lost (undo can bring them back). | `path`: string |
 | `log_message` | Write a line to the Output Log, prefixed [Claude]. | `message`: string<br>`level`: string (default "info") |
@@ -160,14 +173,16 @@ prints with `dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --markd
 | `pause` | Pause or resume play mode. Omit paused to toggle. | `paused`: boolean (optional) (optional) |
 | `place_actor` | Place a palette preset — the same list as the editor's Place Actors panel: Empty Actor, Empty Actor (3D), Mesh, Skinned Mesh, Skybox, Directional Light, Point Light, Spot Light, 2D Light, Camera, Fly Camera, Camera 2D, Game Mode, Character, AI Character, Player Start, Particle System (3D), Particle Emitter (2D), Sprite, Tilemap, Canvas, World Canvas. Call list_actor_presets for descriptions. | `preset`: string<br>`name`: string (optional)<br>`position`: array of number (optional)<br>`rotation`: array of number (optional)<br>`layer`: string (optional)<br>`properties`: any JSON value (optional) (optional) |
 | `play` | Start play mode (F5). The scene is snapshotted; changes made while playing are discarded on stop. | — |
-| `read_console` | Read the editor's Output Log. Pass the latestSequence from the previous result as sinceSequence to get only new entries. level filters to that severity and above: info, warning, error. | `sinceSequence`: integer (default 0)<br>`level`: string (optional)<br>`contains`: string (optional)<br>`limit`: integer (default 200) |
-| `rebuild_engine_and_restart` | Rebuild the engine and the editor from source and restart the editor so engine changes take effect. The build runs into a staging folder first, so a failure leaves the running editor untouched and returns diagnostics without restarting. On success the editor saves the scene, writes a resume file, and restarts a couple of seconds after this result is delivered; it reopens the same project and scene, restores the selection, and resumes the assistant session. While it restarts, MCP calls fail for 10-30 seconds: stop calling tools, wait, then call get_project_info until it answers, and re-list tools. Never repeat the rebuild. | `configuration`: string (optional)<br>`runTests`: boolean (default false)<br>`waitSeconds`: integer (default 40) |
+| `read_console` | Read the editor's Output Log. Pass the latestSequence from the previous result as sinceSequence to get only new entries. level filters to that severity and above: info, warning, error. | `sinceSequence`: integer (default 0)<br>`level`: string (optional)<br>`contains`: string (optional)<br>`limit`: integer (default 50) |
+| `rebuild_engine_and_restart` | Rebuild the engine and the editor from source and restart the editor so engine changes take effect. The build runs into a staging folder first, so a failure leaves the running editor untouched and returns diagnostics without restarting. On success the editor saves the scene, writes a resume file, and restarts a couple of seconds after this result is delivered; it reopens the same project and scene, restores the selection, and resumes the assistant session. While it restarts, MCP calls fail for 10-30 seconds: stop calling tools, wait, then call get_context until it answers, and re-list tools. Never repeat the rebuild. | `configuration`: string (optional)<br>`runTests`: boolean (default false)<br>`waitSeconds`: integer (default 40) |
 | `redo` | Redo N undone changes. Actor ids are regenerated. | `steps`: integer (default 1) |
 | `reload_game_code` | Build the C# project (unless build=false) and hot-reload the assembly into the running editor: the scene is serialised, the old assembly unloaded, the new one loaded and the scene restored with unsaved edits intact. Play mode is stopped first. Reports which actor and component classes and which game_ tools appeared or disappeared. Refuses when the game was compiled against a different engine build than this editor runs — call rebuild_engine_and_restart — unless allow_engine_mismatch is true. | `build`: boolean (default true)<br>`stopPlayMode`: boolean (default true)<br>`allowEngineMismatch`: boolean (default false)<br>`waitSeconds`: integer (default 40) |
 | `remove_component` | Remove the first component of a type from an actor. The 2D Transform cannot be removed; remove a Transform3D only if nothing else on the actor needs it. | `actor`: string<br>`componentType`: string |
 | `rename_actor` | Rename an actor. | `actor`: string<br>`newName`: string |
 | `rotate` | Rotate an actor by delta degrees [pitch, yaw, roll] (or [degrees] for 2D), composed with its current rotation. | `actor`: string<br>`delta`: array of number<br>`space`: string (default "world") |
+| `run_scene_report` | Play the open scene for a few seconds and report what happened in about a hundred tokens: frames and fps, script errors, console warnings and errors (deduplicated, newest last) and the actor count at the end. Play mode is exited and the scene restored afterwards. Use it in place of play, wait, read_console and stop. | `seconds`: number (default 3)<br>`scene`: string (optional)<br>`maxLines`: integer (default 10) |
 | `run_standalone` | Build the project (a full build, engine included) and launch the game as its own process with the project root as working directory, using ProjectSettings.json and its StartScene. Its output streams into the Output Log tagged [Game]. A previous instance is stopped first. | `waitSeconds`: integer (default 120) |
+| `run_tests` | Run a test suite and return the totals and the failing names, not the log. project: 'engine' (the engine's xunit suite), 'templates' (only the template smoke tests, which run every template's scripts on the C# engine), 'html5' (npm test in html5/: the JavaScript engine and the tools) or 'lint' (npm run lint). filter narrows engine tests by name (FullyQualifiedName~filter) or html5 tests by pattern. Blocks until the run finishes or waitSeconds pass; the first run after a change includes a build. | `project`: string (default "engine")<br>`filter`: string (optional)<br>`waitSeconds`: integer (default 600) |
 | `save_scene` | Save the open scene to disk. Omit path to save where it was loaded from or last saved; otherwise give a project-relative path such as 'Scenes/Level1.scene'. Refused during play mode; refuses paths outside the project. | `path`: string (optional) |
 | `say` | Show a message to the user in the editor's Assistant panel. For sessions driving the editor from a terminal, this is how the user reads you; the embedded assistant's own replies already appear there and need not call it. | `message`: string<br>`level`: string (optional) |
 | `select_actor` | Select an actor in the editor so it shows in the Details panel and wears the gizmo. Omit actor to clear the selection. | `actor`: string (optional) |
@@ -178,8 +193,9 @@ prints with `dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --markd
 | `set_properties` | Set several properties on one actor at once. Keys are 'ComponentType.Property' (or 'Actor.Property'), e.g. {"Light3D.Intensity": 2, "Transform3D.Position": [0, 3, 0]}. Valid entries are applied even if others fail. | `actor`: string<br>`properties`: any JSON value |
 | `set_property` | Set one property on a component (or on the actor itself with componentType 'Actor'). Value formats: numbers, booleans, strings, enum names, vectors as [x, y, z], rotations as [pitch, yaw, roll] degrees, colours as '#RRGGBB', '#RRGGBBAA', a colour name or {r, g, b, a}. Use 'Transform3D' for Position/EulerAngles/Scale. | `actor`: string<br>`componentType`: string<br>`property`: string<br>`value`: any JSON value |
 | `set_transform` | Set position, rotation and/or scale. 3 elements address the Transform3D (added if missing) — rotation is [pitch, yaw, roll] in degrees; 2 elements address the 2D transform — rotation is [degrees]. space 'local' sets values relative to the parent. | `actor`: string<br>`position`: array of number (optional)<br>`rotation`: array of number (optional)<br>`scale`: array of number (optional)<br>`space`: string (default "world") |
-| `set_viewport` | Switch the viewport between 3D and 2D rendering, or between the editor camera and the scene's MainCamera3D. | `view3d`: boolean (optional) (optional)<br>`useGameCamera`: boolean (optional) (optional) |
+| `set_viewport` | Switch the viewport between 3D and 2D rendering, between the editor camera and the scene's MainCamera3D, or (while playing) between the docked viewport and the game over the whole window. Play always starts on the game camera. | `view3d`: boolean (optional) (optional)<br>`useGameCamera`: boolean (optional) (optional)<br>`fullscreen`: boolean (optional) (optional) |
 | `spawn_actor` | Create an actor. components are type names such as 'MeshRenderer' or 'Light3D' (required companions are added automatically); class is an Actor subclass such as 'GameMode', 'Character' or a project class. position/rotation/scale with 3 elements make a 3D actor (rotation is [pitch, yaw, roll] degrees); 2 elements make a 2D one (rotation [degrees]). properties sets initial values, keyed 'Type.Property'. The new actor becomes selected. | `name`: string<br>`components`: array of string (optional)<br>`class`: string (optional)<br>`position`: array of number (optional)<br>`rotation`: array of number (optional)<br>`scale`: array of number (optional)<br>`layer`: string (default "default")<br>`tag`: string (optional)<br>`properties`: any JSON value (optional) (optional)<br>`transform3d`: boolean (default true) |
+| `spawn_many` | Spawn one primitive shape (Cube, Sphere, Plane, Quad, Cylinder, Cone) or one palette preset at several positions, or on a grid. Returns ids, names and positions only. | `what`: string<br>`positions`: array of array of number (optional)<br>`grid`: array of integer (optional)<br>`spacing`: number (default 2)<br>`origin`: array of number (optional)<br>`name`: string (optional)<br>`scale`: array of number (optional)<br>`color`: string (optional)<br>`layer`: string (optional)<br>`tag`: string (optional) |
 | `spawn_primitive` | Place a built-in shape with its own coloured material: Cube, Sphere, Plane (1x1 floor tile), Quad (1x1 wall), Cylinder or Cone, all unit-sized — use scale for dimensions. The new actor becomes selected. | `shape`: string<br>`name`: string (optional)<br>`position`: array of number (optional)<br>`rotation`: array of number (optional)<br>`scale`: array of number (optional)<br>`color`: colour '#RRGGBB[AA]' or name (optional) (optional)<br>`metallic`: number (default 0)<br>`roughness`: number (default 0.5)<br>`layer`: string (optional)<br>`tag`: string (optional) |
 | `step_frame` | While paused, advance the simulation by N frames of 1/60 s. | `frames`: integer (default 1) |
 | `stop` | Stop play mode (F7) and restore the scene as it was when play started. | — |
@@ -241,6 +257,16 @@ process in the header and per project across sessions in the tooltip (`LifetimeC
 Claude Code keeps the transcript itself under `~/.claude/projects/<project path>/<id>.jsonl`;
 Diagnostics has a **Reveal** button for it.
 
+The session meter (`SessionUsage`) records every completed turn: the result frame's input,
+output, cache-read and cache-creation tokens and API calls, the cost delta, and the size of
+every tool result the transcript saw, grouped by tool. Each turn is appended as one line to
+`<project>/.sexybiscuit/usage.jsonl`; the cost tooltip shows context per API call, the cache
+share and the tool-result volume; `get_session_usage` returns the same in about seventy tokens
+so a session can see what a task cost before repeating the pattern; the per-project record
+keeps lifetime context, output and cache-read totals. `npm run usage -- <transcript>` in
+`html5/` reads a terminal session's transcript the same way
+([27. Game factory workflow](27-game-factory-workflow.md#measuring)).
+
 ---
 
 ## Settings
@@ -272,8 +298,15 @@ on macOS), edited from **Settings** in the panel or **Tools › Assistant Settin
 
 ```bash
 dotnet run --project SexyBiscuit.Editor -- --assistant-selftest [--dry-run] [--prompt "..."] [--timeout 180] [--mcp-port N]
-dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools [--markdown]
+dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools [--all] [--markdown] [--budget N]
 ```
+
+`--dump-mcp-tools` prints the catalogue as `tools/list` JSON (or a markdown table) without a
+window: the engine and interaction tools, plus the editor-only classes with `--all`, which
+registers them without their constructors because only their attributes are read. `--budget N`
+fails the run when the compact JSON is longer than N characters; CI holds the full catalogue
+under 45,000 characters (42,700 today, about 10,700 tokens, the price a session pays once when
+Claude Code loads the tool set).
 
 The self-test lists every binary candidate with its verdict, starts a headless MCP server with
 the engine and interaction tools, prints the exact command line and, unless `--dry-run`, runs

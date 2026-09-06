@@ -306,9 +306,18 @@ public sealed class McpToolRegistry
         }
 
         Activity?.Complete(seq, result.IsError ? ActivityState.Failed : ActivityState.Succeeded,
-                           Truncate(result.FirstText, 200));
+                           Truncate(result.FirstText, 200), ResultSize(result));
         return result;
     }
+
+    /// <summary>Text characters plus decoded image bytes — the size the model reads, not the panel's truncated copy.</summary>
+    private static long ResultSize(McpToolResult result)
+        => result.Content.Sum(c => c switch
+        {
+            McpTextContent  text  => (long)text.Text.Length,
+            McpImageContent image => image.Base64Data.Length * 3L / 4,
+            _                     => 0L,
+        });
 
     private async Task<McpToolResult> RunAsync(McpToolDescriptor descriptor, JsonElement? arguments, McpCallContext context)
     {

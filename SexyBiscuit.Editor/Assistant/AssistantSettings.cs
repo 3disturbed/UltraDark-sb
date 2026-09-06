@@ -14,6 +14,11 @@ public sealed class SessionRecord
     public string?  Model           { get; set; }
     public double   LifetimeCostUsd { get; set; }
     public int      Turns           { get; set; }
+
+    /// <summary>Context tokens read over every turn of every session on this project: input plus cache reads and writes.</summary>
+    public long     LifetimeContextTokens   { get; set; }
+    public long     LifetimeOutputTokens    { get; set; }
+    public long     LifetimeCacheReadTokens { get; set; }
 }
 
 /// <summary>

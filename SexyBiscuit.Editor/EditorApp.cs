@@ -219,6 +219,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         _code    = new GameCodeHost(_mcp, settings);
         _restart = new EditorRestart(_mcp, _code);
         _mcp.Registry.RegisterInstance(new GameCodeTools(_mcp, _code, _restart), new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
+        _mcp.Registry.RegisterInstance(new ShippingTools(), new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
         EditorState.OnProjectOpened += root => _code?.OnProjectOpened(root);
         _codeProject = new CodeProjectPanel(_code);
 

@@ -36,7 +36,7 @@ public static class AssistantSelfTest
         var settings = AssistantSettings.Load();
         if (options.McpPort is { } port) settings.McpPort = port;
 
-        if (options.DumpMcpTools) return DumpTools(settings, options.Markdown);
+        if (options.DumpMcpTools) return DumpTools(settings, options);
         return SelfTest(settings, options);
     }
 
@@ -44,26 +44,43 @@ public static class AssistantSelfTest
     // --dump-mcp-tools
     // -------------------------------------------------------------------------
 
-    private static int DumpTools(AssistantSettings settings, bool markdown)
+    private static int DumpTools(AssistantSettings settings, LaunchOptions options)
     {
         using var scene = new HeadlessSceneHost(SceneTemplates.CreateDefault3D("Catalogue"));
-        var (registry, _, _) = BuildHeadlessServer(scene, settings, new InteractionBoard(), out _);
+        // With --all the real editor classes stand in for the self-test stand-ins, which mimic some of the same names.
+        var (registry, _, _) = BuildHeadlessServer(scene, settings, new InteractionBoard(), out _, includeSelfTestTools: !options.DumpAll);
 
-        if (markdown)
+        if (options.DumpAll)
         {
+            // The editor tool classes need a running editor to *call*, but only their attributes to *describe*:
+            // register instances created without their constructors, so the catalogue is the one the editor serves.
+            var editor = new McpRegistrationOptions { Source = "editor" };
+            foreach (var type in new[] { typeof(EditorTools), typeof(GameCode.GameCodeTools), typeof(GameCode.ShippingTools) })
+                registry.RegisterInstance(System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(type), editor);
+        }
+
+        var catalogue = new JsonObject { ["tools"] = registry.DescribeForToolsList() };
+        string compact = catalogue.ToJsonString();
+
+        if (options.Markdown)
             Console.WriteLine(registry.DescribeMarkdown());
-        }
         else
-        {
-            Console.WriteLine(new JsonObject { ["tools"] = registry.DescribeForToolsList() }.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-        }
+            Console.WriteLine(catalogue.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
 
-        Console.Error.WriteLine($"{registry.Tools.Count} tools (engine + interaction; editor-only tools such as play and capture_viewport need the running editor).");
+        string scope = options.DumpAll ? "engine, interaction and editor" : "engine + interaction; add --all for the editor-only tools";
+        Console.Error.WriteLine($"{registry.Tools.Count} tools ({scope}); tools/list is {compact.Length:N0} characters compact" +
+                                (options.Budget is { } budget ? $", budget {budget:N0}" : "") + ".");
+
+        if (options.Budget is { } limit && compact.Length > limit)
+        {
+            Console.Error.WriteLine($"FAIL: the tool catalogue is {compact.Length - limit:N0} characters over budget. Shorten descriptions or merge tools.");
+            return 1;
+        }
         return 0;
     }
 
     private static (McpToolRegistry Registry, McpResourceRegistry Resources, McpServer Server) BuildHeadlessServer(
-        HeadlessSceneHost scene, AssistantSettings settings, InteractionBoard board, out SelfTestTools selfTestTools)
+        HeadlessSceneHost scene, AssistantSettings settings, InteractionBoard board, out SelfTestTools selfTestTools, bool includeSelfTestTools = true)
     {
         var dispatcher = InlineMcpDispatcher.Instance;
         var registry   = new McpToolRegistry(dispatcher);
@@ -79,7 +96,7 @@ public static class AssistantSelfTest
         registry.RegisterInstance(new BatchTools(scene, registry), engine);
         registry.RegisterInstance(new UserInteraction(board, settings), new McpRegistrationOptions { Source = "editor" });
         selfTestTools = new SelfTestTools();
-        registry.RegisterInstance(selfTestTools, new McpRegistrationOptions { Source = "editor" });
+        if (includeSelfTestTools) registry.RegisterInstance(selfTestTools, new McpRegistrationOptions { Source = "editor" });
         resources.RegisterInstance(new SceneResources(scene, undo, registry));
 
         var server = new McpServer(registry, resources, new McpServerInfo("sexybiscuit", McpHost.EngineVersion, ClaudeSystemPrompt.ExternalInstructions(SceneResources.Instructions)));

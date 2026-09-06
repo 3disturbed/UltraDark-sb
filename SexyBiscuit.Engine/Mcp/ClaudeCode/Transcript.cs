@@ -99,6 +99,12 @@ public sealed class ToolCallEntry : TranscriptEntry
     public string?        MessageId     { get; set; }
     public int            BlockIndex    { get; set; }
 
+    /// <summary>The result's full length before <see cref="MaxResultChars"/> capped the display copy: what the model read.</summary>
+    public long           ResultChars   { get; set; }
+
+    /// <summary>Decoded size of an image result, in bytes.</summary>
+    public int            ResultImageBytes { get; set; }
+
     /// <summary>The input parsed, when complete and valid.</summary>
     public JsonElement? Input
     {
@@ -542,6 +548,8 @@ public sealed class Transcript
             call.ResultIsImage  = result.HasImage;
             call.ImageBase64    = result.ImageBase64;
             call.ImageMediaType = result.ImageMediaType;
+            call.ResultChars    = result.Text.Length;
+            call.ResultImageBytes = result.ImageBytes;
             Version++;
         }
 
@@ -767,6 +775,14 @@ public static class ToolLabels
             case "ask_user":         return "Ask: " + (Truncate(a("question"), 60) ?? "");
             case "say":              return "Say: " + (Truncate(a("message"), 60) ?? "");
             case "wait_for_user":    return "Wait for the user";
+            case "get_context":      return "Read the context";
+            case "get_session_usage": return "Read the session meter";
+            case "apply_scene_edits": return "Apply scene edits";
+            case "spawn_many":       return $"Spawn many {a("what") ?? "actors"}";
+            case "run_scene_report": return "Play the scene and report";
+            case "run_tests":        return $"Run the {a("project") ?? "engine"} tests";
+            case "export_build":     return "Export the build";
+            case "get_build_report": return "Read the build report";
             case "get_project_info": return "Read project info";
             case "get_scene_summary": return "Read the scene";
             case "get_actor":        return $"Inspect '{a("actor") ?? "?"}'";

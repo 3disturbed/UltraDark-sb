@@ -149,8 +149,15 @@ public sealed class AssistantPanel
             ImGui.TextDisabled($"· ${(session?.ProcessCostUsd ?? 0):F2}");
             if (ImGui.IsItemHovered())
             {
+                var usage = _host.Usage;
+                string meter = usage.TurnCount > 0
+                    ? $"\nContext per call: {usage.AverageContextPerCall:N0} tokens, {usage.CacheShare:P0} from cache" +
+                      $"\nTool results: {usage.ResultChars / 1024} KB over {usage.ToolCalls} calls" +
+                      (usage.ImageBytes > 0 ? $", {usage.ImageBytes / 1024} KB of images" : "") +
+                      "\nWritten per turn to .sexybiscuit/usage.jsonl"
+                    : "";
                 ImGui.SetTooltip($"This process: ${(session?.ProcessCostUsd ?? 0):F4}\nThis project, all sessions: ${_host.LifetimeCostUsd:F4}\n" +
-                                 $"Tokens in/out: {session?.InputTokens ?? 0:N0} / {session?.OutputTokens ?? 0:N0}\nTurns: {session?.Turns ?? 0}");
+                                 $"Tokens in/out: {session?.InputTokens ?? 0:N0} / {session?.OutputTokens ?? 0:N0}\nTurns: {session?.Turns ?? 0}" + meter);
             }
         }
 
