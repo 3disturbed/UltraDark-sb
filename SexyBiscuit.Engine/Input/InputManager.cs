@@ -69,13 +69,7 @@ public sealed class InputManager
     // =========================================================================
     public void Update(float dt)
     {
-        // --- Keyboard ---
-        _kbPrevious = _kbCurrent;
-        _kbCurrent  = Keyboard.GetState();
-
-        // --- Mouse ---
-        _msPrevious = _msCurrent;
-        _msCurrent  = Mouse.GetState();
+        Sample(Keyboard.GetState(), Mouse.GetState());
 
         if (_cursorLocked)
         {
@@ -90,6 +84,34 @@ public sealed class InputManager
         // --- Touch ---
         Touch.Update();
     }
+
+    private bool _primed;
+
+    // The per-frame state step, separated from the hardware reads so it can be tested.
+    internal void Sample(KeyboardState keyboard, MouseState mouse)
+    {
+        _kbPrevious = _kbCurrent;
+        _kbCurrent  = keyboard;
+        _msPrevious = _msCurrent;
+        _msCurrent  = mouse;
+
+        // The first sample after construction, or after ResetDeltas, has no meaningful
+        // "previous": reporting the cursor's absolute position as a delta spun the player
+        // round on the first frame of play.
+        if (!_primed)
+        {
+            _kbPrevious = _kbCurrent;
+            _msPrevious = _msCurrent;
+            _primed     = true;
+        }
+    }
+
+    /// <summary>
+    /// Forgets the previous frame, so the next <see cref="Update"/> reports no key presses,
+    /// no scroll and no mouse movement. Call when input resumes after a gap, such as the
+    /// editor entering play mode, or the stale frame becomes a jump.
+    /// </summary>
+    public void ResetDeltas() => _primed = false;
 
     // =========================================================================
     // Keyboard
@@ -116,11 +138,14 @@ public sealed class InputManager
         => new(_msCurrent.X, _msCurrent.Y);
 
     /// <summary>
-    /// Pixel movement of the cursor since last frame.
-    /// When the cursor is locked this reflects movement before the warp.
+    /// Pixel movement of the cursor since last frame. While the cursor is locked it is the
+    /// movement since the lock point, because every frame ends with the cursor warped back
+    /// there: measuring against the previous sample would cancel a steady motion out.
     /// </summary>
     public Vector2 MouseDelta
-        => new(_msCurrent.X - _msPrevious.X, _msCurrent.Y - _msPrevious.Y);
+        => _cursorLocked
+            ? new(_msCurrent.X - _lockedPosition.X, _msCurrent.Y - _lockedPosition.Y)
+            : new(_msCurrent.X - _msPrevious.X,     _msCurrent.Y - _msPrevious.Y);
 
     /// <summary>Scroll wheel delta this frame (positive = scroll up).</summary>
     public float ScrollDelta
@@ -177,8 +202,15 @@ public sealed class InputManager
     /// </summary>
     public void LockCursor()
     {
+        // The lock point is where the cursor is now, not where the last sample saw it: before
+        // the first Update of a session that sample is empty and the lock landed at (0, 0).
+        MouseState now;
+        try { now = Mouse.GetState(); }
+        catch (Exception) { now = _msCurrent; }   // no window (tests): fall back to the last sample
+
         _cursorLocked   = true;
-        _lockedPosition = new Point(_msCurrent.X, _msCurrent.Y);
+        _lockedPosition = new Point(now.X, now.Y);
+        _msCurrent      = now;                     // so the first locked delta is zero
         HideCursor();
     }
 

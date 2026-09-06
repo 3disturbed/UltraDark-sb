@@ -1204,6 +1204,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             _sceneSnapshot = null;
         }
 
+        // Input has not been sampled since the last play session; without this the first frame
+        // reports the cursor's absolute position as mouse movement.
+        _engine?.Input.ResetDeltas();
+
         // Play runs a fresh copy of the scene, the way a standalone game loads a level: every
         // actor's Start runs now, with gameplay active, so a GameMode spawns its players here
         // and never in the edit-time scene. Stop throws this copy away and restores the snapshot.

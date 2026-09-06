@@ -459,3 +459,41 @@ public class CursorVisibilityTests
         Assert.False(input.IsCursorVisible);
     }
 }
+
+public class MouseDeltaTests
+{
+    private static Microsoft.Xna.Framework.Input.MouseState At(int x, int y)
+        => new(x, y, 0, Microsoft.Xna.Framework.Input.ButtonState.Released, Microsoft.Xna.Framework.Input.ButtonState.Released,
+               Microsoft.Xna.Framework.Input.ButtonState.Released, Microsoft.Xna.Framework.Input.ButtonState.Released, Microsoft.Xna.Framework.Input.ButtonState.Released);
+
+    [Fact]
+    public void TheFirstSampleReportsNoMovementAndALockedCursorMeasuresFromTheLockPoint()
+    {
+        // Why: the delta was always current minus previous. The first sample of a play session
+        // therefore reported the cursor's absolute position and spun the player round, and while
+        // locked the per-frame warp made a steady mouse motion cancel itself out.
+        var input = new SexyBiscuit.Engine.Input.InputManager(new SexyBiscuit.Engine.EngineConfig());
+        var keyboard = new Microsoft.Xna.Framework.Input.KeyboardState();
+
+        input.Sample(keyboard, At(640, 360));
+        Assert.Equal(Vector2.Zero, input.MouseDelta);
+
+        input.Sample(keyboard, At(650, 360));
+        Assert.Equal(new Vector2(10f, 0f), input.MouseDelta);
+
+        // Locking takes the current position as the lock point (no window here, so the last sample).
+        input.LockCursor();
+        Assert.Equal(Vector2.Zero, input.MouseDelta);
+
+        // Each frame the cursor is warped back to the lock point, so movement is measured from it.
+        input.Sample(keyboard, At(655, 362));
+        Assert.Equal(new Vector2(5f, 2f), input.MouseDelta);
+        input.Sample(keyboard, At(655, 362));
+        Assert.Equal(new Vector2(5f, 2f), input.MouseDelta);
+
+        input.UnlockCursor();
+        input.ResetDeltas();
+        input.Sample(keyboard, At(900, 900));
+        Assert.Equal(Vector2.Zero, input.MouseDelta);
+    }
+}
