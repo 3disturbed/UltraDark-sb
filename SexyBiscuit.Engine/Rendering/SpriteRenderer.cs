@@ -70,9 +70,26 @@ public class SpriteRenderer : Component
     public SpriteEffects Effects { get; set; } = SpriteEffects.None;
 
     /// <summary>
-    /// Depth used when SpriteSortMode.BackToFront or FrontToBack is active.
-    /// 0 = front, 1 = back.
+    /// Draw order within the batch. In the browser engine, higher is nearer the
+    /// camera: 0 = back, 1 = front.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The browser sorts on this; <b>this engine currently does not</b>. Measured
+    /// with <c>Games/DepthProbe</c>, three runs whose depths and creation order
+    /// disagree in every combination: the sprite created last is in front every
+    /// time, whatever the depths say. The batch is opened with
+    /// <see cref="SpriteSortMode.BackToFront"/> in <c>RenderSystem2D.Begin</c>, so
+    /// why the sort does not take is not yet understood — do not treat this
+    /// summary as describing native behaviour until it is.
+    /// </para>
+    /// <para>
+    /// Until then a project that must look the same on both engines has to create
+    /// its actors back-to-front as well as depth them back-to-front. Whichever way
+    /// it is settled, both engines have to move together: a picture is the one
+    /// thing neither the validator nor a headless test can check.
+    /// </para>
+    /// </remarks>
     public float LayerDepth { get; set; } = 0f;
 
     /// <summary>
@@ -80,6 +97,18 @@ public class SpriteRenderer : Component
     /// (0,0) = top-left, (0.5,0.5) = centre, (1,1) = bottom-right.
     /// </summary>
     public Vector2 Pivot { get; set; } = new Vector2(0.5f, 0.5f);
+
+    /// <summary>
+    /// Size of the tinted box drawn when there is no texture, before the actor's
+    /// scale. Ignored once a texture is set.
+    /// </summary>
+    /// <remarks>
+    /// Matches <c>size</c> in the browser engine's SpriteRenderer schema, which a
+    /// scene file or a script's <c>Scene.addComponent</c> may set. A property that
+    /// exists on one engine and not the other is applied on one and dropped with a
+    /// warning on the other, so both sides carry this one.
+    /// </remarks>
+    public Vector2 Size { get; set; } = new Vector2(32f, 32f);
 
     // -------------------------------------------------------------------------
     // Spritesheet animation support
@@ -157,7 +186,16 @@ public class SpriteRenderer : Component
 
     public override void Draw(SpriteBatch sb)
     {
-        if (Texture == null) return;
+        // No art yet: a tinted box, which is what the browser engine has always
+        // drawn here. Every bundled template relies on it — their actors carry a
+        // SpriteRenderer with nothing but a Tint — so returning early was why a
+        // native build of one was an empty cornflower-blue window while the same
+        // project in the browser was fully visible.
+        if (Texture == null)
+        {
+            DrawUntextured(sb, Actor.Transform.Position, Actor.Transform.Rotation, Actor.Transform.Scale);
+            return;
+        }
 
         // Refresh spritesheet rect in case Texture changed after FrameIndex was set
         if (IsSpritesheetMode && SourceRect == null)
@@ -189,6 +227,42 @@ public class SpriteRenderer : Component
             scale,
             Effects,
             LayerDepth);
+    }
+
+    /// <summary>
+    /// The placeholder box: <see cref="Size"/> times the actor's scale, tinted,
+    /// pivoted and rotated exactly as a sprite would be.
+    /// </summary>
+    /// <remarks>
+    /// A single white pixel stretched to the box. The origin is in texture space,
+    /// so for a 1x1 texture the pivot fraction *is* the origin, and the rotation
+    /// then turns about the same point a real sprite would.
+    /// </remarks>
+    private void DrawUntextured(SpriteBatch sb, Vector2 position, float rotation, Vector2 scale)
+    {
+        sb.Draw(
+            WhitePixel(sb.GraphicsDevice),
+            position,
+            null,
+            Tint,
+            rotation,
+            Pivot,
+            Size * scale,
+            Effects,
+            LayerDepth);
+    }
+
+    private static Texture2D? _whitePixel;
+
+    /// <summary>One shared 1x1 white pixel, rebuilt if the device is replaced.</summary>
+    private static Texture2D WhitePixel(GraphicsDevice gd)
+    {
+        if (_whitePixel is null || _whitePixel.IsDisposed || _whitePixel.GraphicsDevice != gd)
+        {
+            _whitePixel = new Texture2D(gd, 1, 1);
+            _whitePixel.SetData(new[] { Color.White });
+        }
+        return _whitePixel;
     }
 
     private void DrawSliced(SpriteBatch sb, Vector2 position, float rotation, Vector2 scale)

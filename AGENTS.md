@@ -21,7 +21,7 @@ Three phases, three different machines' worth of assumptions:
 | Phase | Where it runs | What it needs |
 |---|---|---|
 | 1. Prototype | remote, headless | node 22+, nothing else. No .NET, no display, no editor |
-| 2. Native build | a Mac (or CI) | the .NET 8 SDK and this engine checkout |
+| 2. Native build | any desktop OS, or CI | a .NET SDK that can target net8.0, and this engine checkout |
 | 3. Publish | anywhere with the token | `DG_BUILD_TOKEN` |
 
 ---
@@ -201,6 +201,15 @@ cd .. && dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj
 `upload` section (`wiki/18-build-export.md` documents every key). Bump `version` for a genuinely
 new build — it is part of a build's identity on the site.
 
+It is **optional**, and no template ships one: with no file at all `sbengine` uses the folder name,
+`1.0.0`, and — the part that bites — **`Debug`**. A release build needs `--config release` on the
+command line or the key in the file. A 34 MB Debug archive published as an alpha is the failure
+mode here, and nothing warns you.
+
+**It does not need a Mac.** All four targets cross-compile from one Linux box in about eighteen
+seconds with the .NET 10 SDK targeting net8.0; `osx-arm64` included. The table above used to say
+otherwise.
+
 **Build every target with the `sbengine` CLI:**
 
 ```bash
@@ -245,6 +254,17 @@ where. A token file readable by other users earns a warning.
 
 In CI it is the `DG_BUILD_TOKEN` repository secret.
 
+**A build token is scoped to one app slug.** `build_tokens.app_slug` pins it; a token minted for
+another game answers every publish with
+
+```
+403 forbidden: This build token may only publish for "ultradark".
+```
+
+which is deterministic and will not fix itself on a retry. A new game needs its **own** token,
+minted at Admin → Builds; the raw value is shown exactly once and only its SHA-256 is kept, so a
+lost token is a re-minted token. Revoke rather than delete, so the audit trail survives.
+
 ### What publishes
 
 **Native builds only.** Windows, macOS and Linux archives. The web build is skipped with a note
@@ -266,7 +286,7 @@ dotnet run --no-build --project SexyBiscuit.Build -c Release -- \
 | `--channel alpha\|beta\|demo` | `alpha` for nightlies, `beta` for playtest candidates, `demo` for public |
 | `--notes <text>` | release notes on the download card |
 | `--requirements <text>` | what a player needs; blank gets a per-platform default |
-| `--hidden` | upload but leave it unlisted, to be made live from the site's admin page |
+| `--hidden` | upload but leave it **unavailable**, to be made live from the site's admin page |
 | `--no-replace` | make a version collision an error instead of replacing |
 
 From the editor: the **Publish** tab in Build Settings, or the `publish_build` MCP tool. Prefer
@@ -315,6 +335,12 @@ curl -s https://darksgames.app/api/v1/builds
 
 A build published with `--hidden` will not appear there. The human page is
 `https://darksgames.app/downloads`.
+
+**`--hidden` is stronger than "unlisted".** The publish result still prints a download URL, and
+that URL answers `404 not_found: That build is not available for download.` until the build is
+made live from the admin page. So a hidden build's link is not something to hand a playtester
+straight out of the log — publish to the `alpha` channel without `--hidden` if someone needs to
+download it now.
 
 ### Reporting back
 
@@ -453,6 +479,54 @@ generalising while it is still fresh. For a `js` cookie there is nothing to comp
 is the validator — drop its scripts into a throwaway project, wire them up exactly as its
 `AGENT.md` says to, and run `npm run validate -- <dir> --strict`. A cookie whose own documentation
 does not validate is worse than no cookie.
+
+---
+
+## The one thing no gate can see
+
+Every check in this repository reads text. The validator reads the scripting contract, `npm test`
+and `dotnet test` read behaviour, a headless soak reads script errors. **Not one of them can see a
+picture**, and the rule further up — "the validator and the tests are the checker, not
+screenshots" — is about cost, not about coverage. It buys cheap iteration; it does not tell you
+the game is visible.
+
+Two defects shipped through a fully green board on 2026-09-06, both invisible to every gate:
+
+- The browser's SpriteRenderer draws a tinted box when an actor has no texture, which is what
+  makes a template visible before it has art. **C# had no such property and no such box**: it
+  returned early on a null texture, so a native build of any bundled template was an empty
+  cornflower-blue window. Fixed, and pinned by `ComponentSchemaParityTests`.
+- A game laid out against the wrong `layerDepth` direction drew its ground over the whole city, in
+  a build where every script ran, every test passed and the validator said `OK`.
+
+So: **look at one frame before you believe a build.** On a headless box that costs nothing and
+needs no browser and no screenshot tool —
+
+```bash
+Xvfb :99 -screen 0 1280x720x24 -fbdir /tmp/fb &     # -fbdir maps the framebuffer to a file
+DISPLAY=:99 ./YourGame &                            # let it run ten seconds
+python3 -c "from PIL import Image; from collections import Counter; \
+raw=open('/tmp/fb/Xvfb_screen0','rb').read(); \
+img=Image.frombytes('RGBA',(1280,720),raw[:1280*720*4],'raw','BGRA').convert('RGB'); \
+img.save('/tmp/shot.png'); print(Counter(img.getdata()).most_common(3))"
+```
+
+One number tells you most of it: if a single colour is 99% of the screen, nothing is drawing, or
+one thing is drawing over everything. `(100, 149, 237)` is MonoGame's default clear — that is an
+empty window, not a dark game.
+
+### layerDepth: the engines do not agree yet
+
+The browser sorts on `layerDepth` and draws **ascending, so the highest depth is in front**. The
+native renderer, measured with `Games/DepthProbe` across three runs whose depths and creation
+order disagree in every combination, **does not sort at all** — the sprite created last is in
+front, whatever the depths say — even though its batch is opened with `SpriteSortMode.BackToFront`.
+Why the sort does not take is not yet understood, and it is written down here rather than guessed
+at.
+
+Until it is fixed, a project that must look the same on both engines has to **create its actors
+back-to-front as well as depth them back-to-front**. When it is fixed, both engines move together
+and `spriteSortMode.test.js` is where the agreed direction is recorded.
 
 ---
 

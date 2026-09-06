@@ -15,8 +15,13 @@ import { Vector2, Color, Matrix4 } from '../math/index.js';
 /** How sprites are ordered within a batch. */
 export const SpriteSortMode = Object.freeze({
     Deferred: 'Deferred',        // call order
-    BackToFront: 'BackToFront',  // high layerDepth first
-    FrontToBack: 'FrontToBack',
+    // Ascending layerDepth, so the HIGHEST depth is drawn LAST and ends up in
+    // front. This comment used to claim the opposite, which is a costly thing to
+    // get wrong: a project laid out against it draws its ground over its whole
+    // world, and every gate still passes because nothing here is visible to the
+    // validator or to a headless test. `spriteSortMode.test.js` pins it.
+    BackToFront: 'BackToFront',  // low layerDepth first; high depth is the front
+    FrontToBack: 'FrontToBack',  // and the reverse
 });
 
 /** Horizontal and vertical mirroring, matching XNA's `SpriteEffects`. */
