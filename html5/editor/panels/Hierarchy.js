@@ -15,6 +15,8 @@ export class HierarchyPanel {
         this.editor = editor;
         this.root = el('div.sb-panel-body.sb-hierarchy');
         this._filter = '';
+        this._openMenu = null;
+        this._dismissMenu = null;
 
         state.hierarchyChanged.add(() => this.render());
         state.selectionChanged.add(() => this._highlight());
@@ -98,9 +100,7 @@ export class HierarchyPanel {
 
     _menu(actor, layer, event) {
         this.state.selectActor(actor);
-
-        const existing = document.querySelector('.sb-context-menu');
-        existing?.remove();
+        this._closeMenu();
 
         const menu = el('div.sb-context-menu', {
             style: { left: `${event.clientX}px`, top: `${event.clientY}px` },
@@ -122,18 +122,46 @@ export class HierarchyPanel {
             this._menuItem('Delete', () => this.editor.deleteActor(actor), 'is-danger'));
 
         document.body.append(menu);
+        this._openMenu = menu;
 
-        // Close on the next click anywhere; `capture` so it fires before the
-        // item's own handler removes the menu from under the listener.
-        const close = () => { menu.remove(); document.removeEventListener('pointerdown', close, true); };
-        setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
+        // A press outside the menu dismisses it. The test for "outside" is
+        // essential: this listener runs on pointerdown, which precedes click, so
+        // dismissing unconditionally tore the menu out of the DOM before the item
+        // the user pressed could dispatch its click — every menu action silently
+        // did nothing. An item closes the menu itself, once it has run.
+        const onPointerDown = (event) => {
+            if (menu.contains(event.target)) return;
+            this._closeMenu();
+        };
+
+        this._dismissMenu = () => document.removeEventListener('pointerdown', onPointerDown, true);
+        document.addEventListener('pointerdown', onPointerDown, true);
+
+        // Escape closes it too, and keyboard focus starts on the first item so
+        // the menu is usable without a pointer at all.
+        menu.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') this._closeMenu();
+        });
+        menu.querySelector('.sb-menu-item')?.focus();
+    }
+
+    _closeMenu() {
+        this._dismissMenu?.();
+        this._dismissMenu = null;
+        this._openMenu?.remove();
+        this._openMenu = null;
     }
 
     _menuItem(label, action, extraClass = '') {
         return el(`button.sb-menu-item${extraClass ? `.${extraClass}` : ''}`, {
             type: 'button',
             text: label,
-            onclick: () => action(),
+            onclick: () => {
+                // Close first: the action routinely rebuilds the hierarchy, and a
+                // menu left over a redrawn tree points at rows that have gone.
+                this._closeMenu();
+                action();
+            },
         });
     }
 

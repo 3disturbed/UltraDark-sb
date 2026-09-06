@@ -67,7 +67,7 @@ export {
     Collider2D, BoxCollider2D, CircleCollider2D, PolygonCollider2D, PhysicsMaterial2D,
 } from './physics/Collider2D.js';
 export { Circle, Polygon, collide, raycastShape, aabbOverlap } from './physics/Shapes2D.js';
-export { PhysicsSystem3D, RaycastHit3D } from './physics/PhysicsSystem3D.js';
+export { PhysicsSystem3D, RaycastHit3D, rayVsBounds } from './physics/PhysicsSystem3D.js';
 export { Rigidbody3D } from './physics/Rigidbody3D.js';
 export {
     Collider3D, BoxCollider3D, SphereCollider3D, CapsuleCollider3D, MeshCollider3D,

@@ -10,7 +10,7 @@ import { Component } from '../core/Component.js';
 import { registerComponent } from '../core/TypeRegistry.js';
 import { PropertyType as P } from '../core/PropertyTypes.js';
 import { Transform3D } from '../core/Transform3D.js';
-import { Vector3, Bounds, Color } from '../math/index.js';
+import { Vector3, Bounds, Color, Matrix4 } from '../math/index.js';
 import { Material3D } from './Material3D.js';
 import { MeshPrimitive, getPrimitive, getPrimitiveBounds } from './PrimitiveMesh.js';
 
@@ -106,18 +106,27 @@ export class MeshRenderer extends Component {
         if (!t) return local;
 
         const scale = t.scale;
-        // A conservative box: scale the extents and re-centre, without trying to
-        // rotate the box tightly. Culling only needs an over-estimate.
-        const size = new Vector3(
-            Math.abs(local.size.x * scale.x),
-            Math.abs(local.size.y * scale.y),
-            Math.abs(local.size.z * scale.z));
+        const localExtents = Vector3.multiply(local.extents, new Vector3(
+            Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z)));
 
-        // Rotation can grow the box by up to the diagonal, so use the radius.
-        const radius = size.length / 2;
-        return new Bounds(
-            Vector3.add(t.position, Vector3.transform(Vector3.multiply(local.center, scale), t.rotation)),
-            new Vector3(radius * 2, radius * 2, radius * 2));
+        // The tight axis-aligned box around the rotated one: each world axis grows
+        // by the local extents projected onto it. Growing the box to the diagonal
+        // instead would be conservative enough for culling, and useless for
+        // anything that has to hit-test it — a thirty-metre floor plane became a
+        // twenty-one-metre ball centred on the origin, which swallowed the scene
+        // and made every viewport click select the floor.
+        const m = Matrix4.fromQuaternion(t.rotation).m;
+        const extentOn = (axis) =>
+            Math.abs(m[axis]) * localExtents.x
+            + Math.abs(m[4 + axis]) * localExtents.y
+            + Math.abs(m[8 + axis]) * localExtents.z;
+
+        const center = Vector3.add(
+            t.position,
+            Vector3.transform(Vector3.multiply(local.center, scale), t.rotation));
+
+        return new Bounds(center, new Vector3(
+            extentOn(0) * 2, extentOn(1) * 2, extentOn(2) * 2));
     }
 
     start() { this._ensureGeometry(); }

@@ -13,7 +13,8 @@ import { Camera3D } from '../../src/rendering/Camera3D.js';
 import { Camera2D } from '../../src/rendering/Camera2D.js';
 import { MeshRenderer } from '../../src/rendering/MeshRenderer.js';
 import { SpriteRenderer } from '../../src/rendering/SpriteRenderer.js';
-import { Vector2, Vector3, Quaternion, Color, SBMath } from '../../src/math/index.js';
+import { Vector2, Vector3, SBMath } from '../../src/math/index.js';
+import { rayVsBounds } from '../../src/physics/PhysicsSystem3D.js';
 
 /** The scene view. */
 export class ViewportPanel {
@@ -236,11 +237,14 @@ export class ViewportPanel {
         for (const renderer of MeshRenderer.all) {
             if (renderer.actor?.scene !== scene || !renderer.actor.isActive) continue;
 
-            const bounds = renderer.worldBounds;
-            const hit = raySphere(ray.origin, ray.direction, bounds.center, bounds.boundingRadius);
-            if (hit === null || hit >= bestDistance) continue;
+            // Against the box, not a sphere around it. A sphere is a fine proxy
+            // for a cube and a terrible one for anything flat or long: the default
+            // floor's was a twenty-one-metre ball centred on the origin, so it won
+            // every pick in the scene.
+            const hit = rayVsBounds(ray.origin, ray.direction, Infinity, renderer.worldBounds);
+            if (!hit || hit.distance >= bestDistance) continue;
 
-            bestDistance = hit;
+            bestDistance = hit.distance;
             best = renderer.actor;
         }
 
@@ -286,51 +290,61 @@ export class ViewportPanel {
         const actor = this.state.selectedActor;
         const ctx = this.engine?.ctx;
         if (!actor || actor.isDestroyed || !ctx || !this._camera) return;
+        if (!this.state.viewport3D) return;
 
         const t3d = actor.getComponent(Transform3D);
-        if (!t3d || !this.state.viewport3D) return;
+        if (!t3d) return;
 
         const renderer = actor.getComponent(MeshRenderer);
-        const bounds = renderer ? renderer.worldBounds : null;
-        const centre = bounds?.center ?? t3d.position;
-        const radius = bounds ? bounds.boundingRadius : 0.5;
+        const width = this.engine.canvas2D.width;
+        const height = this.engine.canvas2D.height;
 
-        const screen = this._camera.worldToScreen(
-            centre, this.engine.canvas2D.width, this.engine.canvas2D.height);
-        if (!screen) return;
+        // Project the eight corners of the actor's box and outline what they
+        // cover. A circle sized from the bounding radius drew a screen-filling
+        // ring around anything flat or long, which said nothing about what was
+        // actually selected.
+        const box = renderer ? renderer.worldBounds : null;
+        const points = box
+            ? boxCorners(box).map((corner) => this._camera.worldToScreen(corner, width, height))
+            : [this._camera.worldToScreen(t3d.position, width, height)];
 
-        // Project a point one radius to the side to get the on-screen size,
-        // rather than guessing at a fixed pixel radius.
-        const edge = this._camera.worldToScreen(
-            Vector3.add(centre, Vector3.scale(this._cameraActor.transform3D.right, radius)),
-            this.engine.canvas2D.width, this.engine.canvas2D.height);
-        const screenRadius = edge ? Math.max(Math.abs(edge.x - screen.x), 8) : 24;
+        const visible = points.filter(Boolean);
+        if (visible.length === 0) return;   // entirely behind the camera
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of visible) {
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+        }
+
+        // An actor with no renderer projects to a single point; give it a handle
+        // big enough to see.
+        const padding = box ? 3 : 14;
 
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.strokeStyle = '#FFB454';
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 4]);
-        ctx.beginPath();
-        ctx.arc(screen.x, screen.y, screenRadius, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.strokeRect(
+            minX - padding, minY - padding,
+            (maxX - minX) + padding * 2, (maxY - minY) + padding * 2);
         ctx.restore();
     }
 }
 
-/** The nearest ray-sphere intersection ahead of the origin, or null. */
-function raySphere(origin, direction, centre, radius) {
-    const ox = origin.x - centre.x;
-    const oy = origin.y - centre.y;
-    const oz = origin.z - centre.z;
+/** The eight corners of an axis-aligned box. */
+function boxCorners(bounds) {
+    const min = bounds.min;
+    const max = bounds.max;
+    const corners = [];
 
-    const b = ox * direction.x + oy * direction.y + oz * direction.z;
-    const c = ox * ox + oy * oy + oz * oz - radius * radius;
-
-    if (c > 0 && b > 0) return null;              // outside and pointing away
-    const discriminant = b * b - c;
-    if (discriminant < 0) return null;
-
-    const t = -b - Math.sqrt(discriminant);
-    return t < 0 ? 0 : t;                          // 0 when the origin is inside
+    for (const x of [min.x, max.x]) {
+        for (const y of [min.y, max.y]) {
+            for (const z of [min.z, max.z]) corners.push(new Vector3(x, y, z));
+        }
+    }
+    return corners;
 }

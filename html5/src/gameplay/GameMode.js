@@ -11,12 +11,17 @@ import { registerActor } from '../core/TypeRegistry.js';
 import { PropertyType as P } from '../core/PropertyTypes.js';
 import { SBEvent } from '../core/SBEvent.js';
 import { PlayMode } from '../core/PlayMode.js';
-import { Vector3 } from '../math/index.js';
+import { Vector3, Color } from '../math/index.js';
+import { Transform3D } from '../core/Transform3D.js';
+import { MeshRenderer } from '../rendering/MeshRenderer.js';
+import { MeshPrimitive } from '../rendering/PrimitiveMesh.js';
+import { Camera3D } from '../rendering/Camera3D.js';
 import { Character } from './Character.js';
 import { PlayerController } from './PlayerController.js';
 import { PlayerState } from './PlayerState.js';
 import { GameState, MatchState } from './GameState.js';
 import { PlayerStart } from './PlayerStart.js';
+import { CharacterController3D } from '../physics/CharacterController3D.js';
 
 /** The match rules. One per scene. */
 export class GameMode extends Actor {
@@ -147,12 +152,99 @@ export class GameMode extends Actor {
         const start = this.choosePlayerStart(controller);
         const t = pawn.transform3D;
         if (t && start) {
-            t.position = start.position;
+            // A Player Start marks where the pawn's *feet* go. A capsule's
+            // transform sits at its middle, so dropping it straight onto the
+            // marker buries it up to the waist — and a character that starts
+            // inside the floor never finds ground to stand on, because the floor
+            // is above its feet. It falls forever, which is what pressing Play on
+            // the default scene did.
+            const footOffset = pawn.getComponent(CharacterController3D)?.footOffset ?? 0;
+            const feet = start.position;
+
+            t.position = new Vector3(feet.x, feet.y + footOffset, feet.z);
             pawn.controlRotation = new Vector3(0, start.yaw, 0);
             t.eulerAngles = new Vector3(0, start.yaw, 0);
         }
 
+        this.equipDefaultPawn(pawn);
         return pawn;
+    }
+
+    /**
+     * Gives a pawn a body and a view, if it arrived with neither.
+     *
+     * The default pawn is a bare `Character`: no renderer, no camera. It walks,
+     * falls and collides correctly, and none of that is visible — pressing Play
+     * on a fresh scene looked exactly like not pressing it, which is a reasonable
+     * reason to conclude that Play is broken.
+     *
+     * Both additions are conditional, so a game that builds its own pawn through
+     * `pawnFactory` keeps whatever rig it supplied. Both hang off the pawn as
+     * child actors rather than sitting on it: the body has to be scaled to match
+     * the capsule the controller moves, and scaling the pawn itself would drag
+     * the camera in with it.
+     */
+    equipDefaultPawn(pawn) {
+        const root = pawn.transform3D;
+        if (!root) return;
+
+        const movement = pawn.getComponent(CharacterController3D);
+
+        if (!pawn.getComponent(MeshRenderer) && !this._findInChildren(root, MeshRenderer)) {
+            const body = new Actor(`${pawn.name} Body`);
+            const bodyTransform = body.addComponent(Transform3D);
+
+            const renderer = body.addComponent(MeshRenderer);
+            renderer.setPrimitive(MeshPrimitive.Capsule);
+            renderer.albedoColor = Color.from('#D98C4A');
+            renderer.roughness = 0.55;
+
+            this._addChild(body, bodyTransform, root);
+
+            // The capsule primitive is a metre across and two tall; scale it to
+            // whatever the controller is actually sweeping.
+            if (movement) {
+                bodyTransform.localScale = new Vector3(
+                    movement.radius * 2, movement.height / 2, movement.radius * 2);
+            }
+        }
+
+        if (PlayerController.findPawnCamera(pawn)) return;
+
+        // Over the shoulder, behind the pawn. Behind is +Z, because the engine's
+        // forward is -Z; with no yaw of its own the camera inherits the pawn's
+        // facing and so looks along -Z, back across the pawn and out in front of
+        // it. Yawing it 180 here would point it at the horizon behind the player.
+        const view = new Actor(`${pawn.name} Camera`);
+        const viewTransform = view.addComponent(Transform3D);
+        view.addComponent(Camera3D);
+
+        this._addChild(view, viewTransform, root);
+
+        const eye = movement ? movement.footOffset + 0.7 : 1.6;
+        viewTransform.localPosition = new Vector3(0, eye, 4.5);
+        viewTransform.localEulerAngles = new Vector3(-10, 0, 0);
+    }
+
+    /** Adds an actor to the scene and parents it, keeping its local placement. */
+    _addChild(actor, transform, parent) {
+        this.scene?.addActor(actor, this.spawnLayer);
+        // Flush before parenting: an actor still queued has not run `start`, and
+        // its components have nothing to attach to yet.
+        this.scene?.flushPendingActors();
+        transform.setParent(parent, false);
+    }
+
+    /** The first component of a type anywhere beneath a transform. */
+    _findInChildren(root, type) {
+        const stack = [...root.children];
+        while (stack.length > 0) {
+            const transform = stack.pop();
+            const found = transform.actor?.getComponent(type);
+            if (found) return found;
+            stack.push(...transform.children);
+        }
+        return null;
     }
 
     /** Picks a spawn point for a controller. */

@@ -12,12 +12,13 @@ import {
     CoroutineRunner, WaitForSeconds, WaitUntil,
     TimerManager, Time, SBEvent,
     PhysicsSystem2D, Rigidbody2D, BodyType, BoxCollider2D, CircleCollider2D,
-    PhysicsSystem3D, Rigidbody3D, BoxCollider3D, CharacterController3D,
+    PhysicsSystem3D, Rigidbody3D, BoxCollider3D, CharacterController3D, rayVsBounds,
+    MeshRenderer,
     InputManager, ActionMap,
     Tween, installCSharpAliases,
     ScriptComponent, SpriteRenderer,
     createDefault3D, createDefault2D,
-    GameMode, PlayerController, Character, PlayerStart, PlayMode,
+    GameMode, PlayerController, Character, PlayerStart, PlayMode, Camera3D,
 } from '../src/index.js';
 
 // ---- A probe component used across several tests ----------------------------
@@ -637,7 +638,73 @@ test('play mode spawns a controller, a pawn and possesses it', () => {
     const pawn = controllers[0].controlledPawn;
     assert.ok(pawn, 'the controller possessed a pawn');
     assert.equal(pawn.controller, controllers[0], 'and the link is two-way');
-    assert.deepEqual(pawn.transform3D.position.toArray(), [3, 0, -4], 'spawned at the player start');
+
+    // A Player Start marks where the pawn's feet go, not its middle. Dropping a
+    // capsule's centre onto the marker buries it to the waist, and a character
+    // that starts inside the floor never finds ground — the floor reads as a
+    // ceiling and it falls forever.
+    const position = pawn.transform3D.position;
+    const footOffset = pawn.movement.footOffset;
+
+    assert.equal(position.x, 3);
+    assert.equal(position.z, -4);
+    assert.equal(position.y, 0 + footOffset, 'the pawn stands on the marker rather than in it');
+});
+
+test('a character spawned on a floor stands on it instead of falling through', () => {
+    // Pressing Play on the default scene dropped the pawn through the world.
+    const scene = new Scene('Spawn');
+    scene.physics3D = new PhysicsSystem3D({ scene });
+
+    const floor = scene.addActor(new Actor('Floor'));
+    floor.addComponent(Transform3D).localScale = new Vector3(30, 1, 30);
+    const collider = floor.addComponent(BoxCollider3D);
+    collider.size = new Vector3(1, 0.1, 1);
+
+    const start = scene.addActor(new Actor('Player Start'));
+    start.addComponent(Transform3D).localPosition = new Vector3(0, 0, 6);
+    start.addComponent(PlayerStart);
+
+    scene.addActor(new GameMode('Game Mode'));
+    scene.flushPendingActors();
+    scene.update(1 / 60);
+
+    const pawn = scene.findActorsOfType(Character)[0];
+    assert.ok(pawn, 'no pawn was spawned');
+
+    for (let i = 0; i < 180; i++) { scene.physics3D.fixedStep(1 / 60); scene.fixedUpdate(1 / 60); }
+
+    assert.ok(pawn.movement.isGrounded, `the pawn was still falling at y=${pawn.transform3D.position.y}`);
+    assert.ok(pawn.transform3D.position.y > 0.5,
+        `the pawn sank to y=${pawn.transform3D.position.y}`);
+});
+
+test('a character partly inside the floor is pushed out rather than dropped through', () => {
+    // stepUpHeight exists for kerbs, and it is the same mechanism that recovers a
+    // character which has sunk into geometry. Rejecting every surface above the
+    // feet outright meant the floor read as a ceiling and nothing caught the fall.
+    const scene = new Scene('Penetration');
+    scene.physics3D = new PhysicsSystem3D({ scene });
+
+    const floor = scene.addActor(new Actor('Floor'));
+    floor.addComponent(Transform3D).localPosition = new Vector3(0, 0, 0);
+    const collider = floor.addComponent(BoxCollider3D);
+    collider.size = new Vector3(30, 1, 30);
+
+    const walker = scene.addActor(new Actor('Walker'));
+    const t = walker.addComponent(Transform3D);
+    const controller = walker.addComponent(CharacterController3D);
+    scene.flushPendingActors();
+
+    // Sunk a quarter of a metre into the floor, well inside stepUpHeight.
+    const floorTop = 0.5;
+    t.localPosition = new Vector3(0, floorTop + controller.footOffset - 0.25, 0);
+
+    for (let i = 0; i < 30; i++) { scene.physics3D.fixedStep(1 / 60); scene.fixedUpdate(1 / 60); }
+
+    assert.ok(controller.isGrounded, 'the character never found the floor it was standing in');
+    assert.ok(Math.abs(t.position.y - (floorTop + controller.footOffset)) < 0.05,
+        `it settled at ${t.position.y}, expected about ${floorTop + controller.footOffset}`);
 });
 
 test('possessing a pawn moves it to a new controller cleanly', () => {
@@ -900,4 +967,157 @@ test('isKinematic is read from a C# file but not written back', () => {
 
     assert.equal(written.IsKinematic, undefined, 'not written twice under two names');
     assert.equal(written.BodyType, 'Kinematic', 'the richer form is what gets written');
+});
+
+test('world bounds hug the mesh instead of ballooning to its diagonal', () => {
+    // Picking, culling and the selection outline all read these. A sphere-sized
+    // box is a fine proxy for a cube and useless for anything flat: the default
+    // floor's became a 21-metre ball centred on the origin, so it won every
+    // viewport click in the scene.
+    const floor = new Actor('Floor');
+    floor.addComponent(Transform3D).localScale = new Vector3(30, 1, 30);
+    const renderer = floor.addComponent(MeshRenderer);
+    renderer.setPrimitive('Plane');
+
+    const size = renderer.worldBounds.size;
+    assert.ok(Math.abs(size.x - 30) < 0.01, `x extent was ${size.x}`);
+    assert.ok(size.y < 0.1, `a flat plane should stay flat, y extent was ${size.y}`);
+    assert.ok(Math.abs(size.z - 30) < 0.01, `z extent was ${size.z}`);
+});
+
+test('a rotated box grows only on the axes the rotation spreads it across', () => {
+    const actor = new Actor('Cube');
+    actor.addComponent(Transform3D).localEulerAngles = new Vector3(0, 45, 0);
+    const renderer = actor.addComponent(MeshRenderer);
+    renderer.setPrimitive('Cube');
+
+    const size = renderer.worldBounds.size;
+    assert.ok(Math.abs(size.x - Math.SQRT2) < 1e-4, `x was ${size.x}`);
+    assert.ok(Math.abs(size.y - 1) < 1e-4, `a yaw must not grow the box vertically, y was ${size.y}`);
+    assert.ok(Math.abs(size.z - Math.SQRT2) < 1e-4, `z was ${size.z}`);
+});
+
+test('a ray picks the object it actually points at, not the biggest one', () => {
+    const scene = new Scene('Picking');
+
+    const floor = scene.addActor(new Actor('Floor'));
+    floor.addComponent(Transform3D).localScale = new Vector3(30, 1, 30);
+    floor.addComponent(MeshRenderer).setPrimitive('Plane');
+
+    const cube = scene.addActor(new Actor('Cube'));
+    cube.addComponent(Transform3D).localPosition = new Vector3(0, 0.5, 0);
+    cube.addComponent(MeshRenderer).setPrimitive('Cube');
+    scene.flushPendingActors();
+
+    // Straight down the -Z axis at the cube's centre height, from outside the floor.
+    const origin = new Vector3(0, 0.5, 10);
+    const direction = new Vector3(0, 0, -1);
+
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const renderer of MeshRenderer.all) {
+        if (renderer.actor.scene !== scene) continue;
+        const hit = rayVsBounds(origin, direction, Infinity, renderer.worldBounds);
+        if (hit && hit.distance < nearestDistance) {
+            nearestDistance = hit.distance;
+            nearest = renderer.actor;
+        }
+    }
+
+    assert.equal(nearest?.name, 'Cube', 'the ray points at the cube');
+});
+
+test('the default pawn gets a body and a view so Play looks like playing', () => {
+    // A bare Character has no renderer and no camera. It walks, falls and
+    // collides correctly and none of it is visible, so pressing Play on a fresh
+    // scene looked exactly like not pressing it.
+    const scene = new Scene('DefaultRig');
+    scene.physics3D = new PhysicsSystem3D({ scene });
+
+    const start = scene.addActor(new Actor('Player Start'));
+    start.addComponent(Transform3D);
+    start.addComponent(PlayerStart);
+
+    scene.addActor(new GameMode('Game Mode'));
+    scene.flushPendingActors();
+    scene.update(1 / 60);
+
+    const controller = scene.findActorsOfType(PlayerController)[0];
+    const pawn = controller.controlledPawn;
+
+    const camera = PlayerController.findPawnCamera(pawn);
+    assert.ok(camera, 'the pawn has no camera, so Play would show the editor view');
+    assert.equal(controller.viewCamera, camera, 'the controller adopted it');
+    assert.equal(Camera3D.playerView, camera, 'and the renderer draws through it');
+
+    const body = pawn.transform3D.children
+        .map((t) => t.actor.getComponent(MeshRenderer))
+        .find(Boolean);
+    assert.ok(body, 'the pawn has nothing to see');
+
+    // Behind the pawn, and facing the same way it does — a camera yawed 180 here
+    // would look at the horizon behind the player instead of over its shoulder.
+    const view = camera.getTransform3D();
+    assert.ok(view.localPosition.z > 0, 'the camera sits behind the pawn');
+    assert.ok(Math.abs(view.localEulerAngles.y) < 1, 'and shares the pawn’s facing');
+});
+
+test('a pawn that brings its own camera keeps it', () => {
+    // The body and the view are added independently: a pawn that supplies one
+    // still gets the other.
+    const scene = new Scene('OwnRig');
+    scene.physics3D = new PhysicsSystem3D({ scene });
+
+    const start = scene.addActor(new Actor('Player Start'));
+    start.addComponent(Transform3D);
+    start.addComponent(PlayerStart);
+
+    const mode = new GameMode('Game Mode');
+    mode.pawnFactory = () => {
+        const pawn = new Character('Custom');
+        pawn.addComponent(Camera3D);
+        return pawn;
+    };
+
+    scene.addActor(mode);
+    scene.flushPendingActors();
+    scene.update(1 / 60);
+
+    const controller = scene.findActorsOfType(PlayerController)[0];
+    const pawn = controller.controlledPawn;
+    const own = pawn.getComponent(Camera3D);
+
+    assert.ok(own, 'the supplied camera went missing');
+    assert.equal(controller.viewCamera, own, 'the controller adopted the pawn’s own camera');
+
+    const addedCameras = pawn.transform3D.children
+        .filter((t) => t.actor.getComponent(Camera3D));
+    assert.equal(addedCameras.length, 0, 'a second camera was bolted onto a pawn that came equipped');
+});
+
+test('look input pitches the view camera rather than going nowhere', () => {
+    // The pawn takes only the yaw — pitching the body would tip the character
+    // over — so without the controller applying it, every frame of pitch input
+    // accumulated into a number nothing ever read.
+    const scene = new Scene('Look');
+    scene.physics3D = new PhysicsSystem3D({ scene });
+
+    const start = scene.addActor(new Actor('Player Start'));
+    start.addComponent(Transform3D);
+    start.addComponent(PlayerStart);
+    scene.addActor(new GameMode('Game Mode'));
+    scene.flushPendingActors();
+    scene.update(1 / 60);
+
+    const controller = scene.findActorsOfType(PlayerController)[0];
+    const pawn = controller.controlledPawn;
+    const view = controller.viewCamera.getTransform3D();
+
+    const restingPitch = view.localEulerAngles.x;
+    pawn.addControllerPitchInput(20);
+    scene.lateUpdate(1 / 60);
+
+    assert.ok(Math.abs(view.localEulerAngles.x - (restingPitch + 20)) < 0.01,
+        `the camera pitch was ${view.localEulerAngles.x}, expected ${restingPitch + 20}`);
+    assert.ok(Math.abs(pawn.transform3D.eulerAngles.x) < 0.01, 'the body must not pitch with it');
 });

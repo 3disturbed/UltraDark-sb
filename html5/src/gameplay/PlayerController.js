@@ -29,6 +29,10 @@ export class PlayerController extends Controller {
         this.gamepadLookSpeed = 180;
 
         this.invertLookY = false;
+
+        // The pitch the view camera was placed at. Look input is applied relative
+        // to it, so a rig aimed slightly downwards stays aimed that way at rest.
+        this._basePitch = 0;
     }
 
     get isPlayerController() { return true; }
@@ -44,7 +48,10 @@ export class PlayerController extends Controller {
 
         // Claiming the view is what makes Play show the game's camera rather than
         // whichever camera the editor happened to leave as `main`.
-        if (this.viewCamera) Camera3D.playerView = this.viewCamera;
+        if (this.viewCamera) {
+            Camera3D.playerView = this.viewCamera;
+            this._basePitch = this.viewCamera.getTransform3D().localEulerAngles.x;
+        }
     }
 
     onUnPossess(_pawn) {
@@ -81,6 +88,32 @@ export class PlayerController extends Controller {
 
         this.applyLookInput(pawn, input, dt);
         this.onPlayerTick(pawn, input, dt);
+    }
+
+    /**
+     * Pitches the view camera to match the controller's look.
+     *
+     * The pawn only takes the yaw — pitching the body would tip the whole
+     * character over when the player looks up — so without this the pitch the
+     * controller accumulates every frame goes nowhere and looking up and down
+     * does nothing at all.
+     *
+     * Runs in lateUpdate so the camera follows where the pawn ended up this
+     * frame rather than where it started.
+     */
+    lateUpdate(_dt) {
+        const camera = this.viewCamera;
+        if (!camera || !this.controlledPawn || camera.actor?.isDestroyed) return;
+
+        const transform = camera.getTransform3D();
+
+        // Only a camera parented to the pawn shares its yaw; a free-standing one
+        // is aimed by whatever placed it, and is not ours to turn.
+        if (transform.parent !== this.controlledPawn.transform3D) return;
+
+        const euler = transform.localEulerAngles;
+        transform.localEulerAngles = new Vector3(
+            this._basePitch + this.controlledPawn.controlRotation.x, euler.y, euler.z);
     }
 
     /**

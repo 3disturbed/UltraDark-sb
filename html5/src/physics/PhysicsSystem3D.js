@@ -198,9 +198,16 @@ export class PhysicsSystem3D {
     /**
      * Looks for ground beneath a capsule.
      *
+     * @param {Vector3} position Capsule centre.
+     * @param {number} radius
+     * @param {number} feetOffset Distance from the centre down to the soles.
+     * @param {number} snapDistance How far below the feet to reach.
+     * @param {import('../core/Actor.js').Actor} owner Skipped, so it cannot stand on itself.
+     * @param {number} [stepUpHeight=0] How far *above* the feet a surface may be and still
+     *   count as ground — a kerb to step onto, or geometry the character has sunk into.
      * @returns {?{y: number, normal: Vector3, actor: object}} The surface height, or null.
      */
-    groundCheck(position, radius, feetOffset, snapDistance, owner) {
+    groundCheck(position, radius, feetOffset, snapDistance, owner, stepUpHeight = 0) {
         const feetY = position.y - feetOffset;
         let best = null;
 
@@ -210,9 +217,12 @@ export class PhysicsSystem3D {
             const bounds = collider.getWorldBounds();
             const top = bounds.max.y;
 
-            // Only surfaces at or just below the feet count: one above them is a
-            // ceiling, and one far below is not reachable this step.
-            if (top > feetY + 0.01 || top < feetY - snapDistance) continue;
+            // A surface counts as ground from `snapDistance` below the feet up to
+            // `stepUpHeight` above them. Rejecting everything above the feet
+            // outright made a character that started even slightly inside the
+            // floor fall through it forever: the floor read as a ceiling, and
+            // nothing else was ever going to catch it.
+            if (top > feetY + stepUpHeight || top < feetY - snapDistance) continue;
 
             // Horizontal overlap, so the character does not hover off an edge.
             const min = bounds.min, max = bounds.max;

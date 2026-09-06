@@ -54,6 +54,15 @@ export class CharacterController3D extends Component {
         this._wantedVelocity = new Vector3(0, 0, 0);
     }
 
+    /**
+     * Distance from the actor's origin down to the soles.
+     *
+     * The transform sits at the middle of the capsule, so anything placing a
+     * character on a surface — a spawn point, a teleport, a lift — has to raise it
+     * by this much or the character starts half-buried.
+     */
+    get footOffset() { return Math.max(this.height / 2, this.radius); }
+
     awake() {
         if (!this.actor.getComponent(Transform3D)) this.actor.addComponent(Transform3D);
     }
@@ -97,8 +106,7 @@ export class CharacterController3D extends Component {
     }
 
     _resolve(physics, from, to) {
-        const halfHeight = Math.max(this.height / 2, this.radius);
-        const feetOffset = halfHeight;
+        const halfHeight = this.footOffset;
 
         // Horizontal first, so a wall stops sideways motion without also
         // cancelling the fall; then vertical, so landing is not blocked by the
@@ -107,13 +115,16 @@ export class CharacterController3D extends Component {
         resolved = physics.resolveCapsule(resolved, this.radius, halfHeight, this.actor);
 
         resolved.y = to.y;
+
+        // How far below the feet to reach for ground, grown by this frame's fall
+        // so a fast drop cannot tunnel past a floor between two steps.
+        const reach = this.snapDistance + Math.max(0, -this.verticalVelocity) * 0.02;
+
         const grounded = physics.groundCheck(
-            resolved, this.radius, feetOffset,
-            this.snapDistance + Math.max(0, -this.verticalVelocity) * 0.02,
-            this.actor);
+            resolved, this.radius, halfHeight, reach, this.actor, this.stepUpHeight);
 
         if (grounded && this.verticalVelocity <= 0) {
-            resolved.y = grounded.y + feetOffset;
+            resolved.y = grounded.y + halfHeight;
             this.verticalVelocity = 0;
             this.isGrounded = true;
 
