@@ -27,8 +27,12 @@ Desktop.ini
 
 ## Editor dist
 SexyBiscuit.Editor/dist/
-SexyBiscuit.Editor/imgui.ini
-SexyBiscuit.Editor/imgui.layout-version
+
+## ImGui writes its window layout beside the working directory, which is the
+## repository root when the editor is launched by its dll path rather than from
+## its own folder. Unanchored, so it is ignored wherever the editor is run from.
+imgui.ini
+imgui.layout-version
 
 ## Build output of any project or game (web exports, publishes, archives)
 dist/
