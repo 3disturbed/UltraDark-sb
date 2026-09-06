@@ -78,7 +78,7 @@ and resizable. Drag a panel by its tab to rearrange; the layout persists in
 |---|---|
 | **File** | New Scene · Open Scene… · Save Scene (Ctrl+S) · Save Scene As… · Exit |
 | **Edit** | Undo (Ctrl+Z) · Redo (Ctrl+Y) — the scene undo stack, each item named after the change |
-| **Play** | Play (F5) · Pause (F6) · Stop (F7) |
+| **Play** | Play (F5) · Pause (F6) · Stop (F7 / Ctrl+S) · Fullscreen Viewport (Ctrl+P) |
 | **View** | 3D Viewport · Render Stats · API Reference · Code Editor · Git · C# Project · Assistant (F8) · Project Manager · Reset Layout |
 | **Tools** | Assistant Settings… · Focus Assistant (F8) · Stop Assistant (Shift+F8) · New / Resume / Stop Assistant Session · Write .mcp.json · Copy MCP Connect Command · Rebuild Engine & Restart |
 | **Create** | actor presets — see [below](#the-create-menu) |
@@ -88,7 +88,8 @@ and resizable. Drag a panel by its tab to rearrange; the layout persists in
 | Key | Action |
 |---|---|
 | <kbd>F5</kbd> / <kbd>F6</kbd> / <kbd>F7</kbd> | Play / Pause / Stop |
-| <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save scene |
+| <kbd>Ctrl</kbd>+<kbd>S</kbd> (<kbd>Cmd</kbd> on macOS) | Save scene; while playing, Stop |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> (<kbd>Cmd</kbd> on macOS) | The game over the whole window, while playing (again to leave) |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Undo / Redo a scene edit (not while a text field has focus) |
 | <kbd>F8</kbd> / <kbd>Shift</kbd>+<kbd>F8</kbd> | Focus the Assistant composer / stop Claude |
 | <kbd>G</kbd> / <kbd>R</kbd> / <kbd>S</kbd> | Translate / Rotate / Scale gizmo (while hovering the viewport and no text field has focus) |
@@ -301,9 +302,10 @@ DesktopShell.RevealInFileManager(path);   // Explorer / Finder / the Linux file 
 ## Play mode
 
 ```
-F5  EnterPlayMode   → snapshot = SceneSerializer.Serialize(activeScene)
-F6  TogglePause
-F7  ExitPlayMode    → restore from the snapshot
+F5            EnterPlayMode   → snapshot = SceneSerializer.Serialize(activeScene), game camera on
+F6            TogglePause
+F7 / Ctrl+S   ExitPlayMode    → restore from the snapshot, camera choice restored
+Ctrl+P        fullscreen viewport on/off (Cmd on macOS)
 ```
 
 While playing, the editor calls `EngineHost.Tick(dt, pumpInput: true)`: the
@@ -317,7 +319,10 @@ one at a time.
 The 2D viewport draws with a plain `SpriteBatch.Begin()` / `End()` and **no
 camera transform**, so `Camera2D` has no effect there. The 3D viewport renders
 through the scene's `MainCamera3D` when **Game Cam** is on, otherwise through the
-editor camera.
+editor camera. Play switches **Game Cam** on, so the possessed player's camera is
+what plays, and Stop puts your choice back. <kbd>Ctrl</kbd>+<kbd>P</kbd>
+(<kbd>Cmd</kbd> on macOS) shows the game over the whole work area in a separate
+window; the docked panels keep their layout and return when play stops.
 
 Play loads a fresh copy of the snapshot (`PlayMode.IsActive` is switched on first),
 so every actor's Start runs at play start the way it does when a standalone game
