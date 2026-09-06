@@ -86,13 +86,13 @@ export class InputManager {
         this._on(window, 'pointerup', (e) => this._onPointerUp(e));
         this._on(window, 'pointercancel', (e) => this._onPointerUp(e, true));
         this._on(target, 'wheel', (e) => this._onWheel(e), { passive: false });
-        this._on(target, 'contextmenu', (e) => { if (this.preventDefaults) e.preventDefault(); });
+        this._on(target, 'contextmenu', (e) => { if (this.preventDefaults) e.preventDefault?.(); });
 
         // Safari on iOS still fires these alongside pointer events, and they are
         // what actually scrolls and zooms the page.
         if (this.preventDefaults && this.canvas) {
             for (const name of ['touchstart', 'touchmove', 'touchend']) {
-                this._on(this.canvas, name, (e) => e.preventDefault(), { passive: false });
+                this._on(this.canvas, name, (e) => e.preventDefault?.(), { passive: false });
             }
         }
 
@@ -383,7 +383,7 @@ export class InputManager {
 
         // Keys the page would otherwise act on. Function keys and the modifiers
         // stay with the browser so refresh and devtools keep working.
-        if (this.preventDefaults && SWALLOWED_KEYS.has(key)) event.preventDefault();
+        if (this.preventDefaults && SWALLOWED_KEYS.has(key)) event.preventDefault?.();
     }
 
     _onKeyUp(event) {
@@ -413,7 +413,7 @@ export class InputManager {
 
         this.mousePosition.copy(this._toCanvas(event));
         this.canvas?.setPointerCapture?.(event.pointerId);
-        if (this.preventDefaults) event.preventDefault();
+        if (this.preventDefaults) event.preventDefault?.();
     }
 
     _onPointerMove(event) {
@@ -448,7 +448,7 @@ export class InputManager {
         // trackpad and a mouse wheel feel comparable.
         const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
         this._pendingScroll -= (event.deltaY * scale) / 100;
-        if (this.preventDefaults) event.preventDefault();
+        if (this.preventDefaults) event.preventDefault?.();
     }
 
     /** Converts a pointer event into canvas pixels, accounting for CSS scaling. */

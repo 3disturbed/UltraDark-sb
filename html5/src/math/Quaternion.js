@@ -113,18 +113,60 @@ export class Quaternion {
     }
 
     /**
-     * The inverse of {@link Quaternion.fromEuler}: pitch, yaw and roll in degrees.
-     * At the poles yaw saturates at ±90° rather than producing NaN.
+     * The true inverse of {@link Quaternion.fromEuler}: pitch, yaw and roll in degrees.
+     *
+     * `fromYawPitchRoll` composes as `Ry(yaw) * Rx(pitch) * Rz(roll)` — the YXZ
+     * convention, in which *pitch* is the constrained middle axis. The extraction
+     * below matches that composition, so `toEuler(fromEuler(e))` returns `e`.
+     *
+     * The C# engine's `Transform3D.QuaternionToEuler` does not: it applies the
+     * standard ZYX aerospace formula (`asin` on yaw) to a quaternion built the
+     * YXZ way, so it is only correct when one of the three angles is zero. A
+     * rotation of, say, (10, -170, 25) degrees comes back from it as a different
+     * rotation entirely, not merely a different spelling of the same one.
+     *
+     * Reproducing that here was not worth it. Scene files store `rotation3` as a
+     * quaternion, so nothing shared between the engines changes; what does change
+     * is that an editor rotation field can be read and written back without
+     * corrupting the actor's orientation, which is not optional in a tool people
+     * type numbers into. See html5/README.md for the full note.
      */
     static toEuler(q) {
+        // From R = Ry(yaw) * Rx(pitch) * Rz(roll):
+        //   R[1][2] = -sin(pitch)
+        //   R[1][0] / R[1][1] = tan(roll)
+        //   R[0][2] / R[2][2] = tan(yaw)
+        const sinPitch = 2 * (q.w * q.x - q.y * q.z);
+
+        // Looking straight up or down: cos(pitch) is zero and yaw and roll trade
+        // off against each other. Pin roll and put the whole turn into yaw.
+        if (Math.abs(sinPitch) >= 0.99999) {
+            const pitch = Math.sign(sinPitch) * Math.PI / 2;
+            const yaw = Math.atan2(-2 * (q.x * q.z - q.w * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
+            return new Vector3(pitch * RAD2DEG, yaw * RAD2DEG, 0);
+        }
+
+        const pitch = Math.asin(sinPitch);
+        const roll = Math.atan2(2 * (q.x * q.y + q.w * q.z), 1 - 2 * (q.x * q.x + q.z * q.z));
+        const yaw = Math.atan2(2 * (q.x * q.z + q.w * q.y), 1 - 2 * (q.x * q.x + q.y * q.y));
+
+        return new Vector3(pitch * RAD2DEG, yaw * RAD2DEG, roll * RAD2DEG);
+    }
+
+    /**
+     * The C# engine's `Transform3D.QuaternionToEuler`, bug included.
+     *
+     * Kept so a tool can reproduce exactly what the C# editor would show for a
+     * given rotation. Do not use it to read a rotation back: it is not the
+     * inverse of {@link Quaternion.fromEuler}.
+     */
+    static toEulerCSharp(q) {
         const sinr = 2 * (q.w * q.x + q.y * q.z);
         const cosr = 1 - 2 * (q.x * q.x + q.y * q.y);
         const pitch = Math.atan2(sinr, cosr);
 
         const sinp = 2 * (q.w * q.y - q.z * q.x);
-        const yaw = Math.abs(sinp) >= 1
-            ? Math.sign(sinp) * Math.PI / 2
-            : Math.asin(sinp);
+        const yaw = Math.abs(sinp) >= 1 ? Math.sign(sinp) * Math.PI / 2 : Math.asin(sinp);
 
         const siny = 2 * (q.w * q.z + q.x * q.y);
         const cosy = 1 - 2 * (q.y * q.y + q.z * q.z);
