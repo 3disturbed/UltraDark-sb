@@ -26,7 +26,13 @@ export class Rigidbody2D extends Component {
         linearDamping:  { type: P.Number, default: 0, min: 0 },
         angularDamping: { type: P.Number, default: 0.05, min: 0 },
         freezeRotation: { type: P.Bool, default: false },
-        isKinematic:    { type: P.Bool, default: false },
+
+        // Read but never written. The C# Rigidbody2D has no static body type at
+        // all — its BodyType is a computed property over IsKinematic — so a file
+        // written by that engine names this and not BodyType. Writing both would
+        // put two spellings of the same state in one file, which disagree the
+        // moment either is edited.
+        isKinematic:    { type: P.Bool, default: false, transient: true },
     };
 
     constructor() {

@@ -851,3 +851,53 @@ test('deserialize still flushes by default', () => {
     });
     assert.ok(scene.findByName('Thing'), 'a caller that just wants a scene gets a usable one');
 });
+
+test('a host that is not simulating leaves the world alone', () => {
+    // The editor renders continuously but must not advance the scene: otherwise
+    // opening a scene starts dropping its actors through the floor before anyone
+    // has pressed Play.
+    const scene = new Scene('EditTime');
+    scene.physics2D = new PhysicsSystem2D({ scene, gravity: new Vector2(0, 980) });
+
+    const box = scene.addActor(new Actor('Box'));
+    box.transform.localPosition = new Vector2(0, 100);
+    box.addComponent(Rigidbody2D);
+    box.addComponent(BoxCollider2D);
+    scene.flushPendingActors();
+
+    // What the editor's loop does while not playing.
+    const simulate = false;
+    for (let i = 0; i < 120; i++) {
+        Time.advance(1 / 60);
+        if (!simulate) continue;
+        scene.physics2D.fixedStep(1 / 60);
+        scene.update(1 / 60);
+    }
+
+    assert.equal(box.transform.position.y, 100, 'nothing moved while not simulating');
+});
+
+test('isKinematic is read from a C# file but not written back', () => {
+    // The C# Rigidbody2D has no static body type: BodyType is computed from
+    // IsKinematic and has no setter, so that is the only spelling its files use.
+    const scene = deserialize({
+        name: 'Bodies',
+        layers: [{
+            name: 'Default',
+            actors: [{
+                name: 'Platform',
+                components: [{ type: 'Rigidbody2D', properties: { IsKinematic: true, Mass: 3 } }],
+            }],
+        }],
+    });
+
+    const body = scene.findByName('Platform').getComponent(Rigidbody2D);
+    assert.equal(body.bodyType, BodyType.Kinematic, 'IsKinematic was honoured');
+    assert.equal(body.mass, 3);
+
+    const written = JSON.parse(serialize(scene))
+        .layers[0].actors[0].components[0].properties;
+
+    assert.equal(written.IsKinematic, undefined, 'not written twice under two names');
+    assert.equal(written.BodyType, 'Kinematic', 'the richer form is what gets written');
+});

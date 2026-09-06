@@ -72,6 +72,10 @@ export class Editor {
         this.viewport.attach(this.engine);
         this.engine.input.preventDefaults = false;   // the editor's own UI needs its keys
 
+        // Render, but do not simulate, until Play. Otherwise a scene starts
+        // falling apart the moment it is opened.
+        this.engine.simulate = false;
+
         this.engine.onFrame = () => {
             this.viewport.syncRenderCamera();
             this.viewport.drawOverlay();
@@ -396,6 +400,7 @@ export class Editor {
         this.state.isPaused = false;
 
         this._adopt(deserialize(this._sceneSnapshot, { flush: false, onWarning: () => {} }));
+        this.engine.simulate = true;
         this.engine.input.preventDefaults = true;
 
         this._playButton.textContent = '▶';
@@ -413,6 +418,7 @@ export class Editor {
         this.state.isPaused = false;
         Camera3D.playerView = null;
 
+        this.engine.simulate = false;
         this.engine.input.preventDefaults = false;
         SB.Time.timeScale = 1;
 
@@ -443,6 +449,7 @@ export class Editor {
         SB.Time.timeScale = 1;
         this.engine.tick(1 / 60, false);
         SB.Time.timeScale = 0;
+        this.state.notifyHierarchy();
     }
 
     // -------------------------------------------------------------------------

@@ -134,6 +134,17 @@ export class EngineHost {
         this.renderer3D = null;
 
         this.isRunning = false;
+
+        /**
+         * Whether a tick advances the world.
+         *
+         * The loop keeps running when this is false — the view still renders and
+         * the host stays responsive — but physics, updates, tweens, timers and
+         * coroutines are all skipped. The editor turns it off while editing, so
+         * opening a scene does not immediately drop its actors through the floor.
+         */
+        this.simulate = true;
+
         this._fixedAccumulator = 0;
         this._lastFrameTime = 0;
         this._rafHandle = null;
@@ -317,6 +328,13 @@ export class EngineHost {
 
         // Input runs on unscaled time so menus stay live while the game is paused.
         if (pumpInput) this.input.update(unscaledDt);
+
+        // Not simulating: the clock and input still advance, so the editor's own
+        // camera and its panels keep working, but the world is left alone.
+        if (!this.simulate) {
+            this._fixedAccumulator = 0;
+            return;
+        }
 
         this.gameInstance.internalTick(dt);
 

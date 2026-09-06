@@ -73,7 +73,10 @@ export class HierarchyPanel {
     }
 
     _actorRow(actor, layer) {
-        const row = el('div.sb-actor-row', {
+        // A button, not a div: the row is a click target, and a div is not
+        // reachable by keyboard or announced as actionable.
+        const row = el('button.sb-actor-row', {
+            type: 'button',
             dataset: { actorId: String(actor.id) },
             title: `${actor.name}  (${actor.tag})`,
             onclick: () => this.state.selectActor(actor),
