@@ -380,6 +380,11 @@ same way its web build is. Two things follow:
 - The response now depends on the `Authorization` header, so it carries `Vary: Authorization` and
   goes out `private, no-store` for a playtester. A shared cache that ignored this would serve one
   tester's list to the public.
+- **A download link cannot carry that header.** Clicking `<a href download>` is a navigation, and a
+  navigation sends no headers, so the first cut of this let a playtester see a closed build and
+  then saved the 404 JSON into their downloads folder as the file. The site asks
+  `POST /api/v1/builds/:id/ticket` for a URL a navigation can follow — bound to one build, good for
+  two minutes. Any other client publishing or fetching closed builds needs the same two steps.
 
 ### Reporting back
 
