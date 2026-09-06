@@ -481,8 +481,8 @@ public class MouseDeltaTests
         input.Sample(keyboard, At(650, 360));
         Assert.Equal(new Vector2(10f, 0f), input.MouseDelta);
 
-        // Locking takes the current position as the lock point (no window here, so the last sample).
-        input.LockCursor();
+        // Locking takes the cursor's current position as the lock point.
+        input.LockCursor(At(650, 360));
         Assert.Equal(Vector2.Zero, input.MouseDelta);
 
         // Each frame the cursor is warped back to the lock point, so movement is measured from it.

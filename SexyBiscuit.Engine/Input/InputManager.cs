@@ -206,8 +206,13 @@ public sealed class InputManager
         // the first Update of a session that sample is empty and the lock landed at (0, 0).
         MouseState now;
         try { now = Mouse.GetState(); }
-        catch (Exception) { now = _msCurrent; }   // no window (tests): fall back to the last sample
+        catch (Exception) { now = _msCurrent; }
+        LockCursor(now);
+    }
 
+    // Locks at an explicit position; the hardware read above is what tests cannot do.
+    internal void LockCursor(MouseState now)
+    {
         _cursorLocked   = true;
         _lockedPosition = new Point(now.X, now.Y);
         _msCurrent      = now;                     // so the first locked delta is zero
