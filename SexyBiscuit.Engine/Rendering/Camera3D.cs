@@ -16,11 +16,25 @@ public sealed class Camera3D : Component
     // -------------------------------------------------------------------------
     private static readonly List<Camera3D> _all = new();
 
-    /// <summary>The first active Camera3D whose actor tag is "MainCamera3D".</summary>
+    /// <summary>
+    /// The camera the local player looks through, set by <see cref="Gameplay.PlayerController"/>
+    /// when the pawn it possesses carries one. While it is alive, enabled and on an active actor
+    /// it is what <see cref="Main"/> returns, whatever the scene's tags say: the possessed
+    /// player's view must win over a preview camera left in the level.
+    /// </summary>
+    public static Camera3D? PlayerView { get; set; }
+
+    /// <summary>
+    /// The player's view camera when there is one, otherwise the first active Camera3D whose
+    /// actor is tagged "MainCamera3D".
+    /// </summary>
     public static Camera3D? Main
     {
         get
         {
+            if (PlayerView is { Enabled: true } view && view.Actor != null && view.Actor.IsActive && _all.Contains(view))
+                return view;
+
             foreach (var cam in _all)
                 if (cam.Enabled && cam.Actor.IsActive && cam.Actor.Tag == "MainCamera3D")
                     return cam;
@@ -68,6 +82,7 @@ public sealed class Camera3D : Component
     public override void OnDestroy()
     {
         _all.Remove(this);
+        if (ReferenceEquals(PlayerView, this)) PlayerView = null;
     }
 
     // -------------------------------------------------------------------------

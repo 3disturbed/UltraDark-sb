@@ -41,8 +41,15 @@ public class PlayerController : Controller
     /// <summary>Per-player replicated stats — score, name, ping. May be null in single-player.</summary>
     public PlayerState? PlayerState { get; set; }
 
-    /// <summary>The camera this player views the world through. Falls back to <see cref="Camera3D.Main"/>.</summary>
+    /// <summary>
+    /// The camera this player views the world through. Set it yourself, or leave it null and the
+    /// controller adopts the first <see cref="Camera3D"/> on the possessed pawn or an actor
+    /// parented under it; for the first local player that camera becomes
+    /// <see cref="Camera3D.PlayerView"/>, so it is what renders. Falls back to <see cref="Camera3D.Main"/>.
+    /// </summary>
     public Camera3D? ViewCamera { get; set; }
+
+    private bool _viewCameraAdopted;
 
     /// <summary>
     /// When true the controller feeds input to its pawn each frame. Set false while a menu
@@ -61,7 +68,10 @@ public class PlayerController : Controller
 
     private bool _inputConfigured;
 
-    public PlayerController() : base("PlayerController") { }
+    public PlayerController() : base("PlayerController")
+    {
+        UnPossessed.Add(_ => DropAdoptedCamera());
+    }
 
     /// <summary>The engine input manager. Null before the engine has initialised.</summary>
     protected static InputManager? Input => EngineHost.Current?.Input;
@@ -81,8 +91,10 @@ public class PlayerController : Controller
 
     protected override void Update(float dt)
     {
+        var pawn = ControlledPawn;
+        if (pawn != null) TrackPawnCamera(pawn);
+
         var input = Input;
-        var pawn  = ControlledPawn;
         if (!InputEnabled || input == null || pawn == null) return;
 
         ApplyLookInput(pawn, input, dt);
@@ -93,6 +105,54 @@ public class PlayerController : Controller
             var t3d = pawn.GetComponent<Transform3D>();
             if (t3d != null)
                 t3d.EulerAngles = t3d.EulerAngles with { Y = pawn.ControlRotation.Y };
+        }
+    }
+
+    // The pawn builds its camera in Start, after possession, so the view is picked up lazily and
+    // re-checked each frame; a camera the pawn swaps at runtime is adopted the same way.
+    private void TrackPawnCamera(Pawn pawn)
+    {
+        if (ViewCamera != null && !_viewCameraAdopted)
+        {
+            if (PlayerIndex == 0) Camera3D.PlayerView = ViewCamera;
+            return;
+        }
+
+        var camera = FindPawnCamera(pawn);
+        if (camera == null) return;
+
+        ViewCamera         = camera;
+        _viewCameraAdopted = true;
+        if (PlayerIndex == 0) Camera3D.PlayerView = camera;
+    }
+
+    private void DropAdoptedCamera()
+    {
+        if (ReferenceEquals(Camera3D.PlayerView, ViewCamera)) Camera3D.PlayerView = null;
+        if (_viewCameraAdopted)
+        {
+            ViewCamera         = null;
+            _viewCameraAdopted = false;
+        }
+    }
+
+    /// <summary>The first camera on the pawn itself or on an actor whose transform hangs under the pawn's.</summary>
+    public static Camera3D? FindPawnCamera(Pawn pawn)
+    {
+        if (pawn.GetComponent<Camera3D>() is { } own) return own;
+
+        var root = pawn.GetComponent<Transform3D>();
+        return root == null ? null : Search(root, 0);
+
+        static Camera3D? Search(Transform3D node, int depth)
+        {
+            if (depth > 6) return null;
+            foreach (var child in node.Children)
+            {
+                if (child.Actor?.GetComponent<Camera3D>() is { } camera) return camera;
+                if (Search(child, depth + 1) is { } deeper) return deeper;
+            }
+            return null;
         }
     }
 

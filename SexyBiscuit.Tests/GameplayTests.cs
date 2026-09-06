@@ -476,3 +476,49 @@ public class PlayModeGateTests
         }
     }
 }
+
+public class PlayerViewCameraTests
+{
+    [Fact]
+    public void ThePossessedPawnsCameraBecomesTheMainCameraOverATaggedSceneCamera()
+    {
+        // Why: Camera3D.Main used to be the first registered camera tagged MainCamera3D, so a
+        // preview camera left in the level beat the player's head camera and Play never ran
+        // first-person. The controller now adopts the pawn's camera and that view wins.
+        var scene = new SexyBiscuit.Engine.Core.Scene("View");
+
+        var preview = new Actor("Camera") { Tag = "MainCamera3D" };
+        preview.AddComponent<Transform3D>();
+        var previewCam = preview.AddComponent<SexyBiscuit.Engine.Rendering.Camera3D>();
+        scene.AddActor(preview);
+
+        var pawn  = new Pawn("Hero");
+        var pawnT = pawn.AddComponent<Transform3D>();
+        scene.AddActor(pawn);
+
+        var head  = new Actor("Head Camera");
+        var headT = head.AddComponent<Transform3D>();
+        var headCam = head.AddComponent<SexyBiscuit.Engine.Rendering.Camera3D>();
+        headT.SetParent(pawnT, keepWorldTransform: false);
+        scene.AddActor(head);
+
+        var controller = new PlayerController();
+        scene.AddActor(controller);
+        scene.FlushPendingActors();
+
+        controller.Possess(pawn);
+        Assert.NotSame(headCam, SexyBiscuit.Engine.Rendering.Camera3D.Main);   // nothing adopted before the controller ticks
+
+        scene.Update(1f / 60f);
+        Assert.Same(headCam, controller.ViewCamera);
+        Assert.Same(headCam, SexyBiscuit.Engine.Rendering.Camera3D.Main);
+        Assert.Same(headCam, PlayerController.FindPawnCamera(pawn));
+
+        controller.UnPossess();
+        Assert.Null(controller.ViewCamera);
+        Assert.Same(previewCam, SexyBiscuit.Engine.Rendering.Camera3D.Main);
+
+        scene.Destroy();
+        Assert.Null(SexyBiscuit.Engine.Rendering.Camera3D.PlayerView);
+    }
+}
