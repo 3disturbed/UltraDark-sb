@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "touch-controls",
+  "name": "Touch Controls",
+  "version": "1.0.0",
+  "summary": "On-screen sticks and buttons for a phone, driving the same actions a gamepad would.",
+  "description": "Draws thumb sticks and action buttons over the game and pushes them through the player's virtual input layer, so a controller written for a keyboard needs no changes. Sticks can be fixed or float to where the thumb lands, and a mouse simulator lets the whole thing be tried in the editor, which has no touch panel.",
+  "tags": ["input", "touch", "mobile", "ui", "hud"],
+  "engines": ["csharp"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": ["input-mapping"],
+  "provides": {
+    "components": ["TouchOverlay", "MouseTouchSimulator", "SafeArea"],
+    "actorClasses": [],
+    "scripts": [],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Add a TouchOverlay component to any actor; it builds its own canvas.",
+    "Set Buttons to the actions you want on screen, such as Jump and Attack.",
+    "Turn on SimulateWithMouse to try it in the editor, which has no touch panel."
+  ]
+}
