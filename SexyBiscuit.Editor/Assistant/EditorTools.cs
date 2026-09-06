@@ -72,6 +72,17 @@ public sealed class EditorTools
             context["code"] = null;
         }
 
+        // One line, because get_context is on a token budget: how many modules are available and
+        // how many this project already uses. search_cookies is the call that costs anything.
+        if (_host.Cookies is { } cookies)
+        {
+            int available = cookies.Catalogue().All.Count;
+            int installed = cookies.Lock.Cookies.Count;
+
+            if (available > 0 || installed > 0)
+                context["cookies"] = $"{available} in the jar, {installed} installed (search_cookies)";
+        }
+
         return McpToolResult.Json(context);
     }
 

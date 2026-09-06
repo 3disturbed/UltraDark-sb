@@ -143,7 +143,16 @@ public sealed class EngineHost : IDisposable
         float unscaledDt = Time.UnscaledDeltaTime;
 
         // Input runs on unscaled time so menus stay responsive while the game is paused.
-        if (pumpInput) Input.Update(unscaledDt);
+        if (pumpInput)
+        {
+            Input.Update(unscaledDt);
+
+            // The touch joysticks claim a half of the screen each, and without this they use a
+            // hardcoded 1920: on a narrower window the right stick's half starts too far right
+            // and steals fingers meant for the left.
+            var backBuffer = GraphicsDevice.PresentationParameters;
+            Input.Touch.SetScreenSize(backBuffer.BackBufferWidth, backBuffer.BackBufferHeight);
+        }
 
         GameInstance.InternalTick(dt);
 

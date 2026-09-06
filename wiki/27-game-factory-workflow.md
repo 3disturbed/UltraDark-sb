@@ -83,6 +83,7 @@ The rules the skills and `CLAUDE.md` encode, and the reason for each:
 
 | Rule | Why |
 |---|---|
+| Search the CookieJar before writing a mechanic by hand ([28](28-the-cookiejar.md)) | a cookie summary is about thirty tokens; deriving the module again is thousands, every game |
 | Never read the engine source to write a game; read [11. Scripting](11-scripting.md) and the template's scripts | 44,000 lines of C# in the context is the single most expensive thing a session can do |
 | `validate` and the tests are the checker; no screenshots | a validator line is ~50 tokens, a screenshot 300–800, and a screenshot loop is many turns |
 | One game per session; open with the brief | a session's context grows with every turn; a fresh one is cheap |

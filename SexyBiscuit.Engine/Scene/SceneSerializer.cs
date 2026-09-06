@@ -54,6 +54,14 @@ public static class SceneSerializer
         return opts;
     }
 
+    /// <summary>
+    /// The converters and settings a scene is written with. <see cref="Prefab"/> serialises a
+    /// single actor and has to use the same set, or an enum, a vector or a material round-trips
+    /// differently depending on which entry point wrote the file. A property rather than a
+    /// cached copy, because <see cref="ClearTypeCache"/> replaces the instance on hot reload.
+    /// </summary>
+    internal static JsonSerializerOptions Options => _options;
+
     // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------

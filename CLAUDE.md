@@ -54,6 +54,13 @@ stay in step; batch them with `apply_scene_edits`. Verify at milestones with `ru
 or one `capture_viewport`, not after every edit. Ship with `export_build`. Tool results are short
 on purpose; trust them. See `wiki/25-ai-assistant-mcp.md` for the tool catalogue.
 
+Before writing a common mechanic from scratch, look in the CookieJar: `CookieJar/` in this
+repository is a library of reusable modules, each carrying an `AGENT.md` that says how to wire it
+up. In the editor that is `search_cookies` and `install_cookie`; from a terminal it is a folder to
+read. When a task produces something a second game would want, bake it back (`bake_cookie`, or
+Tools in the editor). A cookie summary costs about thirty tokens; deriving the module again costs
+thousands, every game. See `wiki/28-the-cookiejar.md`.
+
 The HTML5 port is documented in `html5/README.md` and `wiki/26-html5.md`. Both engines' action
 maps, euler conventions, scripting contract and hook lists are pinned by tests that read the other
 side's source, so they fail if the two drift apart.

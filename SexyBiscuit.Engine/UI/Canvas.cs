@@ -109,23 +109,80 @@ public class Canvas : Component
     {
         if (!Enabled) return;
 
-        // Gather input
-        var mouse        = Mouse.GetState();
-        var mousePos     = new Vector2(mouse.X, mouse.Y);
-        bool mouseDown   = mouse.LeftButton == ButtonState.Pressed;
-        bool mouseJust   = mouse.LeftButton  == ButtonState.Pressed
-                        && _prevMouseState.LeftButton == ButtonState.Released;
+        GatherPointers();
 
         // Propagate to widgets (top-most / last drawn = highest priority)
         for (int i = Children.Count - 1; i >= 0; i--)
         {
             var w = Children[i];
-            if (w.Visible) w.HandleInput(mousePos, mouseDown, mouseJust);
+
+            if (w.Visible)
+                foreach (var pointer in _pointers)
+                    w.HandlePointer(pointer);
+
             w.Update(dt);
         }
-
-        _prevMouseState = mouse;
     }
+
+    /// <summary>
+    /// This frame's pointers: the mouse, and one per finger. Read through the input manager when
+    /// there is a host, and straight from the mouse when there is not -- at edit time the editor
+    /// ticks the engine without pumping input, and a canvas that stopped responding there would
+    /// be impossible to lay out.
+    /// </summary>
+    private void GatherPointers()
+    {
+        _pointers.Clear();
+
+        var input = Core.EngineHost.Current?.Input;
+
+        if (MouseInput)
+        {
+            var mouse = Mouse.GetState();
+            bool down = mouse.LeftButton == ButtonState.Pressed;
+            bool was  = _prevMouseState.LeftButton == ButtonState.Pressed;
+
+            _pointers.Add(new Pointer
+            {
+                Id           = Pointer.MouseId,
+                Position     = new Vector2(mouse.X, mouse.Y),
+                IsDown       = down,
+                JustPressed  = down && !was,
+                JustReleased = !down && was,
+                PlayerIndex  = PlayerIndex,
+            });
+
+            _prevMouseState = mouse;
+        }
+
+        if (TouchInput && input?.Touch is { } touch)
+        {
+            foreach (var finger in touch.Touches)
+                _pointers.Add(new Pointer
+                {
+                    Id           = finger.Id + 1,   // 0 is the mouse
+                    Position     = finger.Position,
+                    IsDown       = finger.Phase is not (Input.TouchPhase.Ended or Input.TouchPhase.Cancelled),
+                    JustPressed  = finger.Phase == Input.TouchPhase.Began,
+                    JustReleased = finger.Phase == Input.TouchPhase.Ended,
+                    PlayerIndex  = PlayerIndex,
+                });
+        }
+    }
+
+    private readonly List<Pointer> _pointers = new();
+
+    /// <summary>This frame's pointers, for a widget that needs to look past the one it was handed.</summary>
+    public IReadOnlyList<Pointer> Pointers => _pointers;
+
+    /// <summary>Whether the mouse drives this canvas.</summary>
+    public bool MouseInput { get; set; } = true;
+
+    /// <summary>Whether touches drive this canvas.</summary>
+    public bool TouchInput { get; set; } = true;
+
+    /// <summary>Which player's pointers these are, or -1 for anybody's.</summary>
+    public int PlayerIndex { get; set; } = -1;
 
     public override void Draw(SpriteBatch sb)
     {

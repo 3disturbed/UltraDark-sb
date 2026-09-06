@@ -1,3 +1,4 @@
+using SexyBiscuit.Engine.CookieJar;
 using System.Text.Json.Nodes;
 using SexyBiscuit.Editor.GameCode;
 using SexyBiscuit.Engine.Mcp;
@@ -97,7 +98,14 @@ public static class AssistantSelfTest
         registry.RegisterInstance(new UserInteraction(board, settings), new McpRegistrationOptions { Source = "editor" });
         selfTestTools = new SelfTestTools();
         if (includeSelfTestTools) registry.RegisterInstance(selfTestTools, new McpRegistrationOptions { Source = "editor" });
+
+        // The cookie tools register here too, so --dump-mcp-tools covers their schemas and the
+        // wiki's tool table is generated from the whole surface rather than most of it.
+        var cookies = new HeadlessCookieHost();
+        registry.RegisterInstance(new CookieTools(cookies), new McpRegistrationOptions { Source = "editor" });
+
         resources.RegisterInstance(new SceneResources(scene, undo, registry));
+        resources.RegisterInstance(new CookieResources(cookies));
 
         var server = new McpServer(registry, resources, new McpServerInfo("sexybiscuit", McpHost.EngineVersion, ClaudeSystemPrompt.ExternalInstructions(SceneResources.Instructions)));
         return (registry, resources, server);

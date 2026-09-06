@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "input-mapping",
+  "name": "Input Mapping",
+  "version": "1.0.0",
+  "summary": "Keyboard, mouse and gamepad bindings a player can change, saved between runs.",
+  "description": "Loads an action map from Config, remembers rebinds in the user's save folder, captures a new binding from any device, and describes a binding for on-screen prompts. Per-player device ownership comes from the engine, so this works unchanged in couch co-op.",
+  "tags": ["input", "controls", "gamepad", "rebinding"],
+  "engines": ["csharp"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": ["InputSettings"],
+    "actorClasses": [],
+    "scripts": [],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Add an InputSettings component to any actor in the start scene; one is enough.",
+    "Edit Config/Cookies/input-mapping/Actions.json to add your game's own actions.",
+    "Call BindingStore.Save(input) after a rebind to remember it; InputSettings loads it on wake."
+  ]
+}

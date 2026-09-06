@@ -30,7 +30,9 @@ public sealed class SceneResources
         "tagged MainCamera3D (place_actor 'Camera'); Play also needs a Player Start and a Game Mode. Every change shows " +
         "in the editor immediately: use capture_viewport to look, undo to revert, save_scene to persist. Prefer " +
         "spawn_primitive for quick geometry, place_actor for lights, cameras and gameplay actors, set_material for " +
-        "colours, and the C# tools (create_code_project, build_project, reload_game_code) for behaviour.";
+        "colours, and the C# tools (create_code_project, build_project, reload_game_code) for behaviour. " +
+        "Check search_cookies before building a common mechanic by hand: installing a cookie returns its own " +
+        "instructions, and bake_cookie saves reusable work back for the next game.";
 
     [McpResource("sexybiscuit://guide", "Workflow guide", "text/markdown", Description = "How to work in the SexyBiscuit editor through these tools.")]
     public string Guide() => "# SexyBiscuit MCP guide\n\n" + Instructions + "\n";
