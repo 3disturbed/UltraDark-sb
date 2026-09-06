@@ -120,7 +120,7 @@ public class ReplicationSystem
             // Nothing changed since last send — skip
             if (dirtyState.Length == 0 || HasZeroEntries(dirtyState)) continue;
 
-            Vector2 objPos = netObj.Actor.Transform.Position;
+            Vector3 objPos = PositionOf(netObj);
 
             // Encode StateUpdate packet: [type(1)] [networkId(4)] [state(rest)]
             byte[] packet = EncodeStateUpdate(netObj.NetworkId, dirtyState);
@@ -131,9 +131,9 @@ public class ReplicationSystem
             foreach (int clientId in nm.ConnectedClientIds)
             {
                 // Interest radius check
-                if (clientPositions.TryGetValue(clientId, out Vector2 clientPos))
+                if (clientPositions.TryGetValue(clientId, out Vector3 clientPos))
                 {
-                    float dist = Vector2.Distance(objPos, clientPos);
+                    float dist = Vector3.Distance(objPos, clientPos);
                     if (dist > InterestRadius) continue;
                 }
 
@@ -233,14 +233,29 @@ public class ReplicationSystem
     /// NetworkObject's Actor.Transform.Position as the reference point.
     /// Clients with no owned object are omitted (they receive all updates).
     /// </summary>
-    private static Dictionary<int, Vector2> BuildClientPositionMap(
+    /// <summary>
+    /// Where an object is, in three dimensions when it has a 3D transform and on the ground plane
+    /// when it does not.
+    /// </summary>
+    /// <remarks>
+    /// This read the 2D <c>Transform</c>, which every actor has and a 3D actor never moves, so in a
+    /// 3D game every object reported the origin, every distance was zero and nothing was ever
+    /// culled. It failed safe -- everything was broadcast -- so it cost bandwidth rather than
+    /// correctness, and the interest radius was decorative.
+    /// </remarks>
+    internal static Vector3 PositionOf(NetworkObject netObj)
+        => netObj.Actor.GetComponent<Transform3D>() is { } transform
+            ? transform.Position
+            : new Vector3(netObj.Actor.Transform.Position, 0f);
+
+    private static Dictionary<int, Vector3> BuildClientPositionMap(
         List<NetworkObject> objects, NetworkManager nm)
     {
-        var map = new Dictionary<int, Vector2>();
+        var map = new Dictionary<int, Vector3>();
         foreach (var obj in objects)
         {
             if (obj.OwnerClientId >= 0)
-                map[obj.OwnerClientId] = obj.Actor.Transform.Position;
+                map[obj.OwnerClientId] = PositionOf(obj);
         }
         return map;
     }

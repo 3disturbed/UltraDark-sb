@@ -38,6 +38,15 @@ public class NetworkObject : Component
     /// </summary>
     public int OwnerClientId { get; internal set; } = -1;
 
+    /// <summary>
+    /// What the other machines look this object up by when they are told to spawn it. Falls back to
+    /// the actor's name, which is neither unique nor stable once an author renames something.
+    /// </summary>
+    public string SpawnKey { get; set; } = "";
+
+    /// <summary>The spawn key, or the actor's name when none was set.</summary>
+    public string SpawnKeyOrName => string.IsNullOrWhiteSpace(SpawnKey) ? Actor.Name : SpawnKey;
+
     // -------------------------------------------------------------------------
     // Dirty tracking — one entry per [Replicated] member on Actor + Components
     // -------------------------------------------------------------------------
