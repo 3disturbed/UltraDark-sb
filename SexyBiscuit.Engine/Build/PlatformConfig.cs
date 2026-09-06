@@ -21,6 +21,17 @@ public enum BuildPlatform
     Steam_Windows,
     Steam_Linux,
     Steam_macOS,
+
+    /// <summary>
+    /// A browser build: the HTML5 runtime under <c>html5/</c> plus the project's
+    /// own scenes, scripts and assets, served as static files.
+    /// </summary>
+    /// <remarks>
+    /// Added last on purpose. The editor's platform dropdown maps its selection
+    /// by ordinal, so inserting a value anywhere else would silently retarget
+    /// every project that had one selected.
+    /// </remarks>
+    Web,
 }
 
 public enum BuildConfiguration

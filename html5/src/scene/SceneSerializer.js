@@ -45,7 +45,11 @@ import { Vector2, Vector3, Quaternion } from '../math/index.js';
  * @returns {Scene}
  */
 export function deserialize(json, options = {}) {
-    const dto = typeof json === 'string' ? JSON.parse(json) : json;
+    // A file dropped onto the editor, or written by the C# export pipeline, can
+    // start with a UTF-8 byte order mark, which JSON.parse rejects.
+    const dto = typeof json === 'string'
+        ? JSON.parse(json.charCodeAt(0) === 0xFEFF ? json.slice(1) : json)
+        : json;
     const warn = options.onWarning ?? ((m) => console.warn(`[SceneSerializer] ${m}`));
 
     // Layers are created explicitly from the file, so a scene that names only

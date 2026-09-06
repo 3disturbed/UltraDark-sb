@@ -91,6 +91,18 @@ public class ExportPipeline
             Log("Step 8: Skipped (not a Steam platform).");
         }
 
+        // -- Step 9: Stage the HTML5 runtime (Web only) -----------------------
+        if (config.Platform == BuildPlatform.Web)
+        {
+            Log("Step 9: Staging the HTML5 runtime\u2026");
+            if (!RunStep("WebRuntime", () => StageWebRuntime(config, platformOutputDir)))
+                success = false;
+        }
+        else
+        {
+            Log("Step 9: Skipped (not a web platform).");
+        }
+
         sw.Stop();
 
         // Final verdict
@@ -265,6 +277,7 @@ public class ExportPipeline
             BuildPlatform.Steam_Windows                                  => "PLATFORM_WINDOWS",
             BuildPlatform.Steam_Linux                                    => "PLATFORM_LINUX",
             BuildPlatform.Steam_macOS                                    => "PLATFORM_MACOS",
+            BuildPlatform.Web                                            => "PLATFORM_WEB",
             _                                                            => "PLATFORM_UNKNOWN",
         });
 
@@ -273,6 +286,8 @@ public class ExportPipeline
             defines.Add("ARCH_X86");
         else if (config.Platform == BuildPlatform.macOS_ARM64)
             defines.Add("ARCH_ARM64");
+        else if (config.Platform == BuildPlatform.Web)
+            defines.Add("ARCH_WASM");
         else
             defines.Add("ARCH_X64");
 
@@ -306,6 +321,110 @@ public class ExportPipeline
         string path = Path.Combine(platformOutputDir, "PlatformDefines.json");
         File.WriteAllText(path, json, Encoding.UTF8);
         Log($"  Written: {path} ({defines.Count} defines: {string.Join(", ", defines)})");
+    }
+
+    // Step 9 — HTML5 runtime
+    /// <summary>
+    /// Copies the JavaScript runtime beside the exported project and writes the
+    /// page that boots it.
+    /// </summary>
+    /// <remarks>
+    /// A web export stages rather than compiles: the engine is already
+    /// JavaScript, and the project's scenes, scripts and assets are already in
+    /// the formats it reads. What the pipeline has to do is put the two together
+    /// and point a page at them.
+    ///
+    /// Behaviour written in C# does not come across. Those component types load
+    /// as placeholders that preserve their data, so the scene stays intact and
+    /// the gap is visible rather than silent — see <c>html5/README.md</c>.
+    /// </remarks>
+    private void StageWebRuntime(PlatformConfig config, string platformOutputDir)
+    {
+        string? engineRoot = Code.EngineRepoLocator.Find()?.Root;
+        string source = engineRoot != null ? Path.Combine(engineRoot, "html5") : "html5";
+
+        if (!Directory.Exists(source))
+        {
+            throw new DirectoryNotFoundException(
+                $"Could not find the HTML5 runtime at '{source}'. Set " +
+                $"{Code.EngineRepoLocator.EnvironmentVariable} to the engine checkout, or run the " +
+                "export from the repository root.");
+        }
+
+        // Only the runtime is needed to play a game; the editor, the tests and
+        // the examples are not part of a shipped build.
+        foreach (var folder in new[] { "src", "runtime" })
+        {
+            string from = Path.Combine(source, folder);
+            if (!Directory.Exists(from)) continue;
+
+            CopyDirectory(from, Path.Combine(platformOutputDir, "engine", folder));
+            Log($"  Staged: engine/{folder}");
+        }
+
+        WriteWebIndex(config, platformOutputDir);
+    }
+
+    /// <summary>Writes the page that boots the exported project, and a note on serving it.</summary>
+    private void WriteWebIndex(PlatformConfig config, string platformOutputDir)
+    {
+        // The project's own files sit at the root of the export, so the runtime's
+        // asset root is "./" and StartScene resolves exactly as it does natively.
+        string title = System.Net.WebUtility.HtmlEncode(config.AppName);
+        string scene = System.Net.WebUtility.HtmlEncode(config.StartScene ?? string.Empty);
+        string stats = config.Configuration == BuildConfiguration.Release ? "false" : "true";
+
+        var html = new StringBuilder();
+        html.AppendLine("<!doctype html>");
+        html.AppendLine("<html lang=\"en\">");
+        html.AppendLine("<head>");
+        html.AppendLine("<meta charset=\"utf-8\">");
+        // viewport-fit=cover lets the game reach under a notch; the runtime's
+        // stylesheet keeps the controls out from under it with safe-area insets.
+        html.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, "
+                      + "viewport-fit=cover, user-scalable=no\">");
+        html.AppendLine("<meta name=\"theme-color\" content=\"#12141a\">");
+        html.AppendLine("<meta name=\"mobile-web-app-capable\" content=\"yes\">");
+        html.AppendLine("<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">");
+        html.AppendLine("<meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\">");
+        html.AppendLine($"<title>{title}</title>");
+        html.AppendLine("<link rel=\"stylesheet\" href=\"engine/runtime/runtime.css\">");
+        html.AppendLine("</head>");
+        html.AppendLine("<body>");
+        html.AppendLine($"<div id=\"game\" data-project=\"./\" data-scene=\"{scene}\" data-stats=\"{stats}\"></div>");
+        html.AppendLine("<script type=\"module\">");
+        html.AppendLine("import { boot } from './engine/runtime/Runtime.js';");
+        html.AppendLine("await boot();");
+        html.AppendLine("</script>");
+        html.AppendLine("</body>");
+        html.AppendLine("</html>");
+
+        // No byte order mark: one before <!doctype> can push a browser into
+        // quirks mode, and the runtime's own loader has to strip it back off
+        // every JSON file this pipeline writes as it is.
+        var utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+        string indexPath = Path.Combine(platformOutputDir, "index.html");
+        File.WriteAllText(indexPath, html.ToString(), utf8NoBom);
+        Log($"  Written: {indexPath}");
+
+        // Browsers refuse to load ES modules from a file:// path, so someone who
+        // opens the export by double-clicking gets a blank page and no reason.
+        var note = new StringBuilder();
+        note.AppendLine($"{config.AppName} {config.Version} — web build");
+        note.AppendLine();
+        note.AppendLine("Serve this folder over HTTP and open index.html.");
+        note.AppendLine("Opening it directly from disk will not work: browsers refuse to load");
+        note.AppendLine("ES modules from a file:// path.");
+        note.AppendLine();
+        note.AppendLine("Any static host will do. To try it locally:");
+        note.AppendLine("    npx serve .");
+        note.AppendLine("or, from an engine checkout:");
+        note.AppendLine("    node html5/tools/serve.js 8080 .");
+
+        string notePath = Path.Combine(platformOutputDir, "HOW-TO-RUN.txt");
+        File.WriteAllText(notePath, note.ToString(), utf8NoBom);
+        Log($"  Written: {notePath}");
     }
 
     // Step 8 — Steam app_build.vdf
@@ -432,6 +551,7 @@ public class ExportPipeline
                 "steam-windows" or "steam_windows" => BuildPlatform.Steam_Windows,
                 "steam-linux"   or "steam_linux"   => BuildPlatform.Steam_Linux,
                 "steam-macos"   or "steam_macos"   => BuildPlatform.Steam_macOS,
+                "web"           or "html5"         => BuildPlatform.Web,
                 _ => throw new ArgumentException($"Unknown platform: '{platform}'")
             };
 

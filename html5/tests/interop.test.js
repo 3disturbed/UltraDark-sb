@@ -281,3 +281,14 @@ test('every real ProjectSettings.json in the repo parses', () => {
         assert.ok(config.windowWidth > 0);
     }
 });
+
+test('a byte order mark does not stop a scene loading', () => {
+    // .NET's Encoding.UTF8 emits one by default, so every JSON file the C#
+    // export pipeline writes starts with U+FEFF — which JSON.parse rejects.
+    const file = path.join(templatesDir, '2D Platformer', 'Scenes', 'Level1.scene');
+    const withBom = `﻿${fs.readFileSync(file, 'utf8')}`;
+
+    const scene = deserialize(withBom, { onWarning: () => {} });
+    assert.equal(scene.name, 'Level1');
+    assert.ok(scene.findByName('Player'));
+});

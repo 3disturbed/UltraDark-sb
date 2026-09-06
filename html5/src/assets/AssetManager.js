@@ -80,7 +80,7 @@ export class AssetManager {
     async loadText(path) {
         return this._load(path, 'text', async (url) => {
             const response = await this._request(url);
-            return response.text();
+            return stripBom(await response.text());
         });
     }
 
@@ -88,7 +88,10 @@ export class AssetManager {
     async loadJson(path) {
         return this._load(path, 'json', async (url) => {
             const response = await this._request(url);
-            return response.json();
+            // Parsed from text rather than through response.json(), so a byte
+            // order mark can be stripped first — the C# export pipeline writes
+            // one, and JSON.parse rejects it outright.
+            return JSON.parse(stripBom(await response.text()));
         });
     }
 
@@ -219,6 +222,18 @@ export class AssetManager {
             return { kind, path: rest.join(':'), refCount: this._refCounts.get(key) ?? 0, value };
         });
     }
+}
+
+/**
+ * Removes a leading UTF-8 byte order mark.
+ *
+ * .NET's `Encoding.UTF8` emits one by default, so every JSON and script file the
+ * C# export pipeline writes starts with U+FEFF. `JSON.parse` treats it as a
+ * syntax error and `new Function` as an illegal character, which turns a
+ * perfectly good export into a blank page.
+ */
+function stripBom(text) {
+    return typeof text === 'string' && text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
 }
 
 function loadImage(url) {
