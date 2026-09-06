@@ -55,10 +55,32 @@ public sealed class ViewportPanel
     // Draw
     // -------------------------------------------------------------------------
 
-    public void Draw(RenderTarget2D? viewportTarget, ImGuiRenderer imGuiRenderer)
+    /// <param name="viewportTarget">The render target the engine drew the scene into.</param>
+    /// <param name="imGuiRenderer">Binds the target as an ImGui texture.</param>
+    /// <param name="fullscreen">
+    /// Draw as a bare window over the whole work area instead of the docked "Viewport" panel.
+    /// Used while playing; a different window name keeps the docked panel's layout intact.
+    /// </param>
+    public void Draw(RenderTarget2D? viewportTarget, ImGuiRenderer imGuiRenderer, bool fullscreen = false)
     {
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
-        if (!ImGui.Begin("Viewport", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
+
+        bool open;
+        if (fullscreen)
+        {
+            var main = ImGui.GetMainViewport();
+            ImGui.SetNextWindowPos(main.WorkPos);
+            ImGui.SetNextWindowSize(main.WorkSize);
+            open = ImGui.Begin("Play###ViewportFullscreen",
+                ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize
+                | ImGuiWindowFlags.NoDocking | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoScrollWithMouse);
+        }
+        else
+        {
+            open = ImGui.Begin("Viewport", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+        }
+
+        if (!open)
         {
             ImGui.PopStyleVar();
             ImGui.End();
@@ -96,6 +118,13 @@ public sealed class ViewportPanel
             DrawPlayModeBanner();
         if (EditorState.AssistantBusy)
             DrawAssistantBanner(EditorState.IsPlaying ? 28f : 0f);
+
+        // Fullscreen play is the game and nothing else: no gizmos, no editor navigation, no picking.
+        if (fullscreen)
+        {
+            ImGui.End();
+            return;
+        }
 
         // Toolbar: gizmo mode buttons
         DrawGizmoToolbar();
@@ -146,7 +175,10 @@ public sealed class ViewportPanel
         var drawList = ImGui.GetWindowDrawList();
         var center   = (_vpMin + _vpMax) / 2f;
 
-        string text = EditorState.IsPlayPaused ? "PAUSED" : "PLAY MODE";
+        string mod  = EditorApp.ModifierName;
+        string text = EditorState.IsPlayPaused
+            ? $"PAUSED   (F6 resume  |  F7 or {mod}+S stop)"
+            : $"PLAY MODE   (F7 or {mod}+S stop  |  {mod}+P {(EditorState.ViewportFullscreen ? "exit fullscreen" : "fullscreen")})";
         var textSize = ImGui.CalcTextSize(text);
 
         var rectMin = new Vector2(_vpMin.X, _vpMin.Y);

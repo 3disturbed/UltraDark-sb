@@ -324,15 +324,23 @@ public sealed class EditorTools
         return McpToolResult.Json(CameraPose(camera));
     }
 
-    [McpTool("set_viewport", "Switch the viewport between 3D and 2D rendering, or between the editor camera and the scene's MainCamera3D.",
+    [McpTool("set_viewport", "Switch the viewport between 3D and 2D rendering, between the editor camera and the scene's MainCamera3D, " +
+                             "or (while playing) between the docked viewport and the game over the whole window. Play always starts on the game camera.",
              Label = "Change the viewport mode")]
     public McpToolResult SetViewport(
         [McpParam("Render the 3D pipeline (true) or the 2D sprite pass (false)")] bool? view3d = null,
-        [McpParam("Look through the scene's MainCamera3D instead of the editor camera")] bool? useGameCamera = null)
+        [McpParam("Look through the scene's MainCamera3D instead of the editor camera")] bool? useGameCamera = null,
+        [McpParam("Show the game over the whole window; only while playing")] bool? fullscreen = null)
     {
-        if (view3d.HasValue)        EditorState.Viewport3D    = view3d.Value;
-        if (useGameCamera.HasValue) EditorState.UseGameCamera = useGameCamera.Value;
-        return McpToolResult.Json(new JsonObject { ["view3d"] = EditorState.Viewport3D, ["useGameCamera"] = EditorState.UseGameCamera });
+        if (view3d.HasValue)        EditorState.Viewport3D         = view3d.Value;
+        if (useGameCamera.HasValue) EditorState.UseGameCamera      = useGameCamera.Value;
+        if (fullscreen.HasValue)    EditorState.ViewportFullscreen = fullscreen.Value && EditorState.IsPlaying;
+        return McpToolResult.Json(new JsonObject
+        {
+            ["view3d"]        = EditorState.Viewport3D,
+            ["useGameCamera"] = EditorState.UseGameCamera,
+            ["fullscreen"]    = EditorState.ViewportFullscreen,
+        });
     }
 
     private static JsonObject CameraPose(Transform3D camera) => new()

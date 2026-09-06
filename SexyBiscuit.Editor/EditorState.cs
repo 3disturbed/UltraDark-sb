@@ -145,6 +145,9 @@ public static class EditorState
     /// <summary>Shows the renderer statistics overlay.</summary>
     public static bool ShowRenderStats { get; set; }
 
+    /// <summary>The play viewport over the whole window (Ctrl/Cmd+P while playing). Cleared when play stops.</summary>
+    public static bool ViewportFullscreen { get; set; }
+
     // -------------------------------------------------------------------------
     // Project
     // -------------------------------------------------------------------------

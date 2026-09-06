@@ -80,6 +80,12 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     // Frames still to simulate while paused (step_frame).
     private int _pendingSteps;
 
+    // Play looks through the game camera; Stop puts the toolbar's choice back.
+    private bool _useGameCameraBeforePlay;
+
+    /// <summary>The modifier key name for hotkey labels: Cmd on macOS, Ctrl elsewhere.</summary>
+    public static string ModifierName => OperatingSystem.IsMacOS() ? "Cmd" : "Ctrl";
+
     private string? _lastTitle;
 
     // The editor's own 3D camera. Lives outside the scene so it is not saved with it
@@ -255,6 +261,21 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             if (KeyJustPressed(keys, Keys.Y)) RedoSceneEdit();
         }
 
+        // Ctrl/Cmd+S stops play (the game may own Escape and the function keys) and saves
+        // otherwise; Ctrl/Cmd+P fills the window with the game while playing. Stop must work
+        // even while a text field has focus, so only Save checks WantTextInput.
+        if (control)
+        {
+            if (KeyJustPressed(keys, Keys.S))
+            {
+                if (EditorState.IsPlaying) ExitPlayMode();
+                else if (!ImGui.GetIO().WantTextInput) SaveCurrentScene();
+            }
+
+            if (KeyJustPressed(keys, Keys.P) && EditorState.IsPlaying)
+                EditorState.ViewportFullscreen = !EditorState.ViewportFullscreen;
+        }
+
         _prevKeys = keys;
         UpdateWindowTitle();
 
@@ -401,8 +422,14 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
                 EnterPlayMode();
             if (ImGui.MenuItem("Pause", "F6", EditorState.IsPlayPaused))
                 TogglePause();
-            if (ImGui.MenuItem("Stop",  "F7", !EditorState.IsPlaying))
+            if (ImGui.MenuItem("Stop",  $"F7 / {ModifierName}+S", !EditorState.IsPlaying))
                 ExitPlayMode();
+
+            ImGui.Separator();
+
+            bool fullscreen = EditorState.ViewportFullscreen;
+            if (ImGui.MenuItem("Fullscreen Viewport", $"{ModifierName}+P", fullscreen, EditorState.IsPlaying))
+                EditorState.ViewportFullscreen = !fullscreen;
             ImGui.EndMenu();
         }
 
@@ -954,6 +981,13 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         ImGui.EndDisabled();
         Tooltip("Pause (F6)");
 
+        if (playing)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("Fullscreen")) EditorState.ViewportFullscreen = true;
+            Tooltip($"Play viewport over the whole window ({ModifierName}+P toggles; {ModifierName}+S stops)");
+        }
+
         ImGui.SameLine();
         ImGui.TextDisabled("|");
         ImGui.SameLine();
@@ -1081,6 +1115,17 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             return;
         }
 
+        if (EditorState.IsPlaying && EditorState.ViewportFullscreen && _engine?.SceneManager.ActiveScene != null)
+        {
+            // Fullscreen play: only the game, over the whole work area. The other panels are not
+            // submitted this frame; ImGui keeps their dock nodes, so leaving fullscreen restores
+            // the layout exactly.
+            _viewport.Draw(_viewportTarget, _imGui, fullscreen: true);
+            _assistantPanel?.DrawModals();
+            FileDialog.Draw();
+            return;
+        }
+
         if (_engine?.SceneManager.ActiveScene != null)
         {
             _placeActors.Draw(_engine.SceneManager.ActiveScene);
@@ -1179,9 +1224,15 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             }
         }
 
+        // Play looks through the game's camera, whatever the toolbar said: the possessed
+        // player's camera is what the game shows. Flying the editor camera around a running
+        // game is a deliberate choice made from the toolbar afterwards.
+        _useGameCameraBeforePlay  = EditorState.UseGameCamera;
+        EditorState.UseGameCamera = true;
+
         EditorState.IsPlaying    = true;
         EditorState.IsPlayPaused = false;
-        ConsoleLog.Add("Play mode started (F7 to stop).", LogLevel.Info);
+        ConsoleLog.Add($"Play mode started (F7 or {ModifierName}+S to stop, {ModifierName}+P for fullscreen).", LogLevel.Info);
     }
 
     public void TogglePause()
@@ -1210,8 +1261,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         if (!EditorState.IsPlaying) return;
         _pendingSteps = 0;
 
-        EditorState.IsPlaying    = false;
-        EditorState.IsPlayPaused = false;
+        EditorState.IsPlaying          = false;
+        EditorState.IsPlayPaused       = false;
+        EditorState.ViewportFullscreen = false;
+        EditorState.UseGameCamera      = _useGameCameraBeforePlay;
 
         // Play mode is free to change global state, and none of it belongs to the scene,
         // so restoring the snapshot alone would leave the editor in whatever state the
