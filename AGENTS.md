@@ -227,6 +227,89 @@ Four lines: the version and commit, the URLs, the test totals, and the session's
 (`node html5/tools/usage.js --latest`).
 
 ---
+---
+
+## Phase 3b — closed testing on DarksGames (the HTML5 build)
+
+The publish API above serves **downloadable native builds**. A web build goes on the site as a
+**Game Card** instead, and while a prototype is still being judged that card is for playtesters
+only. This is the recipe, in the order it has to happen. It runs as root **on the server**, which
+is production — there is no staging box.
+
+### The gate is two layers, and only one of them is a lock
+
+`playtest: true` on the catalogue entry hides the tile, the detail page and the sitemap entry from
+everyone without the flag. **That is a listing, not a lock** — anyone handed the URL can still open
+the game. The lock is the game's own server checking the `playtester` claim on a hub access token.
+Build both or you have built neither.
+
+The claim is minted by dg-accounts only when the flag is set, so its absence is a plain "no" and
+there is nothing to look up. Revoking takes effect within one access-token lifetime.
+
+### The trap that makes the lock useless
+
+`add-game` writes an nginx vhost whose `try_files $uri $uri/index.html @node` serves **anything
+that exists in the game's `public/` straight off disk**, never touching Node. Put the export there
+and the gate is decoration.
+
+So the build does not live in `public/`. Layout:
+
+```
+/srv/darksgames/games/<slug>/
+  public/index.html     the gate: account SDK -> token -> POST /api/session
+  game/                 the export from `node html5/tools/export.js <project> --pwa`
+  server/auth/dgVerify.js   copied from snerf; add `playtester: claims.playtester === true`
+  server.js             serves /play/* from game/ only for a request carrying the session cookie
+  .env                  your session secret; add-game merges PORT= into it
+```
+
+`/play/…` exists nowhere on disk under `public/`, so every request for it falls through to Node,
+which is the whole point.
+
+### The order
+
+```bash
+# 1. the build
+node html5/tools/export.js Games/<Name> --pwa
+
+# 2. the service (copy an existing gated game; dgVerify.js is zero-dependency)
+mkdir -p /srv/darksgames/games/<slug>/{public,game,server/auth}
+cp -r Games/<Name>/dist/Web/. /srv/darksgames/games/<slug>/game/
+printf 'SESSION_SECRET=%s\n' "$(openssl rand -hex 32)" > /srv/darksgames/games/<slug>/.env
+chmod 600 /srv/darksgames/games/<slug>/.env
+chown -R darks:darks /srv/darksgames/games/<slug>
+
+# 3. the audience — a token's `aud` must be 'hub' or an ENABLED app slug, or the
+#    hub refuses to mint one. Add the row to dg-accounts' apps table.
+
+# 4. the subdomain: *.darksgames.app is a DNS wildcard, so this just works
+add-game <slug>.darksgames.app <slug>
+
+# 5. the card: add the entry to site/games.js with `playtest: true`, bump
+#    VERSION in site/sw.js and the ?v= tags in site/index.html AND site/link.html
+#    together, prerender, then rsync site/ to /srv/darksgames/site/
+node tools/prerender.mjs
+```
+
+Grant a tester the flag at **Admin -> Users -> Grant playtester**.
+
+### Things that will bite
+
+- **Re-read the live `sw.js` before bumping.** Another session may have bumped it since you last
+  looked; `tools/prerender.mjs` fails on drift between `VERSION` and the `?v=` tags, and
+  `link.html` is not covered by that check — sed it by hand.
+- **`--delete` on the site rsync.** The live web root can hold files that are not in the repo.
+  Dry-run first and read what it wants to remove.
+- **A playtest route still needs a prerendered file** — a tester who reloads the detail page meets
+  nginx before the SPA, and no file is a real 404. It must not carry the copy, though: the
+  prerenderer writes a blank `noindex` shell for a `playtest: true` entry and lets `app.js` render
+  the real view once it has checked the claim.
+- **certbot serialises.** "Another instance of Certbot is already running" means a renewal held the
+  lock; everything else in `add-game` finished, so just re-run
+  `certbot --nginx --redirect -d <domain>`.
+- **A service worker outlives the session.** The export precaches the whole build, so a tester
+  whose cookie lapses can still play offline from cache. Fine for closed testing; not a reason to
+  treat the cookie as a licence check.
 
 ## Working inside the editor
 
