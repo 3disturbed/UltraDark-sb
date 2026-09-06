@@ -21,7 +21,7 @@ Three phases, three different machines' worth of assumptions:
 | Phase | Where it runs | What it needs |
 |---|---|---|
 | 1. Prototype | remote, headless | node 22+, nothing else. No .NET, no display, no editor |
-| 2. Native build | any desktop OS, or CI | a .NET SDK that can target net8.0, and this engine checkout |
+| 2. Native build | any desktop OS, or CI | a .NET SDK targeting net8.0, plus the `android` workload, a JDK and an Android SDK for the APK |
 | 3. Publish | anywhere with the token | `DG_BUILD_TOKEN` |
 
 ---
@@ -39,6 +39,51 @@ and even then the JavaScript stays the source for the web build.
 
 If the validator says a script is outside the contract, fix the script. Do not widen the bridge on
 one side only; both bridges and both test suites move together or not at all.
+
+---
+
+## Working on this box
+
+This machine is the one the fleet runs on, and **it is production**. Everything below is already
+installed and configured — do not set any of it up again, and do not `apt-get` or
+`dotnet workload install` your way around a path you have not checked.
+
+| What | Where |
+|---|---|
+| .NET SDK | `/usr/lib/dotnet` — export `DOTNET_ROOT=/usr/lib/dotnet` and add it to `PATH` |
+| JDK (Android) | OpenJDK 17; `JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))` |
+| Android SDK | `/opt/android-sdk` — export `ANDROID_HOME=/opt/android-sdk` |
+| `android` workload | installed for .NET 10 |
+| Engine checkout | this repository; `SEXYBISCUIT_REPO` if a build cannot find it |
+
+Two environment traps that cost real time:
+
+- **`/tmp` is a 3.8 GB tmpfs**, i.e. RAM, and it is not empty. A `dotnet workload install` or a
+  large restore through it dies with "No space left on device" while `df /` cheerfully reports
+  50 GB free. Export `TMPDIR=/var/tmp/dotnet-workload` for anything that unpacks a lot. The box
+  has been OOM-killed before; filling `/tmp` is one of the ways to do it again.
+- **An Android build wants all three variables at once.** Missing one gives a different error each
+  time — `XA5300` for the SDK, a JDK complaint, or a workload message — so set the three together
+  and `AndroidPublisher` will name whichever is missing if you forget.
+
+```bash
+export DOTNET_ROOT=/usr/lib/dotnet PATH=$PATH:/usr/lib/dotnet
+export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+export ANDROID_HOME=/opt/android-sdk
+export TMPDIR=/var/tmp/dotnet-workload
+```
+
+**Build tokens live on this box, one per app slug.** `~/.dg-build-token` is UltraDark's and will
+403 for anything else; each game gets its own, e.g. `~/.dg-build-token-jake01`. Mint one at
+Admin → Builds.
+
+**Never `pkill -f "node server.js"`.** It matches every game server on the box — about two dozen —
+and has caused a full fleet outage. Kill by PID.
+
+**Deploying is local.** There is no staging box and no deploy-over-SSH: the site is prerendered
+and rsynced from the checkout into `/srv/darksgames/site`, and a game service is
+`systemctl restart darksgame@<slug>`. Read `--delete` dry-runs before trusting them; the live web
+root holds files that are not in the repo.
 
 ---
 
@@ -221,40 +266,45 @@ dotnet run --no-build --project SexyBiscuit.Build -c Release -- \
 `--all` is web, win-x64, osx-arm64 and linux-x64. `--platform <name>` picks one; it accepts RIDs
 and `BuildSettings` platform names.
 
-### Android: every publish should carry an APK, and none can yet
+### Android: every publish carries an APK
 
-**The intent is that a published game always has an Android build on `/downloads`** — most people
-who will try a prototype have a phone in their hand and no desktop open.
-
-**It is not currently possible, and the failure used to be silent.** `--platform android` staged
-scripts and scenes, skipped the publish step with "not a desktop platform", packaged a **17 KB zip
-containing no application at all** — no APK, no AAB, no native libraries — and reported `ok` in
-0.0 seconds. Published, that becomes an Android download on the site that cannot be installed,
-which is worse than having no Android build. It now fails instead:
+`--all` builds one, and it is the build most testers will actually take — most people who will
+try a prototype have a phone in their hand and no desktop open.
 
 ```
-android    FAILED     0.0s
-  Android: [Publish] Android cannot be built yet: there is no publish path for it, so the
-  archive would hold no application. An APK needs the .NET `android` workload and an Android
-  SDK installed; until then do not ship this target.
+web        ok         0.1s  jake01-1.0.0-web.zip (188 KB)
+win-x64    ok         8.3s  jake01-1.0.0-win-x64.zip (33.7 MB)
+osx-arm64  ok         6.2s  jake01-1.0.0-osx-arm64.tar.gz (31.3 MB)
+linux-x64  ok         6.1s  jake01-1.0.0-linux-x64.tar.gz (34.0 MB)
+android    ok        68.1s  jake01-1.0.0-android.apk (35.6 MB)
 ```
 
-To make it possible, and in this order:
+The APK is the artifact, not a zip around one: a phone can install what it downloads. It is
+signed with the SDK's debug key, which is correct for a build installed by hand — name a
+keystore in `BuildSettings.json` only when signing for Play.
 
-1. `dotnet workload install android`, plus an Android SDK and a JDK on the build machine.
-2. `RuntimeIdentifiers.For` returns null for `BuildPlatform.Android` — mobile needs its own path,
-   not a RID: a `net8.0-android` head project that references the game, then `dotnet publish` to
-   an `.apk` (or `.aab`), signed.
-3. Drop the guard in `ExportPipeline` once that path exists, and add Android to `--all`.
+**How it works, because it is not a RID.** There is no `dotnet publish -r android`, so Android
+does not go through `DesktopPublisher`. `AndroidPublisher` writes a head project under
+`.sexybiscuit/android/` — an Activity, a manifest, launcher icons, and the staged game as
+`AndroidAsset` — and publishes that. The engine grows a second target framework only when asked
+(`-p:SexyBiscuitAndroid=true`), so a machine with no `android` workload still builds the engine,
+runs the tests and opens the editor exactly as before.
 
-Until step 3 lands, a phone playtest goes through the **PWA web export**, which installs to a home
-screen and runs offline — `node html5/tools/export.js Games/<Name> --pwa`. That is the Android
-story today, and it is a good one; it is just not an APK. Each desktop target is published self-contained and
-single-file, with its native libraries beside the binary, then archived: `.zip` for Windows and
-web, `.tar.gz` for macOS and Linux so the executable bit survives.
+**The generated Activity unpacks the game on first run.** Assets inside an APK are not files, and
+the engine reads its project with ordinary file IO. Rather than thread a stream provider through
+all of it for one platform, the Activity copies the packaged project into app-private storage
+once per version and points `ProjectPaths.Root` there.
 
-Useful flags: `--config debug|development|release`, `--output <dir>`, `--version <v>`,
-`--no-publish` (stage only, no `dotnet publish`), `--no-zip`, `--report <path>`, `--quiet`.
+What is not in the Android build, and why: **AssimpNet** (native libassimp, desktop-only, so 3D
+model import says so and returns), **Steamworks.NET** (desktop SDK; every `Steam/*.cs` was already
+behind `#if STEAMWORKS`, so not defining it removes the integration with no code change),
+**NAudio** (Windows-first; MP3 falls back with a message, and `.ogg`/`.wav` — what the templates
+ship — decode as usual), and the C# **game-assembly loader** (`AssemblyDependencyResolver` is
+unsupported on Android; an Android game's logic is JavaScript). Android uses the **same MonoGame
+version** as desktop, 3.8.1.303, so there is no API drift between the two builds.
+
+**iOS is still not buildable** and still fails loudly rather than shipping an archive with no
+application in it.
 
 **Read the summary, not the log.** The CLI prints one line per target and writes
 `build-report.json` beside the output. Open a log only for a target that failed; the error lines

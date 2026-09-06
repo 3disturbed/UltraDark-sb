@@ -201,6 +201,13 @@ public sealed class MeshCollider3D : Collider3D
     /// </summary>
     public bool SetMeshFromModel(string modelPath)
     {
+#if ANDROID
+        // Android has no AssimpNet:
+        // the package ships native libassimp for desktop only. Saying so at the call
+        // site beats a native load failing deep inside a frame.
+        System.Console.Error.WriteLine($"[Collider3D] 3D model import is not available on Android: '{modelPath}'.");
+        return false;
+#else
         try
         {
             using var ctx = new Assimp.AssimpContext();
@@ -225,6 +232,7 @@ public sealed class MeshCollider3D : Collider3D
             Console.Error.WriteLine($"[MeshCollider3D] Could not load '{modelPath}': {ex.Message}");
             return false;
         }
+#endif
     }
 
     // A static mesh needs no Rigidbody3D, so this collider opts out of the base

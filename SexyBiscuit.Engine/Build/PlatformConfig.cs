@@ -281,7 +281,9 @@ public class PlatformConfig
             SteamBranch  = "default",
 
             // Android defaults
-            AndroidKeystorePath     = platform == BuildPlatform.Android ? "keystore.jks" : "",
+            // Empty means "sign with the SDK's debug key", which is right for a playtest
+            // build installed by hand. Name a keystore only to sign for Play.
+            AndroidKeystorePath     = "",
             AndroidKeystorePassword = "",
 
             // iOS defaults

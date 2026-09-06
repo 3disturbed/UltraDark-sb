@@ -39,10 +39,16 @@ public static class RuntimeIdentifiers
         };
     }
 
-    /// <summary>The targets <c>--all</c> stands for: the web build and the three desktop RIDs a team plays on.</summary>
+    /// <summary>The targets <c>--all</c> stands for: the web build, the three desktop RIDs, and an APK.</summary>
+    /// <remarks>
+    /// Android is in here deliberately: most people who will try a prototype have a phone in
+    /// their hand and no desktop open, so an APK on the downloads page is not an extra, it is
+    /// the build most testers will actually take.
+    /// </remarks>
     public static readonly BuildPlatform[] DefaultTargets =
     {
-        BuildPlatform.Web, BuildPlatform.Windows_x64, BuildPlatform.macOS_ARM64, BuildPlatform.Linux_x64,
+        BuildPlatform.Web, BuildPlatform.Windows_x64, BuildPlatform.macOS_ARM64,
+        BuildPlatform.Linux_x64, BuildPlatform.Android,
     };
 
     /// <summary>True for a platform whose published binary is a Windows executable.</summary>

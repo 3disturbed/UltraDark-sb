@@ -58,7 +58,7 @@ public sealed record ExportCliOptions
           --project <dir>       the game folder (default: the current directory)
           --platform <name>     web | win-x64 | win-x86 | linux-x64 | osx-x64 | osx-arm64 | android | ios
                                 | steam-windows | steam-linux | steam-macos  (repeatable, or comma-separated)
-          --all                 web, win-x64, osx-arm64 and linux-x64
+          --all                 web, win-x64, osx-arm64, linux-x64 and android
           --config <c>          debug | development | release (default: the settings file's, else release)
           --output <dir>        where builds go, relative to the project (default: dist)
           --file <path>         a BuildSettings.json to use instead of the project's

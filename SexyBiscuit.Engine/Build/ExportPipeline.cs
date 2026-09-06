@@ -237,17 +237,51 @@ public class ExportPipeline
             }
             if (published?.Success != true) success = false;
         }
+        else if (options.Publish && config.Platform == BuildPlatform.Android)
+        {
+            // Android is not a RID, so it does not go through DesktopPublisher: an APK is an
+            // application project with an Activity and its content as Android assets. Until
+            // this existed the target staged some files, skipped the publish and reported
+            // "ok" with a 17 KB zip holding no application at all.
+            Log("Step 10: Building the APK…");
+            var publisher = new AndroidPublisher();
+            var request = new PublishRequest(root, config.Platform, config.Configuration, platformOutputDir, config.AppName)
+            {
+                Version = version,
+            };
+
+            PublishResult? built = null;
+            try
+            {
+                built = await publisher.PublishAsync(request, new Progress<string>(line => Log("  " + line)), cancellation).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _errors.Add($"[Publish] {ex.Message}");
+                Log($"ERROR: [Publish] {ex.Message}");
+            }
+
+            if (built != null)
+            {
+                foreach (var error in built.Errors)
+                {
+                    _errors.Add($"[Publish] {error}");
+                    Log($"ERROR: [Publish] {error}");
+                }
+                if (built.Success)
+                {
+                    executable = built.ExecutablePath;
+                    Log($"  Built: {executable} in {built.Duration.TotalSeconds:F1}s");
+                }
+            }
+            if (built?.Success != true) success = false;
+        }
         else if (rid == null && IsMobile(config.Platform))
         {
-            // Android and iOS have no publish path yet, and skipping quietly is
-            // the dangerous version of that: the run reported "ok" in 0.0s and
-            // packaged a 17 KB zip of loose scripts and scenes — no APK, no
-            // native libraries, nothing that runs. Published to DarksGames that
-            // becomes an Android download that cannot be installed, which is
-            // worse than having no Android build at all.
+            // iOS has no publish path here, and skipping quietly is the dangerous version of
+            // that: the run would report "ok" and package an archive holding no application.
             _errors.Add($"[Publish] {config.Platform} cannot be built yet: there is no publish path "
-                + "for it, so the archive would hold no application. An APK needs the .NET `android` "
-                + "workload and an Android SDK installed; until then do not ship this target.");
+                + "for it, so the archive would hold no application.");
             Log($"Step 10: FAILED ({config.Platform} has no publish path).");
             success = false;
         }
@@ -261,7 +295,7 @@ public class ExportPipeline
         if (options.Package && success && !_errors.Any())
         {
             Log("Step 11: Packaging…");
-            RunStep("Package", () => archive = Package(config, platformOutputDir, version, rid));
+            RunStep("Package", () => archive = Package(config, platformOutputDir, version, rid, executable));
         }
         else
         {
@@ -406,10 +440,17 @@ public class ExportPipeline
             failures.Add($"Project root '{config.EffectiveProjectRoot}' does not exist.");
 
         // Platform-specific checks
-        if (config.Platform == BuildPlatform.Android)
+        if (config.Platform == BuildPlatform.Android && !string.IsNullOrWhiteSpace(config.AndroidKeystorePath))
         {
-            if (string.IsNullOrWhiteSpace(config.AndroidKeystorePath))
-                failures.Add("AndroidKeystorePath is required for Android builds.");
+            // A keystore is only needed to sign with YOUR key, for Play. Without one the
+            // Android SDK signs with its debug key, which installs fine by hand and is what a
+            // playtest build wants — so demanding a keystore here just made every Android
+            // build fail before it started.
+            string keystore = Path.IsPathRooted(config.AndroidKeystorePath)
+                ? config.AndroidKeystorePath
+                : Path.Combine(config.EffectiveProjectRoot, config.AndroidKeystorePath);
+            if (!File.Exists(keystore))
+                failures.Add($"AndroidKeystorePath '{config.AndroidKeystorePath}' does not exist.");
         }
 
         if (config.Platform == BuildPlatform.iOS)
@@ -817,10 +858,23 @@ public class ExportPipeline
     /// browser downloads and Explorer opens), a tar.gz for Linux and macOS so the binary keeps
     /// its executable bit.
     /// </summary>
-    private string Package(PlatformConfig config, string platformOutputDir, string version, string? rid)
+    private string Package(PlatformConfig config, string platformOutputDir, string version, string? rid, string? built)
     {
         string outRoot = Path.GetDirectoryName(platformOutputDir)!;
         string stem    = $"{Slugify(config.AppName)}-{version}-{rid ?? config.Platform.ToString().ToLowerInvariant()}";
+
+        // An APK is already the shippable, installable artifact — and the one thing a phone
+        // can open from a download. Zipping it would give a tester a file their phone cannot
+        // install, so it is carried out of the head project's output as-is.
+        if (config.Platform == BuildPlatform.Android && built != null && File.Exists(built))
+        {
+            string apk = Path.Combine(outRoot, stem + ".apk");
+            if (File.Exists(apk)) File.Delete(apk);
+            File.Copy(built, apk);
+            Log($"  Packaged: {apk} ({BuildReport.FormatBytes(new FileInfo(apk).Length)})");
+            return apk;
+        }
+
         bool useZip    = rid == null || RuntimeIdentifiers.IsWindows(config.Platform);
         string archive = Path.Combine(outRoot, stem + (useZip ? ".zip" : ".tar.gz"));
 

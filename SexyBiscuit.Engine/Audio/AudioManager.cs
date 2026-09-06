@@ -1,5 +1,7 @@
 using Microsoft.Xna.Framework.Audio;
+#if !ANDROID
 using NAudio.Wave;
+#endif
 using NVorbis;
 
 namespace SexyBiscuit.Engine.Audio;
@@ -500,6 +502,13 @@ public class AudioManager : IDisposable
 
     private static SoundEffect? LoadMp3(string path)
     {
+#if ANDROID
+        // NAudio is a Windows-first audio stack and is not referenced on Android.
+        // MP3 is the only format that went through it; Ogg and WAV are decoded above
+        // and cover everything the templates ship.
+        System.Console.Error.WriteLine($"[AudioManager] MP3 is not supported on Android: '{path}'. Use .ogg or .wav.");
+        return null;
+#else
         try
         {
             using var reader  = new Mp3FileReader(path);
@@ -524,6 +533,7 @@ public class AudioManager : IDisposable
             System.Diagnostics.Debug.WriteLine($"[AudioManager] MP3 load error ({path}): {ex.Message}");
             return null;
         }
+#endif
     }
 
     // ─── PCM conversion helper ───────────────────────────────────────────────

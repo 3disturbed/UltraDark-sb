@@ -1,7 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- net8.0 alone unless a build asks for Android, so nobody needs the `android`
+         workload installed to build the engine, run the tests or open the editor.
+         The build CLI passes -p:SexyBiscuitAndroid=true when it wants the APK head. -->
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(SexyBiscuitAndroid)' == 'true'">net8.0;net10.0-android</TargetFrameworks>
+    <!-- Restoring both frameworks at once makes NuGet notice that the net8.0 pin of
+         System.Text.Json is redundant under .NET 10's package pruning. The pin is still
+         wanted for the net8.0 build, and the desktop-only restore stays clean, so the
+         notice is silenced for the two-framework restore rather than acted on. -->
+    <NoWarn Condition="'$(SexyBiscuitAndroid)' == 'true'">$(NoWarn);NU1510</NoWarn>
+    <!-- SYSLIB0060: SaveManager still uses the Rfc2898DeriveBytes constructor, which net10
+         marks obsolete and net8 does not. Moving to the static Pbkdf2 is a change to save
+         encryption and belongs in its own commit, not in the Android port. -->
+    <NoWarn Condition="$(TargetFramework.Contains('-android'))">$(NoWarn);SYSLIB0060</NoWarn>
+    <!-- The Android side is net10.0, not net8.0: the installed android workload is the
+         .NET 10 one, and asking it for net8.0-android packs gets an end-of-life error and
+         a compile SDK that falls back to API 21. The desktop side stays on net8.0, so the
+         engine compiles against two BCLs — anything newer than net8.0 used in engine code
+         breaks the desktop build first, which is the safer direction for that to fail. -->
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -19,21 +37,27 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-    <DefineConstants>DEBUG;SEXY_DEBUG;STEAMWORKS</DefineConstants>
+    <DefineConstants>$(DefineConstants);DEBUG;SEXY_DEBUG</DefineConstants>
     <Optimize>false</Optimize>
     <DebugType>full</DebugType>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Development'">
-    <DefineConstants>DEVELOPMENT;SEXY_DEV;STEAMWORKS</DefineConstants>
+    <DefineConstants>$(DefineConstants);DEVELOPMENT;SEXY_DEV</DefineConstants>
     <Optimize>true</Optimize>
     <DebugType>pdbonly</DebugType>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-    <DefineConstants>RELEASE;STEAMWORKS</DefineConstants>
+    <DefineConstants>$(DefineConstants);RELEASE</DefineConstants>
     <Optimize>true</Optimize>
     <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <!-- Steam is desktop-only, and every Steam/*.cs file is already wholly behind this
+       define, so not setting it on Android removes the integration with no code change. -->
+  <PropertyGroup Condition="!$(TargetFramework.Contains('-android'))">
+    <DefineConstants>$(DefineConstants);STEAMWORKS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -42,10 +66,49 @@
     <InternalsVisibleTo Include="SexyBiscuit.Tests" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Engine foundation -->
+  <!-- Desktop-only packages. Each ships native code with no Android build:
+       MonoGame's desktop backend is SDL, AssimpNet is native libassimp, Steamworks.NET
+       is a desktop SDK, and NAudio is Windows-first. The engine code that touches the
+       last three is behind #if ANDROID / #if STEAMWORKS. -->
+  <ItemGroup Condition="!$(TargetFramework.Contains('-android'))">
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.1.303" />
+    <PackageReference Include="AssimpNet" Version="4.1.0" />
+    <PackageReference Include="Steamworks.NET" Version="20.1.0" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- Pinned for net8.0. On net10.0-android it is in the shared framework, and naming
+         it there is an NU1510 "will not be pruned" error. -->
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
 
+  <!-- The same MonoGame version, so there is no API drift between the two builds. -->
+  <!-- The Android SDK adds its own implicit usings, and Android.App.GameMode and
+       Android.Widget.Button then collide with the engine's own GameMode and Button in
+       every file. Dropping the two namespaces is far less invasive than renaming engine
+       types or qualifying hundreds of call sites; code that genuinely needs them (the
+       generated Activity) says using Android.App itself. -->
+  <ItemGroup Condition="$(TargetFramework.Contains('-android'))">
+    <Using Remove="Android.App" />
+    <Using Remove="Android.Widget" />
+    <!-- With STEAMWORKS undefined every method body in Steam/ compiles away, leaving
+         declared-but-unused events and a wall of CS0067. The integration is desktop-only,
+         so the files simply are not part of the Android build. -->
+    <Compile Remove="Steam/**/*.cs" />
+    <!-- Loads a game's compiled C# through AssemblyDependencyResolver, which the platform
+         analyser correctly says is unsupported on Android. Nothing else in the engine
+         references it, and an Android game's logic is JavaScript, so it is left out
+         rather than stubbed. -->
+    <Compile Remove="Code/GameAssemblyLoader.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$(TargetFramework.Contains('-android'))">
+    <PackageReference Include="MonoGame.Framework.Android" Version="3.8.1.303" />
+    <!-- Ogg decoding. On desktop this arrives transitively through the packages above;
+         it is pure managed C#, so naming it directly is all Android needs — and .ogg is
+         what every bundled template ships. -->
+    <PackageReference Include="NVorbis" Version="0.10.4" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- JavaScript scripting -->
     <PackageReference Include="Jint" Version="3.1.1" />
 
@@ -56,23 +119,12 @@
     <PackageReference Include="BepuPhysics" Version="2.4.0" />
     <PackageReference Include="BepuUtilities" Version="2.4.0" />
 
-    <!-- 3D model import -->
-    <PackageReference Include="AssimpNet" Version="4.1.0" />
-
     <!-- Networking -->
     <PackageReference Include="LiteNetLib" Version="1.1.0" />
-
-    <!-- Steam -->
-    <PackageReference Include="Steamworks.NET" Version="20.1.0" />
 
     <!-- Font loading (runtime TTF/OTF, no pre-baking) -->
     <PackageReference Include="FontStashSharp.MonoGame" Version="1.3.3" />
 
-    <!-- Audio streaming -->
-    <PackageReference Include="NAudio" Version="2.2.1" />
-
-    <!-- JSON -->
-    <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
 </Project>

@@ -1,7 +1,9 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using SexyBiscuit.Engine.Core;
+#if !ANDROID
 using Assimp;
+#endif
 
 namespace SexyBiscuit.Engine.Rendering;
 
@@ -216,6 +218,13 @@ public sealed class MeshRenderer : Component
     /// </summary>
     public void LoadModel(string path, GraphicsDevice gd)
     {
+#if ANDROID
+        // Android has no AssimpNet:
+        // the package ships native libassimp for desktop only. Saying so at the call
+        // site beats a native load failing deep inside a frame.
+        System.Console.Error.WriteLine($"[MeshRenderer] 3D model import is not available on Android: '{path}'.");
+        return;
+#else
         // Dispose previous geometry. Materials are kept: they were authored in the scene and
         // padding below adds slots for any index the model references beyond them.
         DisposeBuffers();
@@ -318,6 +327,7 @@ public sealed class MeshRenderer : Component
         LocalBounds   = anyVertex
             ? Bounds.FromMinMax(boundsMin, boundsMax)
             : new Bounds(Microsoft.Xna.Framework.Vector3.Zero, Microsoft.Xna.Framework.Vector3.One);
+#endif
     }
 
     // -------------------------------------------------------------------------

@@ -2,7 +2,9 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using SexyBiscuit.Engine.Animation;
 using SexyBiscuit.Engine.Core;
+#if !ANDROID
 using Assimp;
+#endif
 
 namespace SexyBiscuit.Engine.Rendering;
 
@@ -92,6 +94,13 @@ public sealed class SkinnedMeshRenderer : Component
     /// <returns>False when the file could not be read or exceeds <see cref="MaxBones"/>.</returns>
     public bool LoadModel(string path, GraphicsDevice gd)
     {
+#if ANDROID
+        // Android has no AssimpNet:
+        // the package ships native libassimp for desktop only. Saying so at the call
+        // site beats a native load failing deep inside a frame.
+        System.Console.Error.WriteLine($"[SkinnedMeshRenderer] 3D model import is not available on Android: '{path}'.");
+        return false;
+#else
         DisposeBuffers();
         _subMeshes.Clear();
         Materials.Clear();
@@ -223,6 +232,7 @@ public sealed class SkinnedMeshRenderer : Component
         Array.Fill(_identityPalette, Matrix.Identity);
 
         return _subMeshes.Count > 0;
+#endif
     }
 
     private static void SetComponent(ref Vector4 v, int index, float value)

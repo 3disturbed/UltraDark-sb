@@ -20,6 +20,12 @@ public sealed record PublishRequest(
     /// <summary>An explicit engine checkout; otherwise <see cref="EngineRepoLocator.Find"/>.</summary>
     public string? EngineRepoRoot { get; init; }
 
+    /// <summary>
+    /// The build's version. Desktop does not need it — the binary carries no version — but an
+    /// APK does: Android shows the display version and orders upgrades by a derived integer.
+    /// </summary>
+    public string Version { get; init; } = "1.0.0";
+
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(20);
 }
 
