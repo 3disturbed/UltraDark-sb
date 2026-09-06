@@ -1,3 +1,4 @@
+using SexyBiscuit.Editor.CookieJar;
 using ImGuiNET;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -71,6 +72,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private GameCodeHost?     _code;
     private EditorRestart?    _restart;
     private CodeProjectPanel? _codeProject;
+    private CookieJarPanel?   _cookieJar;
     private readonly LaunchOptions _options;
 
     // Claude in the editor: the embedded session, the interaction board and the panel.
@@ -210,6 +212,8 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         _mcp.Registry.RegisterInstance(new GameCodeTools(_mcp, _code, _restart), new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
         EditorState.OnProjectOpened += root => _code?.OnProjectOpened(root);
         _codeProject = new CodeProjectPanel(_code);
+        _cookieJar   = new CookieJarPanel(_mcp.Cookies);
+        EditorState.OnProjectOpened += root => _mcp?.Cookies.OnProjectOpened(root);
 
         _assistant      = new AssistantHost(_mcp, _code, _restart, settings, _options.NoAssistant);
         _assistantPanel = new AssistantPanel(_assistant);
@@ -461,6 +465,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             if (ImGui.MenuItem("C# Project", "", codeProject))
                 EditorState.ShowCodeProject = !codeProject;
 
+            bool cookieJar = EditorState.ShowCookieJar;
+            if (ImGui.MenuItem("Cookie Jar", "", cookieJar))
+                EditorState.ShowCookieJar = !cookieJar;
+
             bool assistant = EditorState.ShowAssistant;
             if (ImGui.MenuItem("Assistant", "F8", assistant))
                 EditorState.ShowAssistant = !assistant;
@@ -507,6 +515,10 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         if (ImGui.MenuItem("Resume Assistant Session", "", false, _assistant?.CanStart == true)) _assistant?.RestartSession();
         if (ImGui.MenuItem("Stop Assistant Session", "", false, sessionAlive)) _assistant?.StopSession();
 
+        ImGui.Separator();
+
+        if (ImGui.MenuItem("Browse the Cookie Jar")) EditorState.ShowCookieJar = true;
+        if (ImGui.MenuItem("Bake Cookie from this Project...", "", false, projectOpen)) _cookieJar?.RequestBake();
         ImGui.Separator();
 
         if (ImGui.MenuItem("Write .mcp.json", "", false, projectOpen)) _assistant?.WriteProjectMcpConfig();
@@ -867,6 +879,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
                 // A saved layout from before the Assistant existed: dock the new panel beside
                 // Details instead of letting it float, without discarding the user's arrangement.
                 EditorState.DockAssistantIntoDetails = true;
+                EditorState.DockCookieJarIntoDetails = true;
             }
             WriteLayoutVersion();
         }
@@ -884,7 +897,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private bool _resetLayoutRequested;
 
     /// <summary>Bumped when a new panel joins the default layout, so existing layouts adopt it.</summary>
-    private const int LayoutVersion = 2;
+    private const int LayoutVersion = 3;
     private const string LayoutVersionFile = "imgui.layout-version";
 
     private static int ReadLayoutVersion()
@@ -943,6 +956,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         ImGuiDock.DockWindow("Build Settings", rightBottom);
         ImGuiDock.DockWindow("Git",            rightBottom);
         ImGuiDock.DockWindow("C# Project",     rightBottom);
+        ImGuiDock.DockWindow("Cookie Jar",     rightBottom);
         ImGuiDock.DockWindow("Render Stats",   rightBottom);
 
         ImGuiDock.Finish(dockspaceId);
@@ -1140,6 +1154,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             _codeEditor.Draw();
             _git.Draw();
             _codeProject?.Draw();
+            _cookieJar?.Draw();
             _assistantPanel?.Draw(_imGui);
 
             if (EditorState.ShowRenderStats) DrawRenderStats();

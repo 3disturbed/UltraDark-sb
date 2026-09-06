@@ -1,3 +1,4 @@
+using SexyBiscuit.Editor.CookieJar;
 using System.Text.Json.Nodes;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.Mcp;
@@ -68,7 +69,12 @@ public sealed class McpHost : IDisposable
         Registry.RegisterInstance(new UndoTools(Undo), engine);
         Registry.RegisterInstance(new EditorTools(this), editor);
 
+        Cookies = new EditorCookieHost(() => AssistantHost.Instance);
+        ProjectInfoContributors.Add(Cookies.ContributeProjectInfo);
+        Registry.RegisterInstance(new CookieTools(Cookies), editor);
+
         Resources.RegisterInstance(new SceneResources(SceneHost, Undo, Registry));
+        Resources.RegisterInstance(new CookieResources(Cookies));
     }
 
     public AssistantSettings    Settings   { get; }
@@ -81,6 +87,9 @@ public sealed class McpHost : IDisposable
     public McpServer            Server     { get; }
     public McpHttpTransport?    Transport  { get; private set; }
     public ViewportCapture      Capture    { get; } = new();
+
+    /// <summary>The module library: jars, the catalogue, and installing into the open project.</summary>
+    public EditorCookieHost     Cookies    { get; }
 
     public McpHostStatus Status        { get; private set; } = McpHostStatus.Stopped;
     public string?       StatusMessage { get; private set; }

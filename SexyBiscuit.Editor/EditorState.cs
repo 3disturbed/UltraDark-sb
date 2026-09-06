@@ -127,6 +127,9 @@ public static class EditorState
     /// <summary>Shows the Assistant panel.</summary>
     public static bool ShowAssistant { get; set; } = true;
 
+    /// <summary>Whether the Cookie Jar panel is open. Off by default: it is an occasional errand.</summary>
+    public static bool ShowCookieJar { get; set; }
+
     /// <summary>True while the assistant is working, waiting for permission or waiting for an answer. Drives the viewport banner.</summary>
     public static bool AssistantBusy { get; set; }
 
@@ -138,6 +141,12 @@ public static class EditorState
 
     /// <summary>Set once when a saved layout predates the Assistant panel: dock it beside Details on first draw.</summary>
     public static bool DockAssistantIntoDetails { get; set; }
+
+    /// <summary>
+    /// Set when a saved layout predates the Cookie Jar panel, so it is docked beside Details on
+    /// the first frame rather than the whole arrangement being thrown away.
+    /// </summary>
+    public static bool DockCookieJarIntoDetails { get; set; }
 
     /// <summary>Shows the project launcher. Open on startup until a project is chosen.</summary>
     public static bool ShowProjectManager { get; set; } = true;

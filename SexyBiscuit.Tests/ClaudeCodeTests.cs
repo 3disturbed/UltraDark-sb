@@ -384,6 +384,18 @@ public class ClaudeArgvTests
     }
 
     [Fact]
+    public void Embedded_TellsTheAssistantToCheckTheCookieJarFirst()
+    {
+        // The prompt is what makes the library get used; a tool nobody is told about is a tool
+        // nobody calls.
+        string prompt = ClaudeSystemPrompt.Embedded(new ClaudeLaunchOptions { ProjectName = "Dungeon", ProjectRoot = "/games/dungeon" });
+
+        Assert.Contains("search_cookies", prompt);
+        Assert.Contains("install_cookie", prompt);
+        Assert.Contains("bake_cookie", prompt);
+    }
+
+    [Fact]
     public void ExternalInstructions_RequireWaitForUserAndTellTheEmbeddedSessionToIgnore()
     {
         string text = ClaudeSystemPrompt.ExternalInstructions("Scene guidance.");
