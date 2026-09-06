@@ -251,6 +251,23 @@ It is **optional**, and no template ships one: with no file at all `sbengine` us
 command line or the key in the file. A 34 MB Debug archive published as an alpha is the failure
 mode here, and nothing warns you.
 
+**Give every game one on the first publish, or the version never moves.** With no file the version
+is `1.0.0` on every run for ever, so each publish replaces the last at the same triple and the
+downloads page looks identical after a fix as it did before it — the tester cannot tell a new
+build from the one they already have, and neither can you. Two lines are enough to fix that
+permanently:
+
+```json
+{
+  "appName": "Jake01",
+  "version": "1.0.1",
+  "startScene": "Scenes/City",
+  "upload": { "appSlug": "jake01", "channel": "alpha" }
+}
+```
+
+Keys are camelCase; `PlatformConfig` is what parses them.
+
 **It does not need a Mac.** All four targets cross-compile from one Linux box in about eighteen
 seconds with the .NET 10 SDK targeting net8.0; `osx-arm64` included. The table above used to say
 otherwise.
@@ -384,6 +401,16 @@ playtester keeps working. That is the default and it is usually what you want.
 
 - Bump `version` for a genuinely new build.
 - Keep `version` to re-cut the current one.
+- **On Android, keeping it is not a free choice.** `ApplicationVersion` — the integer Android
+  orders upgrades by — is derived from the version string (1.0.1 becomes 10001). Re-cutting at the
+  same version ships the same code, and a phone that already has the app can treat the new APK as
+  something it is already running and decline to install it. A tester then keeps playing the old
+  build while looking at a page that says it was updated. **Any Android re-cut worth downloading
+  gets a version bump.**
+- **A bumped version leaves the old one listed.** Replacement only happens within a triple, so
+  1.0.1 sits alongside 1.0.0 rather than replacing it, and a tester can still pick the broken one.
+  Remove the superseded build from **Admin → Builds** (`DELETE /admin/builds/:id`) once the new one
+  is up.
 - Two targets that map to the same platform — both macOS architectures, say — share a triple and
   would silently replace each other. The publisher says so by name before sending anything; give
   one a different version, or set `upload.platformMap`.
