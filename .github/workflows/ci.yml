@@ -41,6 +41,12 @@ jobs:
         run: dotnet SexyBiscuit.Editor/bin/Release/net8.0/SexyBiscuit.Editor.dll --dump-mcp-tools --markdown > /dev/null
         shell: bash
 
+      - name: Cookies compile against this engine
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          SEXYBISCUIT_SLOW_TESTS: '1'
+        run: dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName~BundledCookieTests"
+
       - name: Test
         run: dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj -c Release --no-restore --verbosity normal
 

@@ -1,0 +1,38 @@
+{
+  "MoveX": [
+    { "device": "keyboard", "negKey": "A", "posKey": "D" },
+    { "device": "keyboard", "negKey": "Left", "posKey": "Right" },
+    { "device": "gamepad", "axis": "LeftX" },
+    { "device": "touch", "axis": "LeftJoystickX" }
+  ],
+  "MoveY": [
+    { "device": "keyboard", "negKey": "S", "posKey": "W" },
+    { "device": "keyboard", "negKey": "Down", "posKey": "Up" },
+    { "device": "gamepad", "axis": "LeftY" },
+    { "device": "touch", "axis": "LeftJoystickY" }
+  ],
+  "CameraX": [
+    { "device": "mouse", "axis": "MouseX" },
+    { "device": "gamepad", "axis": "RightX" },
+    { "device": "touch", "axis": "RightJoystickX" }
+  ],
+  "CameraY": [
+    { "device": "mouse", "axis": "MouseY" },
+    { "device": "gamepad", "axis": "RightY" },
+    { "device": "touch", "axis": "RightJoystickY" }
+  ],
+  "Jump":     [ { "device": "keyboard", "key": "Space" }, { "device": "gamepad", "button": "A" } ],
+  "Attack":   [ { "device": "mouse", "button": "Left" }, { "device": "gamepad", "button": "X" } ],
+  "Aim":      [ { "device": "mouse", "button": "Right" }, { "device": "gamepad", "axis": "LeftTrigger" } ],
+  "Dodge":    [ { "device": "keyboard", "key": "LeftShift" }, { "device": "gamepad", "button": "B" } ],
+  "Sprint":   [ { "device": "keyboard", "key": "LeftShift" }, { "device": "gamepad", "button": "LeftStick" } ],
+  "Crouch":   [ { "device": "keyboard", "key": "LeftControl" }, { "device": "gamepad", "button": "RightStick" } ],
+  "Reload":   [ { "device": "keyboard", "key": "R" }, { "device": "gamepad", "button": "Y" } ],
+  "Interact": [ { "device": "keyboard", "key": "E" }, { "device": "gamepad", "button": "Y" } ],
+  "Zoom":     [ { "device": "mouse", "axis": "Scroll" }, { "device": "touch", "axis": "PinchDelta" } ],
+  "Pause":    [ { "device": "keyboard", "key": "Escape" }, { "device": "gamepad", "button": "Start" } ],
+  "UISubmit": [ { "device": "keyboard", "key": "Enter" }, { "device": "gamepad", "button": "A" } ],
+  "UICancel": [ { "device": "keyboard", "key": "Escape" }, { "device": "gamepad", "button": "B" } ],
+  "UINavX":   [ { "device": "keyboard", "negKey": "Left", "posKey": "Right" }, { "device": "gamepad", "axis": "LeftX" } ],
+  "UINavY":   [ { "device": "keyboard", "negKey": "Down", "posKey": "Up" }, { "device": "gamepad", "axis": "LeftY" } ]
+}

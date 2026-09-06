@@ -942,3 +942,123 @@ public class CookieToolTests
         Assert.Equal("spinner", harness.Ok("search_cookies", new { query = "spinner" })["cookies"]!.AsArray()[0]!["id"]!.GetValue<string>());
     }
 }
+
+/// <summary>
+/// The jar that ships with the engine. These are the tests that stop an engine change quietly
+/// breaking every cookie, and stop a cookie being committed that no project could install.
+/// </summary>
+public class BundledCookieTests
+{
+    private static CookieCatalogue? Bundled()
+    {
+        string? jar = CookieJarLocator.FindBuiltinJar();
+        return jar == null ? null : CookieCatalogue.Scan(new[] { CookieJarSource.Builtin(jar) });
+    }
+
+    [Fact]
+    public void TheBundledJarIsFoundFromTheTestBinary()
+    {
+        // If this fails the other tests here silently pass by finding nothing to check.
+        Assert.NotNull(CookieJarLocator.FindBuiltinJar());
+    }
+
+    [Fact]
+    public void EveryBundledCookieValidates()
+    {
+        var catalogue = Bundled();
+        if (catalogue == null) return;
+
+        Assert.NotEmpty(catalogue.All);
+
+        var errors = CookieValidator.ValidateAll(catalogue, deep: true)
+                                    .Where(p => p.Severity == CookieSeverity.Error)
+                                    .ToList();
+
+        Assert.True(errors.Count == 0, string.Join("\n", errors));
+    }
+
+    [Fact]
+    public void EveryBundledCookieInstallsIntoAFreshProject()
+    {
+        var catalogue = Bundled();
+        if (catalogue == null) return;
+
+        string root = Path.Combine(Path.GetTempPath(), "sb-cookie-bundled-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var project  = new CookieProjectContext(root, "FreshGame");
+            var lockFile = new CookieLockFile();
+
+            foreach (var cookie in catalogue.All)
+            {
+                var plan = CookiePlanner.Plan(cookie, project, lockFile, jar: catalogue.JarOf(cookie));
+                Assert.True(plan.IsApplicable, $"{cookie.Id}: {plan.FirstBlocker?.Detail}");
+
+                var outcome = CookieInstaller.Apply(plan, project, lockFile, catalogue.JarOf(cookie));
+                Assert.Empty(outcome.Unresolved);
+            }
+
+            Assert.Equal(catalogue.All.Count, CookieLockFile.Load(root).Cookies.Count);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public void EveryBundledCookieCompilesAgainstThisEngine()
+    {
+        // Slow: it runs dotnet build. Gated the way the assembly-loader integration test is.
+        if (Environment.GetEnvironmentVariable("SEXYBISCUIT_SLOW_TESTS") != "1") return;
+
+        var catalogue = Bundled();
+        if (catalogue == null) return;
+
+        var repo = SexyBiscuit.Engine.Code.EngineRepoLocator.Find();
+        Assert.NotNull(repo);
+
+        string root = Path.Combine(Path.GetTempPath(), "sb-cookie-compile-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "Source"));
+
+        try
+        {
+            // Every C# cookie into one project, so this is one build rather than one per cookie.
+            var project  = new CookieProjectContext(root, "CookieCompile");
+            var lockFile = new CookieLockFile();
+
+            foreach (var cookie in catalogue.All.Where(c => c.Manifest.SupportsEngine(CookieManifest.EngineCSharp)))
+                CookieInstaller.Apply(CookiePlanner.Plan(cookie, project, lockFile, jar: catalogue.JarOf(cookie)),
+                                      project, lockFile, catalogue.JarOf(cookie));
+
+            File.WriteAllText(Path.Combine(root, "CookieCompile.csproj"), $"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net8.0</TargetFramework>
+                    <Nullable>enable</Nullable>
+                    <ImplicitUsings>enable</ImplicitUsings>
+                    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+                    <RollForward>LatestMajor</RollForward>
+                  </PropertyGroup>
+                  <ItemGroup><Compile Include="Source/**/*.cs" /></ItemGroup>
+                  <ItemGroup><ProjectReference Include="{repo!.EngineCsproj}" /></ItemGroup>
+                </Project>
+                """);
+
+            var dotnet = SexyBiscuit.Engine.Code.DotnetLocator.Find();
+            Assert.NotNull(dotnet);
+
+            var runner = new SexyBiscuit.Engine.Code.DotnetBuildRunner(dotnet!);
+            var result = runner.BuildAsync(new SexyBiscuit.Engine.Code.BuildRequest(Path.Combine(root, "CookieCompile.csproj")))
+                               .GetAwaiter().GetResult();
+
+            Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { }
+        }
+    }
+}
