@@ -370,25 +370,16 @@ public sealed class InspectorPanel
     }
 
     /// <summary>Converts a quaternion to pitch/yaw/roll in degrees for display.</summary>
+    /// <remarks>
+    /// Forwards to the engine's conversion rather than keeping a copy. This panel had its own,
+    /// and it carried the same bug: a ZYX extraction over a YXZ composition, which is only correct
+    /// when one of the three angles is zero. Dragging any one of the three fields on a rotation
+    /// that had all three set therefore rewrote the other two.
+    /// </remarks>
     private static Vector3 QuaternionToEuler(XnaQuaternion q)
     {
-        float sinr = 2f * (q.W * q.X + q.Y * q.Z);
-        float cosr = 1f - 2f * (q.X * q.X + q.Y * q.Y);
-        float pitch = MathF.Atan2(sinr, cosr);
-
-        float sinp = 2f * (q.W * q.Y - q.Z * q.X);
-        float yaw = MathF.Abs(sinp) >= 1f
-            ? MathF.CopySign(MathF.PI / 2f, sinp)
-            : MathF.Asin(sinp);
-
-        float siny = 2f * (q.W * q.Z + q.X * q.Y);
-        float cosy = 1f - 2f * (q.Y * q.Y + q.Z * q.Z);
-        float roll = MathF.Atan2(siny, cosy);
-
-        return new Vector3(
-            MathHelper.ToDegrees(pitch),
-            MathHelper.ToDegrees(yaw),
-            MathHelper.ToDegrees(roll));
+        var euler = Transform3D.QuaternionToEuler(q);
+        return new Vector3(euler.X, euler.Y, euler.Z);
     }
 
     // -------------------------------------------------------------------------

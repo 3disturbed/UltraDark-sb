@@ -33,7 +33,11 @@ public sealed record InputBinding
     [JsonPropertyName("button")]
     public string? Button { get; init; }
 
-    /// <summary>Gamepad axis name ("LeftX", "LeftY", "RightX", "RightY", "LeftTrigger", "RightTrigger").</summary>
+    /// <summary>
+    /// Axis name. Gamepad: "LeftX", "LeftY", "RightX", "RightY", "LeftTrigger", "RightTrigger".
+    /// Mouse: "MouseX", "MouseY", "Scroll". Touch: "LeftJoystickX", "LeftJoystickY",
+    /// "RightJoystickX", "RightJoystickY", "PinchDelta".
+    /// </summary>
     [JsonPropertyName("axis")]
     public string? Axis { get; init; }
 
@@ -130,6 +134,12 @@ public sealed class ActionMap
     /// Returns a sensible default action map covering the most common game actions.
     /// Gamepad bindings use an XInput / Xbox layout.
     /// </summary>
+    /// <remarks>
+    /// The movement and camera actions carry touch bindings so that a game using nothing but the
+    /// default map is playable on a phone. Without them, touch is reachable only through
+    /// <c>Input.Touch</c> directly, which means bypassing the action map — and with it, rebinding,
+    /// gamepad support and everything else the map provides.
+    /// </remarks>
     public static ActionMap Default() => new()
     {
         Actions = new Dictionary<string, InputAction>(StringComparer.OrdinalIgnoreCase)
@@ -137,12 +147,16 @@ public sealed class ActionMap
             ["MoveX"] = new("MoveX",
                 new InputBinding { Device = "keyboard", NegKey = "A",    PosKey = "D"          },
                 new InputBinding { Device = "keyboard", NegKey = "Left", PosKey = "Right"       },
-                new InputBinding { Device = "gamepad",  Axis   = "LeftX"                       }),
+                new InputBinding { Device = "gamepad",  Axis   = "LeftX"                       },
+                new InputBinding { Device = "touch",    Axis   = "LeftJoystickX"               }),
 
+            // The stick's Y is screen-space, so pushing up already reads negative — the same sign
+            // the inverted keyboard and gamepad bindings above produce for forward.
             ["MoveY"] = new("MoveY",
                 new InputBinding { Device = "keyboard", NegKey = "S",    PosKey = "W",  Invert = true },
                 new InputBinding { Device = "keyboard", NegKey = "Down", PosKey = "Up", Invert = true },
-                new InputBinding { Device = "gamepad",  Axis   = "LeftY", Invert = true              }),
+                new InputBinding { Device = "gamepad",  Axis   = "LeftY", Invert = true              },
+                new InputBinding { Device = "touch",    Axis   = "LeftJoystickY"                     }),
 
             ["Jump"] = new("Jump",
                 new InputBinding { Device = "keyboard", Key    = "Space"                       },
@@ -167,11 +181,13 @@ public sealed class ActionMap
 
             ["CameraX"] = new("CameraX",
                 new InputBinding { Device = "mouse",    Axis   = "MouseX"                      },
-                new InputBinding { Device = "gamepad",  Axis   = "RightX"                      }),
+                new InputBinding { Device = "gamepad",  Axis   = "RightX"                      },
+                new InputBinding { Device = "touch",    Axis   = "RightJoystickX"              }),
 
             ["CameraY"] = new("CameraY",
                 new InputBinding { Device = "mouse",    Axis   = "MouseY"                      },
-                new InputBinding { Device = "gamepad",  Axis   = "RightY"                      }),
+                new InputBinding { Device = "gamepad",  Axis   = "RightY"                      },
+                new InputBinding { Device = "touch",    Axis   = "RightJoystickY"              }),
         }
     };
 

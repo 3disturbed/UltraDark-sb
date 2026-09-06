@@ -105,9 +105,13 @@ export class ActionMap {
     }
 
     /**
-     * A sensible starting map: WASD and arrows for movement, space to jump, mouse
-     * buttons to fire, with the left virtual joystick bound to the movement axes
-     * and gamepad sticks alongside them.
+     * The same default map the C# engine builds, action for action.
+     *
+     * The names and the gamepad axis spellings match `ActionMap.Default()` exactly, so a game
+     * written against the defaults behaves the same under either engine and a bindings file moves
+     * between them unchanged. The four directional actions at the end are additions: the bundled
+     * template scripts ask for "Left", "Right", "Up" and "Down" by name, and neither engine's
+     * default map had them.
      */
     static default() {
         return ActionMap.fromJson({
@@ -117,46 +121,79 @@ export class ActionMap {
                     bindings: [
                         { device: 'keyboard', negKey: 'A', posKey: 'D' },
                         { device: 'keyboard', negKey: 'Left', posKey: 'Right' },
-                        { device: 'gamepad', axis: 'LeftStickX' },
+                        { device: 'gamepad', axis: 'LeftX' },
                         { device: 'touch', axis: 'LeftJoystickX' },
                     ],
                 },
                 {
+                    // The stick's Y is screen-space, so pushing up already reads negative — the
+                    // same sign the inverted keyboard and gamepad bindings produce for forward.
                     name: 'MoveY',
                     bindings: [
-                        { device: 'keyboard', negKey: 'W', posKey: 'S' },
-                        { device: 'keyboard', negKey: 'Up', posKey: 'Down' },
-                        { device: 'gamepad', axis: 'LeftStickY' },
+                        { device: 'keyboard', negKey: 'S', posKey: 'W', invert: true },
+                        { device: 'keyboard', negKey: 'Down', posKey: 'Up', invert: true },
+                        { device: 'gamepad', axis: 'LeftY', invert: true },
                         { device: 'touch', axis: 'LeftJoystickY' },
                     ],
                 },
                 {
-                    name: 'LookX',
+                    name: 'Jump',
+                    bindings: [
+                        { device: 'keyboard', key: 'Space' },
+                        { device: 'gamepad', button: 'A' },
+                    ],
+                },
+                {
+                    name: 'Attack',
+                    bindings: [
+                        { device: 'mouse', button: 0 },
+                        { device: 'keyboard', key: 'Z' },
+                        { device: 'gamepad', button: 'X' },
+                    ],
+                },
+                {
+                    name: 'Dodge',
+                    bindings: [
+                        { device: 'keyboard', key: 'LeftShift' },
+                        { device: 'gamepad', button: 'B' },
+                    ],
+                },
+                {
+                    name: 'Interact',
+                    bindings: [
+                        { device: 'keyboard', key: 'E' },
+                        { device: 'gamepad', button: 'X' },
+                    ],
+                },
+                {
+                    name: 'Pause',
+                    bindings: [
+                        { device: 'keyboard', key: 'Escape' },
+                        { device: 'gamepad', button: 'Start' },
+                    ],
+                },
+                {
+                    name: 'CameraX',
                     bindings: [
                         { device: 'mouse', axis: 'MouseX' },
-                        { device: 'gamepad', axis: 'RightStickX' },
+                        { device: 'gamepad', axis: 'RightX' },
                         { device: 'touch', axis: 'RightJoystickX' },
                     ],
                 },
                 {
-                    name: 'LookY',
+                    name: 'CameraY',
                     bindings: [
                         { device: 'mouse', axis: 'MouseY' },
-                        { device: 'gamepad', axis: 'RightStickY' },
+                        { device: 'gamepad', axis: 'RightY' },
                         { device: 'touch', axis: 'RightJoystickY' },
                     ],
                 },
-                { name: 'Jump',   bindings: [{ device: 'keyboard', key: 'Space' }, { device: 'gamepad', button: 'A' }] },
-                { name: 'Sprint', bindings: [{ device: 'keyboard', key: 'LeftShift' }, { device: 'gamepad', button: 'LeftStick' }] },
-                { name: 'Fire',   bindings: [{ device: 'mouse', button: 0 }, { device: 'gamepad', button: 'RightTrigger' }] },
-                { name: 'AltFire',bindings: [{ device: 'mouse', button: 1 }, { device: 'gamepad', button: 'LeftTrigger' }] },
-                { name: 'Interact', bindings: [{ device: 'keyboard', key: 'E' }, { device: 'gamepad', button: 'X' }] },
-                { name: 'Pause',  bindings: [{ device: 'keyboard', key: 'Escape' }, { device: 'gamepad', button: 'Start' }] },
-                // The four directions the bundled template scripts ask for by name.
-                { name: 'Left',  bindings: [{ device: 'keyboard', key: 'Left' }, { device: 'keyboard', key: 'A' }] },
+
+                // Additions: the four directions the bundled template scripts name.
+                { name: 'Left',  bindings: [{ device: 'keyboard', key: 'Left' },  { device: 'keyboard', key: 'A' }] },
                 { name: 'Right', bindings: [{ device: 'keyboard', key: 'Right' }, { device: 'keyboard', key: 'D' }] },
-                { name: 'Up',    bindings: [{ device: 'keyboard', key: 'Up' }, { device: 'keyboard', key: 'W' }] },
-                { name: 'Down',  bindings: [{ device: 'keyboard', key: 'Down' }, { device: 'keyboard', key: 'S' }] },
+                { name: 'Up',    bindings: [{ device: 'keyboard', key: 'Up' },    { device: 'keyboard', key: 'W' }] },
+                { name: 'Down',  bindings: [{ device: 'keyboard', key: 'Down' },  { device: 'keyboard', key: 'S' }] },
             ],
         });
     }

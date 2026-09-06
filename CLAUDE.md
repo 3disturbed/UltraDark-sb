@@ -30,8 +30,9 @@ is already running this code. Engine changes only take effect after `rebuild_eng
 game-project changes after `reload_game_code`. Scene edits go through the MCP tools, not by
 editing `.scene` files. See `wiki/25-ai-assistant-mcp.md` for the tool catalogue.
 
-The HTML5 port is documented in `html5/README.md` and `wiki/26-html5.md`. Two things it records
-that matter to the C# side: `Transform3D.QuaternionToEuler` is not the inverse of
+The HTML5 port is documented in `html5/README.md` and `wiki/26-html5.md`. Building it turned up
+three bugs since fixed in the C# engine: `Transform3D.QuaternionToEuler` was not the inverse of
 `EulerToQuaternion` (ZYX extraction over a YXZ composition — correct only when one angle is zero),
-and `ActionMap` has no touch device, so no action can be driven by a thumbstick. Neither is fixed
-in the C# engine.
+`ActionMap` had no touch device so no action could be driven by a thumbstick, and
+`TouchManager.PinchDelta` was always zero. Both engines' action maps and euler conventions are
+pinned by tests that read the other side's source, so they fail if the two drift apart.

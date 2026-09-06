@@ -15,7 +15,7 @@ import {
     deserialize, serialize, Scene, Actor, Transform3D, MissingComponent,
     SpriteRenderer, Camera2D, Rigidbody2D, BoxCollider2D, ScriptComponent,
     Light3D, MeshRenderer, Color, Vector2, Vector3, Quaternion,
-    EngineConfig, resolveComponent,
+    EngineConfig, resolveComponent, ActionMap, GamepadState,
 } from '../src/index.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -291,4 +291,62 @@ test('a byte order mark does not stop a scene loading', () => {
     const scene = deserialize(withBom, { onWarning: () => {} });
     assert.equal(scene.name, 'Level1');
     assert.ok(scene.findByName('Player'));
+});
+
+test('the default action map matches the C# one', () => {
+    // A game written against the defaults has to behave the same under either
+    // engine, and a bindings file has to move between them unchanged. Both sides
+    // are read from source rather than restated, so a change to either fails here.
+    const map = ActionMap.default();
+    const csharp = fs.readFileSync(
+        path.join(repoRoot, 'SexyBiscuit.Engine', 'Input', 'ActionMap.cs'), 'utf8');
+
+    // The action names the C# Default() builds, as `["Name"] = new("Name",`.
+    const csharpActions = [...csharp.matchAll(/\["(\w+)"\]\s*=\s*new\("\1"/g)].map((m) => m[1]);
+    assert.ok(csharpActions.length >= 9, 'could not read the C# default map');
+
+    for (const name of csharpActions) {
+        assert.ok(map.get(name), `the JavaScript default map is missing '${name}'`);
+    }
+
+    // Axis spellings have to agree too: "LeftX" and "LeftStickX" are not the same
+    // string to a bindings file.
+    for (const axis of ['LeftX', 'LeftY', 'RightX', 'RightY']) {
+        assert.ok(csharp.includes(`"${axis}"`), `C# no longer uses the axis name '${axis}'`);
+    }
+
+    assert.equal(map.get('MoveX').bindings.find((b) => b.device === 'gamepad').axis, 'LeftX');
+    assert.equal(map.get('CameraX').bindings.find((b) => b.device === 'gamepad').axis, 'RightX');
+});
+
+test('both engines bind touch for movement and camera', () => {
+    // Without a touch binding on the default map, every action-map-driven game
+    // starts by discovering it is unplayable on a phone.
+    const map = ActionMap.default();
+    const csharp = fs.readFileSync(
+        path.join(repoRoot, 'SexyBiscuit.Engine', 'Input', 'ActionMap.cs'), 'utf8');
+
+    for (const [action, axis] of [
+        ['MoveX', 'LeftJoystickX'], ['MoveY', 'LeftJoystickY'],
+        ['CameraX', 'RightJoystickX'], ['CameraY', 'RightJoystickY'],
+    ]) {
+        const binding = map.get(action).bindings.find((b) => b.device === 'touch');
+        assert.ok(binding, `'${action}' has no touch binding in JavaScript`);
+        assert.equal(binding.axis, axis);
+
+        assert.ok(
+            csharp.includes(`Device = "touch",    Axis   = "${axis}"`),
+            `'${axis}' is not bound in the C# default map`);
+    }
+});
+
+test('a gamepad reads the axis names a C# bindings file uses', () => {
+    const pad = new GamepadState(0);
+    pad.update({ axes: [0.8, -0.6, -0.4, 0.2], buttons: [] });
+
+    // The C# spellings are what a shared bindings file carries.
+    assert.ok(Math.abs(pad.getAxis('LeftX') - pad.getAxis('LeftStickX')) < 1e-9);
+    assert.ok(pad.getAxis('LeftX') > 0.5, 'LeftX read nothing');
+    assert.ok(pad.getAxis('RightX') < -0.2, 'RightX read nothing');
+    assert.equal(pad.getAxis('NoSuchAxis'), 0);
 });

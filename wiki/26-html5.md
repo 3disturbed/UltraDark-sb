@@ -92,32 +92,31 @@ if you add a writer that emits one, nothing breaks, but prefer
 
 ---
 
-## Two bugs this port found in the C# engine
+## Three bugs this port found in the C# engine
 
-Neither is fixed on the C# side; both are documented here so nobody rediscovers
-them.
+All three are fixed, and pinned by tests on both sides.
 
-### `Transform3D.QuaternionToEuler` is not the inverse of `EulerToQuaternion`
+### `Transform3D.QuaternionToEuler` was not the inverse of `EulerToQuaternion`
 
 `EulerToQuaternion` composes through `Quaternion.CreateFromYawPitchRoll`, which
 is `Ry · Rx · Rz` — the YXZ convention, in which *pitch* is the constrained
-middle axis. `QuaternionToEuler` applies the standard ZYX aerospace formula,
-which puts `asin` on *yaw*. They are not inverses.
+middle axis. `QuaternionToEuler` applied the standard ZYX aerospace formula,
+which puts `asin` on *yaw*. They were not inverses.
 
 They agree whenever one of the three angles is zero, which covers the presets,
-every bundled template, and most hand-authored rotations — which is why it has
-gone unnoticed. With all three non-zero it fails: (10, −170, 25) degrees comes
-back as (−166.75, −4.88, 155.31), which is a **different rotation**, not another
-spelling of the same one.
+every bundled template, and most hand-authored rotations — which is why it went
+unnoticed for so long. With all three non-zero it failed: (10, −170, 25) degrees
+came back as (−166.75, −4.88, 155.31), a **different rotation** rather than
+another spelling of the same one.
 
-Anywhere the engine reads euler angles back and writes them again loses the
-rotation. Scene files are unaffected, because they store `rotation3` as a
+Everything that reads `EulerAngles`, changes one axis and writes it back was
+affected: `CameraControllers`, `Character`'s orient-to-movement yaw,
+`NavMeshAgent`, `MovementComponents`, `CameraShake`'s roll, and the inspector's
+rotation field — which had its own copy of the same formula, and now forwards to
+the engine's. Scene files were never affected: they store `rotation3` as a
 quaternion.
 
-The JavaScript port implements the true YXZ inverse — it round-trips to
-3 × 10⁻¹³ degrees across the whole range — and keeps the C# behaviour available
-as `Quaternion.toEulerCSharp` for anything that has to reproduce what the C#
-editor shows. The correct extraction, for whenever the C# side is fixed:
+The extraction now matches the composition:
 
 ```
 pitch = asin(clamp(2(wx − yz), −1, 1))
@@ -126,22 +125,35 @@ yaw   = atan2(2(xz + wy), 1 − 2(x² + y²))
 ```
 
 with roll pinned to zero and yaw taking the whole turn when |pitch| approaches
-90°.
+90°, where the two are not separable. `CoreTests.TransformTests` covers the
+round trip, the poles, and repeated single-axis edits.
 
-### `ActionMap` has no touch device
+### `ActionMap` had no touch device
 
-`InputBinding.Device` is `"keyboard"`, `"mouse"` or a gamepad. Touch exists —
-`Input/TouchState.cs` has touch points, virtual joysticks and pinch — but it is
-only reachable through `Input.Touch` directly, so **no action can be driven by a
-thumbstick**. Every action-map-driven game is therefore unplayable on a phone
-without bypassing the action map entirely.
+`InputBinding.Device` documented `"keyboard" | "mouse" | "gamepad" | "touch"`,
+and `InputManager` implemented the first three. Touch existed —
+`Input/TouchState.cs` has touch points, a virtual joystick and pinch — but was
+reachable only through `Input.Touch` directly, so **no action could be driven by
+a thumbstick**. Every action-map-driven game was unplayable on a phone without
+bypassing the map, and with it rebinding and gamepad support.
 
-The JavaScript port adds a `"touch"` device with `LeftJoystickX`,
-`LeftJoystickY`, `RightJoystickX`, `RightJoystickY` and `PinchDelta` axes. Files
-stay compatible in both directions: the C# reader ignores a device it does not
-know, and the JavaScript reader loads a file without them unchanged.
+`InputManager` now evaluates `"touch"` bindings. The axes are
+`LeftJoystickX`, `LeftJoystickY`, `RightJoystickX`, `RightJoystickY` and
+`PinchDelta`; a binding with no axis reads as a tap anywhere on the screen, so
+`IsPressed` / `IsHeld` / `IsReleased` work on it like a button.
 
----
+`VirtualJoystick` gained a `Side` (`Left`, `Right`, `Any`) and `TouchManager` a
+`RightJoystick`, so a player can move and look at once — opposite halves can
+never fight over the same finger. `ActionMap.Default()` binds `MoveX`, `MoveY`,
+`CameraX` and `CameraY` to the sticks, so the default map is playable on a phone
+as it stands.
+
+### `TouchManager.PinchDelta` was always zero
+
+Found while wiring the pinch axis up. It compared the current distance between
+two fingers against a previous-position table that the same method had already
+advanced to the current positions, so it measured the distance against itself.
+The previous positions now come from each touch's own `Delta`.
 
 ## Where the JavaScript bridge is wider than the C# one
 

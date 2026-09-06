@@ -244,18 +244,52 @@ public sealed class Transform3D : Component
     }
 
     /// <summary>The inverse of <see cref="EulerToQuaternion"/>: pitch, yaw and roll in degrees.</summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="EulerToQuaternion"/> composes through <c>CreateFromYawPitchRoll</c>, which is
+    /// <c>Ry * Rx * Rz</c> — the YXZ convention, in which <em>pitch</em> is the constrained middle
+    /// axis. The extraction below matches that composition, so the two really are inverses.
+    /// </para>
+    /// <para>
+    /// This used to apply the standard ZYX aerospace formula, which puts the <c>Asin</c> on yaw.
+    /// That agrees with the YXZ composition whenever one of the three angles is zero — which covers
+    /// the presets, every shipped template and most hand-authored rotations, and is why it went
+    /// unnoticed. With all three non-zero it does not: (10, -170, 25) came back as
+    /// (-166.75, -4.88, 155.31), a different rotation rather than another spelling of the same one.
+    /// Every read-modify-write of <see cref="EulerAngles"/> — the camera controllers, the character
+    /// yaw, <c>CameraShake</c>'s roll, the inspector's rotation field — silently corrupted the
+    /// rotation it was editing.
+    /// </para>
+    /// <para>
+    /// Scene files are unaffected either way: they store <c>rotation3</c> as a quaternion.
+    /// </para>
+    /// </remarks>
     public static Vector3 QuaternionToEuler(Quaternion q)
     {
-        float sinr = 2f * (q.W * q.X + q.Y * q.Z);
-        float cosr = 1f - 2f * (q.X * q.X + q.Y * q.Y);
-        float pitch = MathF.Atan2(sinr, cosr);
+        // From R = Ry(yaw) * Rx(pitch) * Rz(roll):
+        //     R[1][2] = -sin(pitch)
+        //     R[1][0] / R[1][1] = tan(roll)
+        //     R[0][2] / R[2][2] = tan(yaw)
+        float sinPitch = 2f * (q.W * q.X - q.Y * q.Z);
 
-        float sinp = 2f * (q.W * q.Y - q.Z * q.X);
-        float yaw = MathF.Abs(sinp) >= 1f ? MathF.CopySign(MathF.PI / 2f, sinp) : MathF.Asin(sinp);
+        // Looking straight up or down: cos(pitch) is zero, and yaw and roll trade off against each
+        // other with only their sum observable. Pin roll and give the whole turn to yaw.
+        if (MathF.Abs(sinPitch) >= 0.99999f)
+        {
+            float lockedPitch = MathF.CopySign(MathF.PI / 2f, sinPitch);
+            float lockedYaw   = MathF.Atan2(
+                2f * (q.W * q.Y - q.X * q.Z),
+                1f - 2f * (q.Y * q.Y + q.Z * q.Z));
 
-        float siny = 2f * (q.W * q.Z + q.X * q.Y);
-        float cosy = 1f - 2f * (q.Y * q.Y + q.Z * q.Z);
-        float roll = MathF.Atan2(siny, cosy);
+            return new Vector3(
+                MathHelper.ToDegrees(lockedPitch),
+                MathHelper.ToDegrees(lockedYaw),
+                0f);
+        }
+
+        float pitch = MathF.Asin(sinPitch);
+        float roll  = MathF.Atan2(2f * (q.X * q.Y + q.W * q.Z), 1f - 2f * (q.X * q.X + q.Z * q.Z));
+        float yaw   = MathF.Atan2(2f * (q.X * q.Z + q.W * q.Y), 1f - 2f * (q.X * q.X + q.Y * q.Y));
 
         return new Vector3(
             MathHelper.ToDegrees(pitch),

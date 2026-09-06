@@ -101,7 +101,7 @@ Trailing commas and `//` comments are allowed — the loader sets
 | `key` | string | a single key, name matching the `Keys` enum |
 | `negKey` / `posKey` | string | the two halves of a keyboard axis |
 | `button` | string | mouse (`Left`, `Right`, `Middle`, `XButton1`, `XButton2`) or gamepad button (`Buttons` enum name) |
-| `axis` | string | gamepad `LeftX`/`LeftY`/`RightX`/`RightY`/`LeftTrigger`/`RightTrigger`, or mouse `MouseX` / `MouseY` / `Scroll` |
+| `axis` | string | gamepad `LeftX`/`LeftY`/`RightX`/`RightY`/`LeftTrigger`/`RightTrigger`, mouse `MouseX` / `MouseY` / `Scroll`, or touch `LeftJoystickX`/`LeftJoystickY`/`RightJoystickX`/`RightJoystickY`/`PinchDelta` |
 | `invert` | bool | negates the axis result |
 | `scale` | float | multiplies the axis result, default `1` |
 
@@ -277,17 +277,47 @@ foreach (TouchPoint t in touch.Touches)
 float pinch = touch.PinchDelta;        // >0 spreading, <0 pinching
 ```
 
-A built-in virtual stick on the left half of the screen:
+Two built-in virtual sticks, one per half of the screen:
 
 ```csharp
 touch.LeftJoystick.Radius = 100f;    // Center is anchored where the finger lands
-Vector2 stick = touch.LeftJoystick.Value;    // −1..1, zero when not touched
-bool active   = touch.LeftJoystick.IsActive;
+Vector2 move = touch.LeftJoystick.Value;     // −1..1, zero when not touched
+Vector2 look = touch.RightJoystick.Value;
+bool active  = touch.LeftJoystick.IsActive;
 ```
 
 `VirtualJoystick.Update` takes the touch list and the screen width and claims
-touches in the left half of the screen; `TouchManager.Update` calls it for you.
-Call `SetScreenSize` once at startup and again on resize.
+touches in its own half — `Side` is `Left`, `Right` or `Any`. Opposite halves can
+never fight over the same finger, which is what lets a player move and look at
+once. `TouchManager.Update` drives both for you. Call `SetScreenSize` once at
+startup and again on resize.
+
+### Touch through the action map
+
+Prefer binding an action to a stick over reading `Input.Touch` directly: a game
+that goes through the map keeps rebinding, gamepad support and everything else
+the map provides.
+
+```json
+{
+  "MoveX": [
+    { "device": "keyboard", "negKey": "A", "posKey": "D" },
+    { "device": "gamepad",  "axis": "LeftX" },
+    { "device": "touch",    "axis": "LeftJoystickX" }
+  ],
+  "Zoom": [ { "device": "touch", "axis": "PinchDelta" } ]
+}
+```
+
+`ActionMap.Default()` already binds `MoveX`, `MoveY`, `CameraX` and `CameraY` to
+the sticks, so a game using nothing but the defaults is playable on a phone.
+
+A touch binding with **no** axis reads as a tap anywhere on the screen, so
+`IsPressed`, `IsHeld` and `IsReleased` work on it like a button.
+
+The stick's Y is screen-space — pushing up reads negative — which is the same
+sign the inverted keyboard and gamepad bindings produce for forward. A touch
+binding on `MoveY` therefore needs no `invert`.
 
 ---
 

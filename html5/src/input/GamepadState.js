@@ -80,15 +80,25 @@ export class GamepadState {
     isButtonPressed(name) { return this._buttons.has(name) && !this._previous.has(name); }
     isButtonReleased(name) { return !this._buttons.has(name) && this._previous.has(name); }
 
-    /** Reads a named axis: 'LeftStickX', 'RightStickY', 'LeftTrigger', … */
+    /**
+     * Reads a named axis.
+     *
+     * `LeftX`, `LeftY`, `RightX`, `RightY`, `LeftTrigger` and `RightTrigger` are the names the C#
+     * engine's action maps use, so a bindings file written there works here unchanged. The longer
+     * `LeftStickX` spellings are accepted as aliases.
+     */
     getAxis(name) {
         switch (name) {
-            case 'LeftStickX':  return this.leftStick.x;
-            case 'LeftStickY':  return this.leftStick.y;
-            case 'RightStickX': return this.rightStick.x;
-            case 'RightStickY': return this.rightStick.y;
-            case 'LeftTrigger': return this.leftTrigger;
-            case 'RightTrigger':return this.rightTrigger;
+            case 'LeftX':
+            case 'LeftStickX':   return this.leftStick.x;
+            case 'LeftY':
+            case 'LeftStickY':   return this.leftStick.y;
+            case 'RightX':
+            case 'RightStickX':  return this.rightStick.x;
+            case 'RightY':
+            case 'RightStickY':  return this.rightStick.y;
+            case 'LeftTrigger':  return this.leftTrigger;
+            case 'RightTrigger': return this.rightTrigger;
             default: return 0;
         }
     }

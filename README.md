@@ -1625,8 +1625,8 @@ run here.
 `BuildPlatform.Web` stages the runtime beside the project and writes the page
 that boots it. The output is static files; serve them from anything.
 
-Full detail, including the API mapping table, what differs by necessity, and two
-bugs this port found in the C# engine, is in
+Full detail, including the API mapping table, what differs by necessity, and the
+three bugs this port found and fixed in the C# engine, is in
 [`html5/README.md`](html5/README.md) and the
 [HTML5 wiki page](wiki/26-html5.md).
 

@@ -36,15 +36,38 @@ public sealed record TouchPoint
 // VirtualJoystick
 // ---------------------------------------------------------------------------
 
+/// <summary>Which half of the screen a <see cref="VirtualJoystick"/> claims touches from.</summary>
+public enum JoystickSide
+{
+    /// <summary>Claims touches starting in the left half. The movement stick.</summary>
+    Left,
+
+    /// <summary>Claims touches starting in the right half. The look stick.</summary>
+    Right,
+
+    /// <summary>Claims any touch, wherever it starts.</summary>
+    Any,
+}
+
 /// <summary>
 /// A software joystick driven by a single touch within a circular region.
-/// Tracks the first touch whose initial contact falls in the left half of the screen.
+/// Tracks the first touch whose initial contact falls in its half of the screen.
 /// </summary>
 public sealed class VirtualJoystick
 {
     // -----------------------------------------------------------------------
     // Configuration
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Which half of the screen this stick claims from.
+    /// </summary>
+    /// <remarks>
+    /// Two sticks on opposite halves can never fight over the same finger, which is what lets a
+    /// player move and look at once. <see cref="JoystickSide.Any"/> is for a game with a single
+    /// stick and no second one to collide with.
+    /// </remarks>
+    public JoystickSide Side { get; set; } = JoystickSide.Left;
 
     /// <summary>World-space centre of the virtual joystick circle.</summary>
     public Vector2 Center { get; set; }
@@ -76,7 +99,7 @@ public sealed class VirtualJoystick
 
     /// <summary>
     /// Called each frame with the full list of active touch points.
-    /// Automatically picks up the first new touch in the left screen half
+    /// Automatically picks up the first new touch in this stick's half of the screen
     /// and releases when that touch ends.
     /// </summary>
     /// <param name="touches">All active touches this frame.</param>
@@ -114,10 +137,10 @@ public sealed class VirtualJoystick
                 break;
             }
 
-            // Claim a new touch in the left half when we don't have one.
+            // Claim a new touch in our half when we don't have one.
             if (_trackingId == -1
                 && touch.Phase == TouchPhase.Began
-                && touch.Position.X < screenWidth / 2f)
+                && OwnsPosition(touch.Position, screenWidth))
             {
                 _trackingId = touch.Id;
                 Center      = touch.Position;   // anchor where the finger landed
@@ -130,6 +153,13 @@ public sealed class VirtualJoystick
         if (!foundTrack)
             Release();
     }
+
+    private bool OwnsPosition(Vector2 position, int screenWidth) => Side switch
+    {
+        JoystickSide.Left  => position.X < screenWidth / 2f,
+        JoystickSide.Right => position.X >= screenWidth / 2f,
+        _                  => true,
+    };
 
     private void Release()
     {
@@ -158,8 +188,11 @@ public sealed class TouchManager
     /// <summary>All active touch points this frame.</summary>
     public IReadOnlyList<TouchPoint> Touches => _touches;
 
-    /// <summary>Virtual joystick fed by the first left-half touch.</summary>
-    public VirtualJoystick LeftJoystick { get; } = new();
+    /// <summary>Virtual joystick fed by the first left-half touch. Conventionally movement.</summary>
+    public VirtualJoystick LeftJoystick { get; } = new() { Side = JoystickSide.Left };
+
+    /// <summary>Virtual joystick fed by the first right-half touch. Conventionally aim or look.</summary>
+    public VirtualJoystick RightJoystick { get; } = new() { Side = JoystickSide.Right };
 
     /// <summary>
     /// Change in distance between two simultaneous touches since last frame.
@@ -220,7 +253,45 @@ public sealed class TouchManager
             else
                 _prevPos[raw.Id] = raw.Position;
         }
+        Derive();
+    }
 
+    /// <summary>
+    /// Supplies this frame's touches from somewhere other than the TouchPanel, and updates
+    /// everything derived from them.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TouchPanel.GetState()"/> needs a real device and a game window, so nothing that
+    /// runs headlessly can exercise the joysticks, the pinch or the action bindings built on them.
+    /// This is the same code path with the device swapped out — the position, delta and phase
+    /// bookkeeping is identical, so a test drives what a phone would.
+    /// </remarks>
+    internal void ApplyTouches(IEnumerable<TouchPoint> touches)
+    {
+        _touches.Clear();
+
+        foreach (var touch in touches)
+        {
+            _prevPos.TryGetValue(touch.Id, out var prev);
+
+            _touches.Add(touch with
+            {
+                // A touch that has just begun has no previous position to differ from.
+                Delta = touch.Phase == TouchPhase.Began ? Vector2.Zero : touch.Position - prev,
+            });
+
+            if (touch.Phase is TouchPhase.Ended or TouchPhase.Cancelled)
+                _prevPos.Remove(touch.Id);
+            else
+                _prevPos[touch.Id] = touch.Position;
+        }
+
+        Derive();
+    }
+
+    /// <summary>Recomputes everything derived from this frame's touch list.</summary>
+    private void Derive()
+    {
         // Remove stale entries for touches that disappeared without an End event.
         var activeIds = new HashSet<int>(_touches.Select(t => t.Id));
         foreach (var stale in _prevPos.Keys.Where(k => !activeIds.Contains(k)).ToList())
@@ -229,13 +300,26 @@ public sealed class TouchManager
         // Pinch detection (two-touch distance delta).
         PinchDelta = ComputePinchDelta();
 
-        // Virtual joystick.
+        // Virtual joysticks. They claim opposite halves, so a finger on one can
+        // never be stolen by the other.
         LeftJoystick.Update(_touches, _screenWidth);
+        RightJoystick.Update(_touches, _screenWidth);
     }
 
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// How much the distance between two fingers changed since the last frame.
+    /// Positive is a spread, negative a pinch.
+    /// </summary>
+    /// <remarks>
+    /// The previous positions come from each touch's own <see cref="TouchPoint.Delta"/> rather
+    /// than from <c>_prevPos</c>. That dictionary has already been advanced to this frame's
+    /// positions by the time this runs, so reading it gave the current distance twice and the
+    /// pinch delta was always exactly zero.
+    /// </remarks>
     private float ComputePinchDelta()
     {
         if (_touches.Count < 2) return 0f;
@@ -244,9 +328,7 @@ public sealed class TouchManager
         var b = _touches[1];
 
         var currDist = Vector2.Distance(a.Position, b.Position);
-        var prevA    = _prevPos.TryGetValue(a.Id, out var pa) ? pa : a.Position;
-        var prevB    = _prevPos.TryGetValue(b.Id, out var pb) ? pb : b.Position;
-        var prevDist = Vector2.Distance(prevA, prevB);
+        var prevDist = Vector2.Distance(a.Position - a.Delta, b.Position - b.Delta);
 
         return currDist - prevDist;
     }

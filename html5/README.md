@@ -150,19 +150,18 @@ class-based API this engine prefers.
 
 Keyboard, mouse, gamepad and touch, reached through the engine host as
 `engine.input`. Browser key codes are normalised to XNA's spelling, so an action
-map naming `"LeftShift"` or `"D1"` works in both engines.
+map naming `"LeftShift"` or `"D1"` works in both engines, and gamepad axes use
+the C# names (`LeftX`, `RightY`) so a bindings file moves between them unchanged.
 
-`ActionMap` gains a **`touch` device**, so an action can be driven by a virtual
-joystick:
+`ActionMap.default()` is the C# default map action for action, so a game written
+against the defaults behaves the same under either engine. A test reads both
+sources and fails if they drift apart.
+
+Actions can be driven by a virtual joystick on either engine:
 
 ```json
 { "device": "touch", "axis": "LeftJoystickX" }
 ```
-
-The C# `ActionMap` has no touch binding at all — touch is only reachable through
-`Input.Touch` directly — which leaves every action-map-driven game unplayable on
-a phone. The file stays compatible in both directions: the C# reader ignores a
-device it does not know, and this reader loads a file without them unchanged.
 
 `TouchControls` draws the on-screen sticks and buttons as a DOM overlay. It is
 only a visual: input still flows through the same action map, so a game reads
@@ -205,33 +204,46 @@ a separate piece of work), C# hot reload, and the MCP server.
 
 ---
 
-## Two things found in the C# engine along the way
+## Two bugs this port found in the C# engine
 
-### `Transform3D.QuaternionToEuler` is not the inverse of `EulerToQuaternion`
+Both are now fixed on the C# side too, and pinned by tests in both suites.
+
+### `Transform3D.QuaternionToEuler` was not the inverse of `EulerToQuaternion`
 
 `EulerToQuaternion` composes through `Quaternion.CreateFromYawPitchRoll`, which
-is `Ry · Rx · Rz`. The extraction applies the standard ZYX aerospace formula,
-with `asin` on yaw. They agree only when one of the three angles is zero. A
-rotation of (10, −170, 25) degrees comes back as a *different rotation*, not a
-different spelling of the same one.
+is `Ry · Rx · Rz` — the YXZ convention, where *pitch* is the constrained middle
+axis. The extraction applied the standard ZYX aerospace formula, with `asin` on
+yaw. They agreed only when one of the three angles was zero, which covers the
+presets, every bundled template and most hand-authored rotations — and is why it
+went unnoticed. With all three non-zero, (10, −170, 25)° came back as
+(−166.75, −4.88, 155.31)°: a different rotation, not another spelling of the same
+one.
 
-This port implements the true YXZ inverse, which round-trips to 3 × 10⁻¹³ degrees
-across the whole range, and keeps the C# behaviour available as
-`Quaternion.toEulerCSharp` for a tool that needs to reproduce what the C# editor
-shows. Nothing shared changes: scene files store `rotation3` as a quaternion.
+Every read-modify-write of `EulerAngles` was affected — the camera controllers,
+the character yaw, `CameraShake`'s roll, the inspector's rotation field. The
+inspector had a second copy of the same formula, which now forwards to the
+engine's.
 
-The C# engine is untouched; the bug is still there.
+Both engines use the true YXZ inverse, which round-trips to 3 × 10⁻¹³ degrees
+across the whole range. Scene files never changed: they store `rotation3` as a
+quaternion.
 
-### Light intensity and the missing π
+### `ActionMap` had no touch device
 
-A Lambertian diffuse term divides by π. Without a matching π in the radiance, an
-intensity of 1 lights a facing white surface to about a third of full brightness,
-and every scene authored against the C# engine's intensities reads as flat and
-washed out. This renderer folds π into the radiance, so "intensity 1" means
-"fully lights a surface facing this light" — which is what the numbers in the
-shipped scenes assume.
+`InputBinding.Device` documented `"touch"` and nothing implemented it. Touch
+existed — touch points, a virtual joystick, pinch — but only through
+`Input.Touch` directly, so no action could be driven by a thumbstick and every
+action-map-driven game was unplayable on a phone without bypassing the map, and
+with it rebinding and gamepad support.
 
----
+Both engines now bind `LeftJoystickX`, `LeftJoystickY`, `RightJoystickX`,
+`RightJoystickY` and `PinchDelta`, have a right-hand stick as well as a left, and
+carry touch bindings on `MoveX`, `MoveY`, `CameraX` and `CameraY` in the default
+map. A touch binding with no axis reads as a tap anywhere on the screen.
+
+Fixing that turned up a third: `TouchManager.PinchDelta` was always exactly zero.
+It compared the current finger distance against a previous-position table that
+the same method had already advanced to the current positions.
 
 ## Layout
 

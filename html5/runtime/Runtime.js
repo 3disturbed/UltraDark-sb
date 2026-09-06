@@ -75,7 +75,7 @@ export class Runtime {
                 mount: this.mount,
                 leftStick: true,
                 rightStick: this.engine.config.enable3D,
-                buttons: [{ action: 'Jump', label: '▲' }, { action: 'Fire', label: '●' }],
+                buttons: [{ action: 'Jump', label: '▲' }, { action: 'Attack', label: '●' }],
             }).attach();
         }
 

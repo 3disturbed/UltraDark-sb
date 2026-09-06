@@ -170,6 +170,97 @@ public class TransformTests
         Assert.Equal(3f, child.Position.X, 3);
     }
 
+    /// <summary>
+    /// The two conversions have to be inverses across the whole range, not only where one of the
+    /// angles is zero.
+    /// </summary>
+    /// <remarks>
+    /// QuaternionToEuler used to apply the ZYX aerospace formula to a quaternion built the YXZ way
+    /// by CreateFromYawPitchRoll. That agrees whenever one angle is zero — which is every preset,
+    /// every shipped template and most hand-authored rotations, so it went unnoticed — and fails
+    /// otherwise: (10, -170, 25) came back as (-166.75, -4.88, 155.31).
+    /// </remarks>
+    [Theory]
+    [InlineData(0f, 0f, 0f)]
+    [InlineData(-45f, 30f, 0f)]
+    [InlineData(10f, -170f, 25f)]
+    [InlineData(30f, -60f, 100f)]
+    [InlineData(-80f, 175f, -175f)]
+    [InlineData(60f, 12f, -140f)]
+    public void EulerRoundTripsThroughTheQuaternion(float pitch, float yaw, float roll)
+    {
+        var euler = new Vector3(pitch, yaw, roll);
+        var back  = Transform3D.QuaternionToEuler(Transform3D.EulerToQuaternion(euler));
+
+        Assert.Equal(pitch, back.X, 2);
+        Assert.Equal(yaw,   AngleNear(back.Y, yaw), 2);
+        Assert.Equal(roll,  AngleNear(back.Z, roll), 2);
+    }
+
+    /// <summary>
+    /// Whatever spelling comes back at the poles, it has to name the same rotation. Yaw and roll
+    /// are not separable there, so only the resulting orientation is meaningful.
+    /// </summary>
+    [Theory]
+    [InlineData(90f, 45f, 0f)]
+    [InlineData(-90f, 120f, 0f)]
+    [InlineData(90f, 30f, 40f)]
+    public void EulerAtThePolesNamesTheSameRotation(float pitch, float yaw, float roll)
+    {
+        var original = Transform3D.EulerToQuaternion(new Vector3(pitch, yaw, roll));
+        var respelled = Transform3D.EulerToQuaternion(Transform3D.QuaternionToEuler(original));
+
+        foreach (var axis in new[] { Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ })
+        {
+            var a = Vector3.Transform(axis, original);
+            var b = Vector3.Transform(axis, respelled);
+
+            Assert.Equal(a.X, b.X, 3);
+            Assert.Equal(a.Y, b.Y, 3);
+            Assert.Equal(a.Z, b.Z, 3);
+        }
+    }
+
+    /// <summary>
+    /// Reading EulerAngles, changing one axis and writing it back is what the camera controllers,
+    /// the character yaw, CameraShake and the inspector all do. It has to leave the other two alone.
+    /// </summary>
+    [Fact]
+    public void EditingOneEulerAxisLeavesTheOthersAlone()
+    {
+        var t = new Actor("A").AddComponent<Transform3D>();
+        t.EulerAngles = new Vector3(23f, -140f, 57f);
+
+        t.EulerAngles = t.EulerAngles with { Y = 90f };
+
+        Assert.Equal(23f, t.EulerAngles.X, 2);
+        Assert.Equal(90f, t.EulerAngles.Y, 2);
+        Assert.Equal(57f, t.EulerAngles.Z, 2);
+    }
+
+    /// <summary>Repeated read-modify-write must not drift.</summary>
+    [Fact]
+    public void RepeatedlyNudgingTheYawDoesNotDriftTheOtherAxes()
+    {
+        var t = new Actor("A").AddComponent<Transform3D>();
+        t.EulerAngles = new Vector3(15f, 0f, -30f);
+
+        for (int i = 0; i < 90; i++)
+            t.EulerAngles = t.EulerAngles with { Y = t.EulerAngles.Y + 1f };
+
+        Assert.Equal(15f, t.EulerAngles.X, 2);
+        Assert.Equal(90f, t.EulerAngles.Y, 2);
+        Assert.Equal(-30f, t.EulerAngles.Z, 2);
+    }
+
+    /// <summary>Brings an angle into the same turn as the expected one before comparing.</summary>
+    private static float AngleNear(float value, float expected)
+    {
+        while (value - expected > 180f) value -= 360f;
+        while (expected - value > 180f) value += 360f;
+        return value;
+    }
+
     [Fact]
     public void InverseTransformPoint_UndoesTransformPoint()
     {

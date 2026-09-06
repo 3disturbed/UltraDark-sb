@@ -358,6 +358,7 @@ public sealed class InputManager
         "keyboard" => EvalKeyboardHeld(b),
         "mouse"    => EvalMouseHeld(b),
         "gamepad"  => EvalGamepadHeld(b),
+        "touch"    => EvalTouchHeld(b),
         _          => false
     };
 
@@ -366,6 +367,7 @@ public sealed class InputManager
         "keyboard" => EvalKeyboardPressed(b),
         "mouse"    => EvalMousePressed(b),
         "gamepad"  => EvalGamepadPressed(b),
+        "touch"    => EvalTouchPressed(b),
         _          => false
     };
 
@@ -374,6 +376,7 @@ public sealed class InputManager
         "keyboard" => EvalKeyboardReleased(b),
         "mouse"    => EvalMouseReleased(b),
         "gamepad"  => EvalGamepadReleased(b),
+        "touch"    => EvalTouchReleased(b),
         _          => false
     };
 
@@ -384,6 +387,7 @@ public sealed class InputManager
             "keyboard" => EvalKeyboardAxis(b),
             "mouse"    => EvalMouseAxis(b),
             "gamepad"  => EvalGamepadAxis(b),
+            "touch"    => EvalTouchAxis(b),
             _          => 0f
         };
         raw *= b.Scale;
@@ -498,6 +502,45 @@ public sealed class InputManager
         if (b.Axis != null) return gp.GetAxis(b.Axis);
         return 0f;
     }
+
+    // -----------------------------------------------------------------------
+    // Touch evaluation
+    // -----------------------------------------------------------------------
+    //
+    // Touch was reachable only through Input.Touch directly, so no action could be
+    // driven by a thumbstick and every action-map-driven game was unplayable on a
+    // phone without bypassing the action map. A binding names one of the joystick
+    // axes, or names none at all and reads as a tap anywhere on the screen.
+
+    private bool EvalTouchHeld(InputBinding b)
+    {
+        if (b.Axis != null) return MathF.Abs(EvalTouchAxis(b)) > 0.3f;
+
+        // No axis: any finger on the screen counts as the button being held.
+        return Touch.Touches.Any(t => t.Phase is not (TouchPhase.Ended or TouchPhase.Cancelled));
+    }
+
+    private bool EvalTouchPressed(InputBinding b)
+    {
+        if (b.Axis != null) return false;
+        return Touch.Touches.Any(t => t.Phase == TouchPhase.Began);
+    }
+
+    private bool EvalTouchReleased(InputBinding b)
+    {
+        if (b.Axis != null) return false;
+        return Touch.Touches.Any(t => t.Phase == TouchPhase.Ended);
+    }
+
+    private float EvalTouchAxis(InputBinding b) => b.Axis switch
+    {
+        "LeftJoystickX"  => Touch.LeftJoystick.Value.X,
+        "LeftJoystickY"  => Touch.LeftJoystick.Value.Y,
+        "RightJoystickX" => Touch.RightJoystick.Value.X,
+        "RightJoystickY" => Touch.RightJoystick.Value.Y,
+        "PinchDelta"     => Touch.PinchDelta,
+        _                => 0f
+    };
 
     // =========================================================================
     // Parsing helpers
