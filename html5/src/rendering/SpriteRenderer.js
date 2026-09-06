@@ -27,6 +27,9 @@ export class SpriteRenderer extends Component {
         size:        { type: P.Vector2, default: [32, 32] },
     };
 
+    /** Every live sprite renderer, for picking and for batching decisions. */
+    static all = [];
+
     constructor() {
         super();
         /** @type {?import('../assets/Texture2D.js').Texture2D} */
@@ -48,6 +51,13 @@ export class SpriteRenderer extends Component {
         this.sourceRect = null;
 
         this._resolved = false;
+    }
+
+    awake() { SpriteRenderer.all.push(this); }
+
+    onDestroy() {
+        const i = SpriteRenderer.all.indexOf(this);
+        if (i >= 0) SpriteRenderer.all.splice(i, 1);
     }
 
     start() { this._resolveTexture(); }

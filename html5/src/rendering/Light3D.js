@@ -71,7 +71,10 @@ export class SkyLight extends Component {
     static schema = {
         skyColor:    { type: P.Color, default: '#7091C8FF' },
         groundColor: { type: P.Color, default: '#4A4438FF' },
-        intensity:   { type: P.Number, default: 1, min: 0 },
+        // Ambient is a fill, not a light source. At 1 the average of the sky and
+        // ground colours lands near 0.4, which washes out every direct light in
+        // the scene; a third of that matches the renderer's own ambient default.
+        intensity:   { type: P.Number, default: 0.35, min: 0 },
     };
 
     /** The sky light the renderer uses. The last one to wake wins. */
@@ -81,7 +84,7 @@ export class SkyLight extends Component {
         super();
         this.skyColor = Color.from('#7091C8');
         this.groundColor = Color.from('#4A4438');
-        this.intensity = 1;
+        this.intensity = 0.35;
     }
 
     awake() { SkyLight.active = this; }

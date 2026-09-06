@@ -13,6 +13,10 @@
 // both forms have to load.
 // -----------------------------------------------------------------------------
 
+// Loading the built-ins is what makes `"type": "SpriteRenderer"` resolve to a
+// class. Without it every component in a loaded scene becomes a MissingComponent.
+import '../registerBuiltins.js';
+
 import { Scene } from '../core/Scene.js';
 import { Actor } from '../core/Actor.js';
 import { Transform3D } from '../core/Transform3D.js';
@@ -33,6 +37,11 @@ import { Vector2, Vector3, Quaternion } from '../math/index.js';
  * @param {string|object} json The file's text, or the already-parsed object.
  * @param {object} [options]
  * @param {(message: string) => void} [options.onWarning] Called for each recoverable problem.
+ * @param {boolean} [options.flush=true] Apply the queued actors, which starts them.
+ *   Pass false when the caller still has to attach the scene to an engine:
+ *   starting an actor before its scene has a host means anything that loads an
+ *   asset in `start` — a sprite's texture, a script's source — finds no asset
+ *   manager and silently never loads.
  * @returns {Scene}
  */
 export function deserialize(json, options = {}) {
@@ -53,7 +62,7 @@ export function deserialize(json, options = {}) {
     // A file with no layers at all still needs somewhere to put things.
     if (scene.layers.length === 0) scene.addLayer('default', 0);
 
-    scene.flushPendingActors();
+    if (options.flush !== false) scene.flushPendingActors();
     return scene;
 }
 

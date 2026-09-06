@@ -32,6 +32,7 @@ export class ScriptComponent extends Component {
         this._delegate = null;      // a Component instance, for module-style scripts
         this._started = false;
         this._loading = null;
+        this._initialised = false;
 
         /** The last load error, surfaced by the editor's inspector. */
         this.error = null;
@@ -55,6 +56,17 @@ export class ScriptComponent extends Component {
 
     start() {
         this._started = true;
+
+        // The scene loader attaches components and applies their properties
+        // before the actor joins a scene, so when `scriptPath` was set there was
+        // no asset manager to load through and initialisation was skipped. By
+        // `start` the actor is in the scene, which is the first moment the
+        // script can actually be fetched.
+        if (this._scriptPath && !this._initialised) {
+            this._initialise();
+            return;   // onStart fires when the load resolves
+        }
+
         // A script still loading gets its `onStart` once the load resolves.
         if (this._loading) return;
         this._call('onStart');
@@ -84,6 +96,7 @@ export class ScriptComponent extends Component {
     reload() {
         this._hooks = {};
         this._delegate = null;
+        this._initialised = false;
         this._initialise();
     }
 
@@ -94,10 +107,13 @@ export class ScriptComponent extends Component {
 
         const assets = this.actor?.scene?.engine?.assets;
         if (!assets) {
-            // No host: a test or a headless tool. Nothing to load from.
+            // No asset manager yet: either the actor is not in a scene, which
+            // `start` retries, or there is no host at all, which is a test or a
+            // headless tool feeding source in through `setSource`.
             return;
         }
 
+        this._initialised = true;
         this._loading = assets.loadText(this._scriptPath)
             .then((source) => {
                 this._loading = null;
@@ -193,6 +209,7 @@ export class ScriptComponent extends Component {
     setSource(source) {
         this._hooks = {};
         this._delegate = null;
+        this._initialised = true;
         this._instantiate(source);
         this._call('onAwake');
         if (this._started) this._call('onStart');

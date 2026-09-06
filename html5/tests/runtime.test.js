@@ -785,3 +785,69 @@ test('the aliases stay out of serialisation', () => {
     assert.ok(!keys.includes('Name'), 'an alias must not be enumerable');
     assert.ok(keys.includes('name'));
 });
+
+// -----------------------------------------------------------------------------
+// Regressions
+// -----------------------------------------------------------------------------
+
+test('a material property loads as a Material3D, not a plain object', () => {
+    // The renderer calls methods on it every frame; a bare object from the file
+    // throws on the first draw and the scene renders as nothing at all.
+    const scene = deserialize({
+        name: 'Materials',
+        layers: [{
+            name: 'Default',
+            actors: [{
+                name: 'Cube',
+                position3: [0, 0, 0],
+                components: [{
+                    type: 'MeshRenderer',
+                    properties: {
+                        MeshType: 'Cube',
+                        Materials: [{ albedoColor: '#3366CCFF', metallic: 0.5, roughness: 0.3 }],
+                    },
+                }],
+            }],
+        }],
+    });
+
+    const material = scene.findByName('Cube').getComponent('MeshRenderer').materials[0];
+    assert.equal(material.constructor.name, 'Material3D');
+    assert.equal(typeof material.albedoColor.toFloatArray, 'function');
+    assert.deepEqual(material.albedoColor.toFloatArray().map((n) => +n.toFixed(2)), [0.2, 0.4, 0.8, 1]);
+});
+
+test('a loaded scene starts its actors only once it has an engine', () => {
+    // `start` is where a component loads what it references — a sprite's texture,
+    // a script's source. Starting the actors while the scene still has no host
+    // means every one of those silently finds no asset manager and never loads.
+    const scene = deserialize({
+        name: 'Ordering',
+        layers: [{
+            name: 'Default',
+            actors: [{
+                name: 'Scripted',
+                components: [{ type: 'ScriptComponent', properties: { ScriptPath: 'Scripts/A.js' } }],
+            }],
+        }],
+    }, { flush: false });
+
+    const scripted = scene.layers[0]._pendingAdd[0];
+    assert.ok(scripted, 'with flush:false the actor is still queued');
+    assert.equal(scripted.getComponent('ScriptComponent')._initialised, false);
+
+    // What SceneManager.adoptScene does: attach, then flush.
+    const loaded = [];
+    scene.engine = { assets: { loadText: (p) => { loaded.push(p); return Promise.resolve(''); } } };
+    scene.flushPendingActors();
+
+    assert.deepEqual(loaded, ['Scripts/A.js'], 'the script was fetched once the engine was in place');
+});
+
+test('deserialize still flushes by default', () => {
+    const scene = deserialize({
+        name: 'Default flush',
+        layers: [{ name: 'Default', actors: [{ name: 'Thing' }] }],
+    });
+    assert.ok(scene.findByName('Thing'), 'a caller that just wants a scene gets a usable one');
+});

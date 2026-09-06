@@ -78,8 +78,12 @@ export class SceneManager {
         }
 
         this._activeScene = scene;
+
+        // Attach before flushing: the flush is what runs `start`, and a component
+        // that loads an asset there needs the engine already in place.
         this._attach(scene);
         scene.flushPendingActors();
+
         this.sceneLoaded.broadcast(scene);
         return scene;
     }
@@ -110,9 +114,14 @@ export class SceneManager {
      * with `.scene`, then with `.json`, each also tried under `Assets/`.
      */
     static candidatePaths(path) {
-        const bases = [path, `${path}.scene`, `${path}.json`];
-        return bases.flatMap((candidate) =>
-            candidate.startsWith('Assets/') ? [candidate] : [candidate, `Assets/${candidate}`]);
+        // `.scene` first: a start scene is almost always written without its
+        // extension, so trying the bare path first costs a 404 on every load.
+        // The AssetManager tries each of these under `Assets/` as well.
+        const bases = /\.(scene|json)$/i.test(path)
+            ? [path]
+            : [`${path}.scene`, path, `${path}.json`];
+
+        return [...new Set(bases)];
     }
 
     async _readScene(scenePath) {
@@ -124,7 +133,8 @@ export class SceneManager {
         for (const candidate of SceneManager.candidatePaths(scenePath)) {
             try {
                 const text = await this.assets.loadText(candidate);
-                return deserialize(text);
+                // Left unflushed so `adoptScene` can attach the engine first.
+                return deserialize(text, { flush: false });
             } catch (err) {
                 lastError = err;
             }

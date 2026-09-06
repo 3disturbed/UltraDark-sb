@@ -1,0 +1,10 @@
+{
+  "WindowTitle": "SexyBiscuit HTML5 — Hello",
+  "WindowWidth": 1280,
+  "WindowHeight": 720,
+  "Fullscreen": false,
+  "VSync": true,
+  "ShowCursor": true,
+  "StartScene": "Scenes/Hello",
+  "Enable3D": true
+}

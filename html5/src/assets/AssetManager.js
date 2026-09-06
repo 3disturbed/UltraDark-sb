@@ -52,9 +52,14 @@ export class AssetManager {
 
         // `Assets/foo.png` is how a scene usually names things, but a project may
         // also store them at the root; try both rather than failing on the first.
-        return path.startsWith('Assets/')
-            ? [direct, this.resolve(path.slice('Assets/'.length))]
-            : [direct, this.resolve(`Assets/${path}`)];
+        // Deduplicated, because callers that build their own path variants
+        // otherwise produce a cross product with repeats — four requests to find
+        // one scene, two of them identical.
+        const alternative = path.startsWith('Assets/')
+            ? this.resolve(path.slice('Assets/'.length))
+            : this.resolve(`Assets/${path}`);
+
+        return [...new Set([direct, alternative])];
     }
 
     /** True when a path is already loaded. */

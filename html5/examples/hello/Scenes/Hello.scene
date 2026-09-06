@@ -1,0 +1,517 @@
+{
+  "name": "Hello",
+  "layers": [
+    {
+      "name": "background",
+      "order": -100,
+      "actors": [
+        {
+          "name": "Sky",
+          "tag": "Untagged",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "Skybox",
+              "properties": {
+                "Enabled": true,
+                "GradientTop": "#3A5CA8FF",
+                "GradientBottom": "#B2C6E0FF",
+                "CubemapPath": "",
+                "Exposure": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sky Light",
+          "tag": "Untagged",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "SkyLight",
+              "properties": {
+                "Enabled": true,
+                "SkyColor": "#7091C8FF",
+                "GroundColor": "#4A4438FF",
+                "Intensity": 0.35
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "default",
+      "order": 0,
+      "actors": [
+        {
+          "name": "Directional Light",
+          "tag": "Light",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "Light3D",
+              "properties": {
+                "Enabled": true,
+                "Type": "Directional",
+                "Color": "#FFF8E8FF",
+                "Intensity": 1.1,
+                "Range": 10,
+                "SpotAngle": 30,
+                "CastsShadows": true,
+                "ShadowMapSize": 1024
+              }
+            }
+          ],
+          "position3": [
+            0,
+            10,
+            0
+          ],
+          "rotation3": [
+            -0.4031,
+            0.2725,
+            0.1271,
+            0.8644
+          ],
+          "scale3": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Fill Light",
+          "tag": "Light",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "Light3D",
+              "properties": {
+                "Enabled": true,
+                "Type": "Point",
+                "Color": "#FFFFFFFF",
+                "Intensity": 4,
+                "Range": 10,
+                "SpotAngle": 30,
+                "CastsShadows": false,
+                "ShadowMapSize": 1024
+              }
+            }
+          ],
+          "position3": [
+            -4,
+            3,
+            4
+          ],
+          "rotation3": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale3": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Floor",
+          "tag": "Ground",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "MeshRenderer",
+              "properties": {
+                "Enabled": true,
+                "MeshType": "Plane",
+                "ModelPath": "",
+                "CastShadows": true,
+                "IgnoreCulling": false,
+                "Materials": [
+                  {
+                    "albedoColor": "#767A82FF",
+                    "metallic": 0,
+                    "roughness": 0.9,
+                    "emissiveIntensity": 0
+                  }
+                ]
+              }
+            },
+            {
+              "type": "BoxCollider3D",
+              "properties": {
+                "Enabled": true,
+                "IsTrigger": false,
+                "Center": [
+                  0,
+                  0,
+                  0
+                ],
+                "Friction": 0.5,
+                "Restitution": 0,
+                "Size": [
+                  1,
+                  0.1,
+                  1
+                ]
+              }
+            }
+          ],
+          "position3": [
+            0,
+            0,
+            0
+          ],
+          "rotation3": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale3": [
+            30,
+            1,
+            30
+          ]
+        },
+        {
+          "name": "Spinning Cube",
+          "tag": "Untagged",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "MeshRenderer",
+              "properties": {
+                "Enabled": true,
+                "MeshType": "Cube",
+                "ModelPath": "",
+                "CastShadows": true,
+                "IgnoreCulling": false,
+                "Materials": [
+                  {
+                    "albedoColor": "#D9704AFF",
+                    "metallic": 0,
+                    "roughness": 0.35,
+                    "emissiveIntensity": 0
+                  }
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "Enabled": true,
+                "ScriptPath": "Scripts/Spinner.js"
+              }
+            }
+          ],
+          "position3": [
+            0,
+            0.5,
+            0
+          ],
+          "rotation3": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale3": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Sphere",
+          "tag": "Untagged",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "MeshRenderer",
+              "properties": {
+                "Enabled": true,
+                "MeshType": "Sphere",
+                "ModelPath": "",
+                "CastShadows": true,
+                "IgnoreCulling": false,
+                "Materials": [
+                  {
+                    "albedoColor": "#4A9AD9FF",
+                    "metallic": 0.85,
+                    "roughness": 0.18,
+                    "emissiveIntensity": 0
+                  }
+                ]
+              }
+            }
+          ],
+          "position3": [
+            -2.2,
+            0.5,
+            0
+          ],
+          "rotation3": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale3": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Cylinder",
+          "tag": "Untagged",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "MeshRenderer",
+              "properties": {
+                "Enabled": true,
+                "MeshType": "Cylinder",
+                "ModelPath": "",
+                "CastShadows": true,
+                "IgnoreCulling": false,
+                "Materials": [
+                  {
+                    "albedoColor": "#6FBF73FF",
+                    "metallic": 0,
+                    "roughness": 0.6,
+                    "emissiveIntensity": 0
+                  }
+                ]
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "Enabled": true,
+                "ScriptPath": "Scripts/Bob.js"
+              }
+            }
+          ],
+          "position3": [
+            2.2,
+            0.5,
+            0
+          ],
+          "rotation3": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale3": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Main Camera",
+          "tag": "MainCamera3D",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "Camera3D",
+              "properties": {
+                "Enabled": true,
+                "FieldOfView": 60,
+                "NearClip": 0.1,
+                "FarClip": 1000,
+                "IsOrthographic": false,
+                "OrthoSize": 5
+              }
+            }
+          ],
+          "position3": [
+            0,
+            2,
+            8
+          ],
+          "rotation3": [
+            -0.0872,
+            0,
+            0,
+            0.9962
+          ],
+          "scale3": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Player Start",
+          "tag": "PlayerStart",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": [
+            {
+              "type": "PlayerStart",
+              "properties": {
+                "Enabled": true,
+                "TeamId": -1
+              }
+            }
+          ],
+          "position3": [
+            0,
+            0,
+            6
+          ],
+          "rotation3": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale3": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Game Mode",
+          "class": "GameMode",
+          "properties": {
+            "SpawnLayer": "default",
+            "RespawnDelay": 3,
+            "ScoreToWin": 0,
+            "TimeLimit": 0,
+            "AutoStartLocalPlayer": true
+          },
+          "tag": "Untagged",
+          "layer": 0,
+          "active": true,
+          "position": [
+            0,
+            0
+          ],
+          "rotation": 0,
+          "scale": [
+            1,
+            1
+          ],
+          "components": []
+        }
+      ]
+    },
+    {
+      "name": "foreground",
+      "order": 100,
+      "actors": []
+    },
+    {
+      "name": "ui",
+      "order": 200,
+      "actors": []
+    }
+  ]
+}

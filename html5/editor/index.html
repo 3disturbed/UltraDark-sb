@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161c">
+<title>SexyBiscuit — Editor</title>
+<link rel="stylesheet" href="editor.css">
+</head>
+<body>
+
+<div id="editor"></div>
+
+<noscript>
+    <p style="padding:2rem;font:16px system-ui">
+        The editor needs JavaScript, and needs to be served over HTTP rather than
+        opened from a file:// path — browsers refuse to load ES modules otherwise.
+        Run <code>node html5/tools/serve.js</code> from the repository root.
+    </p>
+</noscript>
+
+<script type="module">
+import { boot } from './Editor.js';
+
+try {
+    await boot();
+} catch (error) {
+    document.getElementById('editor').innerHTML =
+        `<div class="sb-fatal"><h1>The editor could not start</h1><pre></pre></div>`;
+    document.querySelector('.sb-fatal pre').textContent = error?.stack ?? String(error);
+    throw error;
+}
+</script>
+
+</body>
+</html>

@@ -12,6 +12,7 @@
 // -----------------------------------------------------------------------------
 
 import { Vector2, Vector3, Vector4, Quaternion, Color } from '../math/index.js';
+import { Material3D } from '../rendering/Material3D.js';
 
 /** The property kinds a component may declare. Mirrors `ValueConverter.IsSupportedType`. */
 export const PropertyType = {
@@ -93,9 +94,10 @@ export function coerce(value, descriptor) {
         }
 
         case PropertyType.Material:
-            // Imported lazily by the caller that owns Material3D, to keep this
-            // module free of rendering dependencies.
-            return value;
+            // A scene file stores a material as a plain object; the renderer needs
+            // the class, whose methods it calls every frame. Material3D itself
+            // depends on nothing but Color, so importing it here costs nothing.
+            return Material3D.from(value);
 
         default:
             return value;

@@ -138,7 +138,13 @@ void main() {
             }
         }
 
-        vec3 radiance = uLightColor[i] * uLightIntensity[i] * attenuation;
+        // The PI here is the counterpart of the 1/PI in the Lambertian diffuse
+        // below. Without it an intensity of 1 lights a facing white surface to
+        // about a third of full brightness, and every scene authored against the
+        // C# engine's intensities reads as flat and dim. With it, an intensity of
+        // 1 means "fully lights a surface facing this light", which is what the
+        // numbers in the shipped scenes assume.
+        vec3 radiance = uLightColor[i] * uLightIntensity[i] * attenuation * PI;
         if (radiance == vec3(0.0)) continue;
 
         vec3 h = normalize(v + l);
@@ -158,7 +164,15 @@ void main() {
         outgoing += (diffuseWeight * albedo / PI + specular) * radiance * nDotL;
     }
 
-    vec3 ambient = uAmbientColor * albedo;
+    // Ambient stands in for an environment map, which this renderer does not
+    // have. It has to cover the specular half as well as the diffuse: a metal
+    // has no diffuse term at all, so with a diffuse-only ambient it renders
+    // black everywhere a light does not happen to reflect into the eye.
+    vec3 ambientFresnel = fresnelSchlick(max(dot(n, v), 0.0), f0);
+    vec3 ambientDiffuse = (vec3(1.0) - ambientFresnel) * (1.0 - uMetallic) * albedo;
+    vec3 ambientSpecular = mix(ambientFresnel, albedo, uMetallic);
+
+    vec3 ambient = uAmbientColor * (ambientDiffuse + ambientSpecular);
     vec3 emissive = albedo * uEmissiveIntensity;
     vec3 color = ambient + outgoing + emissive;
 

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover lets the game reach under a notch; the safe-area insets
+     in the stylesheet keep the controls out from under it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<meta name="theme-color" content="#12141a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>SexyBiscuit</title>
+<link rel="stylesheet" href="runtime.css">
+</head>
+<body>
+
+<!-- data-project points at the project root; data-scene overrides its start scene. -->
+<div id="game" data-project="../examples/hello/" data-stats="true"></div>
+
+<button id="fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+
+<script type="module">
+import { boot } from './Runtime.js';
+
+const runtime = await boot();
+
+const button = document.getElementById('fullscreen');
+button.addEventListener('click', () => {
+    if (document.fullscreenElement) runtime.exitFullscreen();
+    else runtime.enterFullscreen({ orientation: 'landscape' });
+});
+
+// A phone in portrait with a landscape game is worth a nudge, but not a block:
+// the game still runs, and rotating dismisses it.
+const orientationHint = () => {
+    document.body.classList.toggle(
+        'wants-landscape',
+        window.matchMedia('(orientation: portrait) and (max-width: 820px)').matches);
+};
+orientationHint();
+window.addEventListener('resize', orientationHint);
+</script>
+
+<div id="rotate-hint" aria-hidden="true">
+    <div>↻</div>
+    <p>Rotate your device for the best view</p>
+</div>
+
+</body>
+</html>

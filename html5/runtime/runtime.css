@@ -1,0 +1,171 @@
+/* -----------------------------------------------------------------------------
+   The player shell.
+
+   Two rules do most of the mobile work: `overscroll-behavior: none` with a fixed
+   body stops iOS rubber-banding the page while a thumb is on a joystick, and
+   `touch-action: none` on the canvases stops it scrolling and zooming instead of
+   sending the drag to the game.
+   -------------------------------------------------------------------------- */
+
+:root {
+    --sb-bg: #12141a;
+    --sb-fg: #e8eaf0;
+    --sb-dim: #8b90a0;
+    --sb-accent: #5b8dd9;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: var(--sb-bg);
+    color: var(--sb-fg);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+}
+
+body { position: fixed; inset: 0; }
+
+#game {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--sb-bg);
+}
+
+#game canvas { display: block; touch-action: none; }
+
+/* ---- Loading overlay ---------------------------------------------------- */
+
+.sb-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    background: var(--sb-bg);
+    transition: opacity 350ms ease;
+}
+
+.sb-loading.is-done { opacity: 0; pointer-events: none; }
+
+.sb-loading-inner { text-align: center; max-width: min(90vw, 540px); }
+
+.sb-loading-mark {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+}
+
+.sb-loading-status { color: var(--sb-dim); margin-bottom: 20px; }
+
+.sb-loading-bar {
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.09);
+    overflow: hidden;
+}
+
+/* An indeterminate sweep: the engine reports progress in stages, not fractions. */
+.sb-loading-bar i {
+    display: block;
+    width: 38%;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--sb-accent);
+    animation: sb-sweep 1.15s ease-in-out infinite;
+}
+
+@keyframes sb-sweep {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(365%); }
+}
+
+.sb-loading-error {
+    margin: 14px 0 0;
+    padding: 12px 14px;
+    text-align: left;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #ffb4a8;
+    background: rgba(255, 90, 70, 0.09);
+    border: 1px solid rgba(255, 90, 70, 0.28);
+    border-radius: 6px;
+}
+
+/* ---- Stats -------------------------------------------------------------- */
+
+.sb-stats {
+    position: absolute;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    left: calc(12px + env(safe-area-inset-left, 0px));
+    z-index: 20;
+    padding: 5px 9px;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.45);
+    color: #b9c4d6;
+    font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+/* ---- Fullscreen button -------------------------------------------------- */
+
+#fullscreen {
+    position: fixed;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    z-index: 30;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--sb-fg);
+    font-size: 17px;
+    cursor: pointer;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+#fullscreen:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* ---- Orientation hint --------------------------------------------------- */
+
+#rotate-hint {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: none;
+    place-items: center;
+    text-align: center;
+    background: rgba(18, 20, 26, 0.93);
+}
+
+body.wants-landscape #rotate-hint { display: grid; }
+
+#rotate-hint div {
+    font-size: 46px;
+    animation: sb-rotate 2.4s ease-in-out infinite;
+}
+
+#rotate-hint p { color: var(--sb-dim); margin: 12px 0 0; }
+
+@keyframes sb-rotate {
+    0%, 45%  { transform: rotate(0deg); }
+    55%, 100%{ transform: rotate(90deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-loading-bar i,
+    #rotate-hint div { animation: none; }
+}
