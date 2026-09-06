@@ -66,6 +66,7 @@ effects, and [CONTRIBUTING](CONTRIBUTING.md) for build, test and style expectati
 23. [Localisation](#23-localisation)
 24. [Testing & CI](#24-testing--ci)
 25. [AI Assistant & MCP](#25-ai-assistant--mcp)
+26. [HTML5 / Web](#26-html5--web)
 
 ---
 
@@ -1028,7 +1029,7 @@ One-click export to every supported platform. Accessible from the editor Build S
 | Android | MonoGame Android | Signed `.apk` / `.aab` (Play Store ready) |
 | iOS | MonoGame iOS | Xcode project + `.ipa` (TestFlight ready) |
 | Steam | DesktopGL + Steamworks.NET | SteamPipe depot folder |
-| Web | WASM stub (planned) | `.html` + `.wasm` |
+| Web | HTML5 / WebGL2 (the JavaScript engine under `html5/`) | Static site: `index.html` + `engine/` + project files |
 | Xbox | MonoGame UWP stub (planned) | UWP package |
 
 ### Export Process
@@ -1041,6 +1042,7 @@ Each build runs these steps in order:
 5. **Dependency copy** — MonoGame runtime DLLs, Steamworks.NET, physics libs, NVorbis
 6. **Signing** — Android keystore; iOS provisioning profile; Windows Authenticode (stub)
 7. **Packaging** — zip archive (Windows/Linux), `.app` bundle (macOS), `.apk`/`.aab` (Android)
+8. **Web staging** (Web only) — copy the HTML5 runtime beside the project and write the page that boots it
 
 ### Build Configurations
 | Config | Hot Reload | Asset Cook | Debug Overlay | Symbols |
@@ -1554,6 +1556,79 @@ dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --markdown        # 
 
 See the [AI Assistant & MCP wiki page](wiki/25-ai-assistant-mcp.md) and
 [Tutorial 20](tutorials/20-building-a-game-with-claude.md).
+
+---
+
+## 26. HTML5 / Web
+
+`html5/` is a JavaScript port of the engine, with a class-based API mirroring the
+C# one. It is not a converter and not an export format: **the same project files
+open in both engines**. A `.scene` saved in the HTML5 editor loads in the C#
+editor and the other way round.
+
+Runs on desktop, iOS and Android browsers. No build step and no dependencies:
+plain ES modules served over HTTP.
+
+```bash
+node html5/tools/serve.js
+#   editor   http://localhost:8080/html5/editor/
+#   player   http://localhost:8080/html5/runtime/
+```
+
+### The API
+
+```js
+import { Component, registerComponent } from './html5/src/index.js';
+
+class Spinner extends Component {
+    static schema = { degreesPerSecond: { type: 'number', default: 90 } };
+
+    constructor() { super(); this.degreesPerSecond = 90; }
+
+    update(dt) {
+        this.transform.localRotation += this.degreesPerSecond * Math.PI / 180 * dt;
+    }
+}
+registerComponent(Spinner, { category: 'Project', source: 'project' });
+```
+
+Same classes, same lifecycle, JavaScript casing. `static schema` replaces
+reflection: it is what the serialiser writes, what the inspector draws and what a
+tool can list, from one declaration. `installCSharpAliases()` adds PascalCase
+aliases if you would rather transliterate C# than rewrite it.
+
+### What is shared
+
+| File | |
+|---|---|
+| `*.scene` | Read and written, both the canonical and hand-authored forms |
+| `ProjectSettings.json` | Read, case-insensitively, in either casing |
+| `Scripts/*.js` | Run — see below |
+| `*.sbproject`, action map JSON | Read |
+| `*.csproj`, `Source/**`, `bin/**` | Not readable in a browser |
+
+A project's C# components can never resolve in a browser, so they are kept as
+placeholders: the type name and its property JSON preserved verbatim and written
+back untouched on save. That is what lets the HTML5 editor open, edit and save a
+scene from a C# project without destroying it.
+
+### Scripting
+
+Project `.js` files run unchanged. Everything the Jint bridge declares is present
+with the same names and shapes, plus the API the bundled templates already assume
+and do not get under Jint — `log()`, `Input.isKeyHeld`, `actor.getComponent`,
+`actor.transform`, the `Stay` and `Exit` collision hooks. Those template scripts
+run here.
+
+### Exporting
+
+`BuildPlatform.Web` stages the runtime beside the project and writes the page
+that boots it. The output is static files; serve them from anything.
+
+Full detail, including the API mapping table, what differs by necessity, and two
+bugs this port found in the C# engine, is in
+[`html5/README.md`](html5/README.md) and the
+[HTML5 wiki page](wiki/26-html5.md).
 
 ---
 

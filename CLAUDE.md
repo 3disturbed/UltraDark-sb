@@ -5,13 +5,21 @@ Components; a Scene holds Layers of Actors; GameMode, PlayerController and Chara
 Unreal-style gameplay layer. Scenes are JSON (`.scene`) written by `SceneSerializer`.
 
 Projects: `SexyBiscuit.Engine` (runtime, no editor code), `SexyBiscuit.Editor` (the editor, MCP
-host, C# hot reload), `SexyBiscuit.Tests` (xunit, engine only), `SexyBiscuit.Demo`.
+host, C# hot reload), `SexyBiscuit.Tests` (xunit, engine only), `SexyBiscuit.Demo`. `html5/` is a
+JavaScript port of the engine with its own editor and player; it reads the same project files, so
+a change to the scene format or a component's serialised properties has to land on both sides.
 
 Build and test from the repository root:
 
     dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj -c Debug -warnaserror
     dotnet build SexyBiscuit.Editor/SexyBiscuit.Editor.csproj
     dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj
+
+For the HTML5 port, from `html5/`:
+
+    npm test          # node --test; the interop suite reads the real Templates/ files
+    npm run lint      # parses every module and checks the shader sources
+    node tools/serve.js   # editor at /html5/editor/, player at /html5/runtime/
 
 Conventions: XML docs on public API, `// ----` section banners, British spelling in prose, tests
 named like `ARoundTripPreservesActorIdentity` with a why-comment, scenes destroyed in tests,
@@ -21,3 +29,9 @@ When running inside the editor (the `sexybiscuit` MCP server is connected): the 
 is already running this code. Engine changes only take effect after `rebuild_engine_and_restart`;
 game-project changes after `reload_game_code`. Scene edits go through the MCP tools, not by
 editing `.scene` files. See `wiki/25-ai-assistant-mcp.md` for the tool catalogue.
+
+The HTML5 port is documented in `html5/README.md` and `wiki/26-html5.md`. Two things it records
+that matter to the C# side: `Transform3D.QuaternionToEuler` is not the inverse of
+`EulerToQuaternion` (ZYX extraction over a YXZ composition — correct only when one angle is zero),
+and `ActionMap` has no touch device, so no action can be driven by a thumbstick. Neither is fixed
+in the C# engine.
