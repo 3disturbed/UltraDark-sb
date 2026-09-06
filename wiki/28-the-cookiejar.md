@@ -25,6 +25,20 @@ repository of modules, each carrying its own instructions.
 
 ---
 
+## What is in the jar
+
+| Cookie | What it gives you |
+|---|---|
+| `input-mapping` | Keyboard, mouse and gamepad bindings a player can change, saved between runs |
+| `touch-controls` | On-screen sticks and buttons for a phone, driving the same actions |
+| `couch-coop` | Several people on one machine, joining by pressing a button, sharing one camera |
+| `remote-players` | Host or join over the network: a connecting client becomes a possessed player |
+
+The last three need `input-mapping`, and installing one installs it. All four are C# today; the
+JavaScript side of each is outstanding, and each `AGENT.md` says what it does not do.
+
+---
+
 ## What a cookie looks like
 
 ```
