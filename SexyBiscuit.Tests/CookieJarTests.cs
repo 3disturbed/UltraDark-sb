@@ -1,4 +1,7 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using SexyBiscuit.Engine.Mcp;
+using SexyBiscuit.Engine.Mcp.Tools;
 using SexyBiscuit.Engine.CookieJar;
 using Xunit;
 
@@ -691,5 +694,251 @@ public class CookieValidatorTests
         var problems = CookieValidator.Validate(fixture.Scan().Find("dash")!, deep: true);
 
         Assert.Contains(problems, p => p.Message.Contains("Assets/missing.png"));
+    }
+}
+
+/// <summary>
+/// The tools, exercised the way a client reaches them: by name through a registry, so the schema
+/// and the argument binding stay in the loop.
+/// </summary>
+internal sealed class CookieToolHarness : IDisposable
+{
+    public CookieFixture     Fixture  { get; }
+    public TestCookieHost    Host     { get; }
+    public McpToolRegistry   Registry { get; }
+
+    public CookieToolHarness(string tag)
+    {
+        Fixture  = new CookieFixture(tag);
+        Host     = new TestCookieHost(Fixture);
+        Registry = new McpToolRegistry(InlineMcpDispatcher.Instance);
+        Registry.RegisterInstance(new CookieTools(Host));
+    }
+
+    public McpToolResult Call(string tool, object? args = null)
+        => Registry.InvokeAsync(tool, args == null ? null : JsonSerializer.SerializeToElement(args), McpCallContext.None)
+                   .GetAwaiter().GetResult();
+
+    public JsonNode Ok(string tool, object? args = null)
+    {
+        var result = Call(tool, args);
+        Assert.False(result.IsError, result.FirstText);
+        Assert.NotNull(result.StructuredContent);
+        return result.StructuredContent!;
+    }
+
+    public McpToolResult Fails(string tool, object? args = null)
+    {
+        var result = Call(tool, args);
+        Assert.True(result.IsError, "expected an error but got: " + result.FirstText);
+        return result;
+    }
+
+    public void Dispose() => Fixture.Dispose();
+}
+
+/// <summary>A host over the scratch fixture, recording what the editor would have been asked to do.</summary>
+internal sealed class TestCookieHost : ICookieHost
+{
+    private readonly CookieFixture _fixture;
+    private CookieCatalogue? _catalogue;
+
+    public TestCookieHost(CookieFixture fixture)
+    {
+        _fixture = fixture;
+        Jars     = new[] { CookieJarSource.Folder("test", fixture.JarPath) };
+        Lock     = CookieLockFile.Load(fixture.ProjectRoot);
+    }
+
+    public IReadOnlyList<CookieJarSource> Jars           { get; set; }
+    public CookieProjectContext?          Project        { get; set; }
+    public CookieLockFile                 Lock           { get; }
+    public string                         DefaultBakeJar => _fixture.JarPath;
+
+    public bool BuildRequested  { get; private set; }
+    public bool ConfirmAnswer   { get; set; } = true;
+    public int  ConfirmsAsked   { get; private set; }
+
+    public CookieCatalogue Catalogue(bool refresh = false)
+    {
+        if (refresh || _catalogue == null) _catalogue = CookieCatalogue.Scan(Jars);
+        return _catalogue;
+    }
+
+    public Task<CookieBuildReport> AfterFilesChangedAsync(bool needsBuild, CancellationToken cancellation = default)
+    {
+        BuildRequested |= needsBuild;
+        return Task.FromResult(needsBuild
+            ? new CookieBuildReport(Required: true, Ran: true, Succeeded: true, Generation: 1)
+            : CookieBuildReport.NotNeeded);
+    }
+
+    public Task<bool> ConfirmInstallAsync(Cookie cookie, CookieInstallPlan plan, CancellationToken cancellation = default)
+    {
+        ConfirmsAsked++;
+        return Task.FromResult(ConfirmAnswer);
+    }
+
+    public CookieJarSource StageJar(string urlOrPath, string? name = null)
+        => new(name ?? CookieJarLocator.SlugFor(urlOrPath), CookieJarKind.Git, "", RemoteUrl: urlOrPath, Trusted: false);
+
+    public Task<CookieJarRefresh> RefreshJarAsync(string name, CancellationToken cancellation = default)
+        => throw new CookieException($"Jar '{name}' is not a trusted git jar.");
+}
+
+public class CookieToolTests
+{
+    private static void Seed(CookieToolHarness harness)
+    {
+        harness.Fixture.WriteCookie("double-jump",
+            CookieFixture.Manifest("double-jump", provides: "\"DoubleJump\"", tags: "\"movement\"",
+                                   summary: "Jump a second time in mid air."),
+            new Dictionary<string, string> { ["Source/DoubleJump.cs"] = "namespace Cookies.DoubleJump;\npublic sealed class DoubleJump : Component { }\n" });
+        harness.Host.Project = harness.Fixture.Project();
+    }
+
+    [Fact]
+    public void SearchReturnsWhatACookieProvidesWithoutOpeningIt()
+    {
+        using var harness = new CookieToolHarness("toolsearch");
+        Seed(harness);
+
+        var result = harness.Ok("search_cookies", new { query = "jump" });
+
+        var first = result["cookies"]!.AsArray()[0]!;
+        Assert.Equal("double-jump", first["id"]!.GetValue<string>());
+        Assert.Equal("DoubleJump", first["provides"]!["components"]!.AsArray()[0]!.GetValue<string>());
+        Assert.False(first["installed"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void AnUnknownCookieSuggestsWhatWasNearby()
+    {
+        using var harness = new CookieToolHarness("toolunknown");
+        Seed(harness);
+
+        var result = harness.Fails("get_cookie", new { id = "double-jumping" });
+
+        Assert.Contains("double-jump", result.FirstText);
+    }
+
+    [Fact]
+    public void InstallingReturnsTheAgentInstructionsAndTheNamespace()
+    {
+        // The point of the result shape: whatever comes next needs no further reads.
+        using var harness = new CookieToolHarness("toolinstall");
+        Seed(harness);
+
+        var result = harness.Ok("install_cookie", new { id = "double-jump" });
+
+        Assert.Equal("installed", result["status"]!.GetValue<string>());
+        Assert.Equal("Cookies.DoubleJump", result["namespace"]!.GetValue<string>());
+        Assert.Contains("Drop it on an actor", result["agent"]!.GetValue<string>());
+        Assert.True(result["build"]!["required"]!.GetValue<bool>());
+        Assert.True(harness.Host.BuildRequested);
+        Assert.True(File.Exists(harness.Fixture.ProjectFile("Source/Cookies/DoubleJump/DoubleJump.cs")));
+    }
+
+    [Fact]
+    public void ADryRunWritesNothing()
+    {
+        using var harness = new CookieToolHarness("tooldry");
+        Seed(harness);
+
+        var result = harness.Ok("install_cookie", new { id = "double-jump", dryRun = true });
+
+        Assert.Equal("planned", result["status"]!.GetValue<string>());
+        Assert.False(File.Exists(harness.Fixture.ProjectFile("Source/Cookies/DoubleJump/DoubleJump.cs")));
+        Assert.Empty(harness.Host.Lock.Cookies);
+    }
+
+    [Fact]
+    public void InstallingWithoutAProjectSaysSo()
+    {
+        using var harness = new CookieToolHarness("toolnoproject");
+        harness.Fixture.WriteCookie("double-jump");
+
+        Assert.Contains("No project is open", harness.Fails("install_cookie", new { id = "double-jump" }).FirstText);
+    }
+
+    [Fact]
+    public void InstallingFromANonBuiltinJarAsksTheEditorFirst()
+    {
+        // The gate that matters: the assistant runs without prompts, so a jar that is not the
+        // engine's own has to be confirmed by the person watching.
+        using var harness = new CookieToolHarness("toolconfirm");
+        Seed(harness);
+        harness.Host.ConfirmAnswer = false;
+
+        var result = harness.Fails("install_cookie", new { id = "double-jump" });
+
+        Assert.Equal(1, harness.Host.ConfirmsAsked);
+        Assert.Contains("declined in the editor", result.FirstText);
+        Assert.False(File.Exists(harness.Fixture.ProjectFile("Source/Cookies/DoubleJump/DoubleJump.cs")));
+    }
+
+    [Fact]
+    public void AddingAJarRecordsItAndClonesNothing()
+    {
+        using var harness = new CookieToolHarness("tooljar");
+        Seed(harness);
+
+        var result = harness.Ok("add_cookie_jar", new { urlOrPath = "https://example.invalid/team.git" });
+
+        Assert.Equal("awaiting_approval", result["status"]!.GetValue<string>());
+        Assert.False(result["jar"]!["trusted"]!.GetValue<bool>());
+        Assert.Contains("Trust and clone", result["message"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void UninstallingReportsWhatItKept()
+    {
+        using var harness = new CookieToolHarness("tooluninstall");
+        Seed(harness);
+        harness.Ok("install_cookie", new { id = "double-jump" });
+
+        File.WriteAllText(harness.Fixture.ProjectFile("Source/Cookies/DoubleJump/DoubleJump.cs"), "// mine now\n");
+        var result = harness.Ok("uninstall_cookie", new { id = "double-jump" });
+
+        Assert.Equal("removed", result["status"]!.GetValue<string>());
+        Assert.Empty(result["removed"]!.AsArray());
+        Assert.Single(result["kept"]!.AsArray());
+    }
+
+    [Fact]
+    public void InstalledCookiesReportFilesThatHaveDrifted()
+    {
+        using var harness = new CookieToolHarness("tooldrift");
+        Seed(harness);
+        harness.Ok("install_cookie", new { id = "double-jump" });
+
+        File.Delete(harness.Fixture.ProjectFile("Source/Cookies/DoubleJump/DoubleJump.cs"));
+        var result = harness.Ok("list_installed_cookies");
+
+        Assert.Equal("missing", result["drift"]!.AsArray()[0]!["state"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void BakingWritesACookieTheCatalogueThenFinds()
+    {
+        using var harness = new CookieToolHarness("toolbake");
+        harness.Host.Project = harness.Fixture.Project();
+
+        string source = harness.Fixture.ProjectFile("Source/Spinner.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+        File.WriteAllText(source, "namespace Game;\npublic sealed class Spinner : Component { }\n");
+
+        var result = harness.Ok("bake_cookie", new
+        {
+            id                = "spinner",
+            name              = "Spinner",
+            summary           = "Spins an actor.",
+            agentInstructions = "Add a Spinner to any actor.",
+            files             = new[] { "Source/Spinner.cs" },
+            tags              = new[] { "movement" },
+        });
+
+        Assert.Equal("baked", result["status"]!.GetValue<string>());
+        Assert.Equal("spinner", harness.Ok("search_cookies", new { query = "spinner" })["cookies"]!.AsArray()[0]!["id"]!.GetValue<string>());
     }
 }
