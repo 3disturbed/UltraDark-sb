@@ -52,6 +52,7 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [19. Steam](19-steam.md) | `SteamManager`, achievements, cloud, lobbies, workshop |
 | [25. AI Assistant & MCP](25-ai-assistant-mcp.md) | Claude inside the editor: the Assistant panel, the MCP server and its tools, C# hot reload, engine rebuild + restart |
 | [26. The HTML5 Port](26-html5.md) | The JavaScript engine under `html5/`, shared project files, the Web build target, and three bugs it found |
+| [27. The Game Factory Workflow](27-game-factory-workflow.md) | Making many small games with an agent: the shared scripting contract, the node toolchain (validate, serve, export, upload), the native port, and the token rules |
 
 ## Reference
 
