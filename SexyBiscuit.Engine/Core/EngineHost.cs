@@ -199,9 +199,15 @@ public sealed class EngineHost : IDisposable
 
         if (Config.Enable3D) Renderer3D.Render(scene);
 
-        SpriteBatch.Begin();
-        SceneManager.Draw(SpriteBatch);
-        SpriteBatch.End();
+        // Through RenderSystem2D, not a bare SpriteBatch.Begin(). The bare call takes
+        // SpriteSortMode.Deferred and no transform matrix, which silently drops two things
+        // at once: layerDepth stops ordering anything, so a scene draws in creation order
+        // and a procedurally built ground lands on top of the world it is under; and the
+        // camera's view matrix is never applied, so the view never moves and camera-follow
+        // scripts look broken. Both are invisible to every test in this repository — the
+        // renderer this line skips is the one that already sorts back-to-front and applies
+        // Camera2D.main.
+        Renderer2D.RenderScene(SpriteBatch, scene, Rendering.Camera2D.Main);
     }
 
     public void Dispose()

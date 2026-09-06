@@ -26,7 +26,15 @@ public class RenderSystem2D
     /// SpriteSortMode used for the main scene batch. Default BackToFront lets
     /// SpriteRenderer.LayerDepth control painter ordering.
     /// </summary>
-    public SpriteSortMode SortMode { get; set; } = SpriteSortMode.BackToFront;
+    /// <remarks>
+    /// FrontToBack, despite the name, is the mode that matches the browser engine: MonoGame's
+    /// BackToFront draws the HIGHEST layerDepth first, and the browser's SpriteBatch sorts
+    /// ascending so the highest is drawn LAST. Two engines with opposite conventions means a
+    /// project laid out for one draws its ground over its whole world in the other, so this
+    /// side is the one that moves — every game and every cookie is written against the
+    /// browser's "higher is nearer". Verified with Games/DepthProbe, not reasoned about.
+    /// </remarks>
+    public SpriteSortMode SortMode { get; set; } = SpriteSortMode.FrontToBack;
 
     /// <summary>BlendState used for the main scene batch.</summary>
     public BlendState BlendState { get; set; } = BlendState.AlphaBlend;

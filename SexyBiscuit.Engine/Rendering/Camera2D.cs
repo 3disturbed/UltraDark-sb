@@ -11,6 +11,43 @@ namespace SexyBiscuit.Engine.Rendering;
 public class Camera2D : Component
 {
     // -------------------------------------------------------------------------
+    // Which camera the 2D pass draws through
+    // -------------------------------------------------------------------------
+
+    private static readonly List<Camera2D> _all = new();
+
+    /// <summary>
+    /// The first active camera whose actor is tagged "MainCamera", else the first active one
+    /// at all.
+    /// </summary>
+    /// <remarks>
+    /// Camera3D has had this since it existed; Camera2D had no equivalent, which is part of
+    /// why the 2D pass rendered with no camera at all and every camera-follow script looked
+    /// broken in a native build while working in the browser. The fallback matches the
+    /// browser's <c>Camera2D.main</c>: a scene with one untagged camera still draws through
+    /// it rather than through nothing.
+    /// </remarks>
+    public static Camera2D? Main
+    {
+        get
+        {
+            foreach (var camera in _all)
+                if (camera.Actor is { IsActive: true, Tag: "MainCamera" }) return camera;
+
+            foreach (var camera in _all)
+                if (camera.Actor is { IsActive: true }) return camera;
+
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public override void Awake() => _all.Add(this);
+
+    /// <inheritdoc />
+    public override void OnDestroy() => _all.Remove(this);
+
+    // -------------------------------------------------------------------------
     // Zoom
     // -------------------------------------------------------------------------
 
@@ -109,6 +146,8 @@ public class Camera2D : Component
         Vector2 camPos = Actor.Transform.Position + _shakeOffset;
         float   camRot = Actor.Transform.Rotation + _shakeAngleOffset;
 
+        // gd.Viewport, deliberately: when a post-process pass has a render target bound this
+        // is that target's size, which is the rectangle the world should be centred in.
         Vector2 viewport = new Vector2(gd.Viewport.Width, gd.Viewport.Height);
 
         // Translate so camera position maps to screen centre, then rotate and zoom
