@@ -1,4 +1,6 @@
+using System.Text.Json.Nodes;
 using Microsoft.Xna.Framework;
+using SexyBiscuit.Engine.Gameplay;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.Rendering;
 using SexyBiscuit.Engine.Localization;
@@ -557,6 +559,126 @@ public class AssetPathAndScriptTests
         {
             manager.ActiveScene?.Destroy();
             SexyBiscuit.Engine.Core.ProjectPaths.Root = previousRoot;
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+}
+
+// =============================================================================
+// Prefabs
+// =============================================================================
+
+/// <summary>
+/// A prefab is one actor written with the scene serialiser's own DTO, so the two entry points
+/// have to agree byte for byte. They did not: <c>Prefab</c> built its own JSON options, missing
+/// <c>WhenWritingNull</c> and five converters, so a prefab wrote <c>"class": null</c> and four
+/// more empty keys the scene omits. Values round-tripped either way, because a component's
+/// properties are converted to JSON before the prefab's options ever see them -- which is
+/// exactly why the disagreement went unnoticed. The round-trip test below pins that.
+/// </summary>
+public class PrefabTests
+{
+    private static string TempDir()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "sb-prefab-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static Actor BuildSpinner()
+    {
+        var actor = new Actor("Spinner") { Tag = "Prop" };
+        actor.AddComponent<Transform3D>().LocalPosition = new Vector3(1f, 2f, 3f);
+        actor.AddComponent<RotatingMovement>().RotationRate = new Vector3(0f, 45f, 15f);
+        actor.AddComponent<Light3D>().Type = LightType.Point;
+
+        var mesh = actor.AddComponent<MeshRenderer>();
+        mesh.AlbedoColor = Color.Red;
+        mesh.Roughness   = 0.25f;
+        return actor;
+    }
+
+    [Fact]
+    public void APrefabWritesAnActorExactlyAsASceneDoes()
+    {
+        var scene = new Engine.Core.Scene("prefabs");
+        string dir = TempDir();
+        try
+        {
+            var actor = scene.AddActor(BuildSpinner());
+            scene.FlushPendingActors();
+
+            string path = Path.Combine(dir, "Spinner.prefab");
+            Prefab.Save(actor, path);
+
+            // The same actor, as the scene file writes it.
+            var inScene = JsonNode.Parse(SceneSerializer.Serialize(scene))!["layers"]!.AsArray()
+                .SelectMany(l => l!["actors"]!.AsArray())
+                .Single(a => a!["name"]!.GetValue<string>() == "Spinner")!;
+            var asPrefab = JsonNode.Parse(File.ReadAllText(path))!;
+
+            Assert.Equal(inScene.ToJsonString(), asPrefab.ToJsonString());
+        }
+        finally
+        {
+            scene.Destroy();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void APrefabOmitsTheFieldsAnActorDoesNotUse()
+    {
+        var scene = new Engine.Core.Scene("prefabs");
+        string dir = TempDir();
+        try
+        {
+            var actor = scene.AddActor(new Actor("Bare"));
+            scene.FlushPendingActors();
+
+            string path = Path.Combine(dir, "Bare.prefab");
+            Prefab.Save(actor, path);
+            string json = File.ReadAllText(path);
+
+            // Null-valued keys are noise in a file meant to be read and diffed, and the scene
+            // serialiser drops them. A prefab that keeps them is a prefab written by other rules.
+            Assert.DoesNotContain(": null", json);
+            Assert.DoesNotContain("\"class\"", json);
+        }
+        finally
+        {
+            scene.Destroy();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void APrefabRoundTripsEnumsVectorsAndMaterials()
+    {
+        var scene = new Engine.Core.Scene("prefabs");
+        string dir = TempDir();
+        try
+        {
+            var actor = scene.AddActor(BuildSpinner());
+            scene.FlushPendingActors();
+
+            string path = Path.Combine(dir, "Spinner.prefab");
+            Prefab.Save(actor, path);
+            Prefab.ClearCache();
+
+            var restored = Prefab.Instantiate(path);   // no active scene: returned unparented
+
+            Assert.Equal("Spinner", restored.Name);
+            Assert.Equal("Prop", restored.Tag);
+            Assert.Equal(new Vector3(1f, 2f, 3f), restored.GetComponent<Transform3D>()!.LocalPosition);
+            Assert.Equal(new Vector3(0f, 45f, 15f), restored.GetComponent<RotatingMovement>()!.RotationRate);
+            Assert.Equal(LightType.Point, restored.GetComponent<Light3D>()!.Type);
+            Assert.Equal(Color.Red, restored.GetComponent<MeshRenderer>()!.Materials[0].AlbedoColor);
+            Assert.Equal(0.25f, restored.GetComponent<MeshRenderer>()!.Materials[0].Roughness, 4);
+        }
+        finally
+        {
+            scene.Destroy();
             Directory.Delete(dir, recursive: true);
         }
     }

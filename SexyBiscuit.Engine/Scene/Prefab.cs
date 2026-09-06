@@ -157,31 +157,16 @@ public static class Prefab
     private static string SerializeActor(Actor actor)
     {
         ActorDto dto = SceneSerializer.BuildActorDto(actor);
-        return JsonSerializer.Serialize(dto, PrefabOptions);
+        return JsonSerializer.Serialize(dto, SceneSerializer.Options);
     }
 
     private static Actor DeserializeActor(string json)
     {
-        var dto = JsonSerializer.Deserialize<ActorDto>(json, PrefabOptions)
+        var dto = JsonSerializer.Deserialize<ActorDto>(json, SceneSerializer.Options)
                   ?? throw new JsonException("Failed to deserialise prefab JSON.");
         return SceneSerializer.BuildActor(dto);
     }
 
     private static string NormalisePath(string path)
         => Path.GetFullPath(path).ToLowerInvariant();
-
-    // Reuse the same options as the main serialiser (includes Vector2 and Color converters)
-    private static readonly JsonSerializerOptions PrefabOptions = BuildPrefabOptions();
-
-    private static JsonSerializerOptions BuildPrefabOptions()
-    {
-        var opts = new JsonSerializerOptions
-        {
-            WriteIndented               = true,
-            PropertyNameCaseInsensitive = true,
-        };
-        opts.Converters.Add(new Vector2JsonConverter());
-        opts.Converters.Add(new ColorJsonConverter());
-        return opts;
-    }
 }
