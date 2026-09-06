@@ -1,5 +1,8 @@
 # SexyBiscuit — orientation for Claude
 
+**The full workflow — HTML5 prototype, native MonoGame build, publish to DarksGames — is
+[`AGENTS.md`](AGENTS.md).** This page is the short orientation; read that one before shipping.
+
 SexyBiscuit is a C#/.NET 8 game engine (MonoGame DesktopGL) with an ImGui editor. Actors carry
 Components; a Scene holds Layers of Actors; GameMode, PlayerController and Character give an
 Unreal-style gameplay layer. Scenes are JSON (`.scene`) written by `SceneSerializer`.
