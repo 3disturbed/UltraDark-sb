@@ -6,6 +6,38 @@ scene fragments it needs, and an `AGENT.md` that says how to wire it up once it 
 Install one from the editor's Cookie Jar panel, or ask the assistant — `search_cookies` finds it and
 `install_cookie` copies it into the open project, builds it, and hands back the instructions.
 
+## What is in the jar
+
+Seven cookies. **The `engines` field is the first thing to check** — a `csharp` cookie is no use
+in a phase 1 HTML5 prototype, which is where every game starts, and a `js` cookie is not drawn in
+a native build.
+
+### JavaScript — for a phase 1 prototype
+
+These are scripts in `Scripts/`, written against the shared scripting contract, so they run
+unchanged in the browser and under Jint. Nothing to compile.
+
+| Cookie | What it gives you |
+|---|---|
+| **`noise-and-hearing`** | Enemies that hunt by ear. A sound is broadcast as a *position and a radius*, and listeners walk to where it was — not to whoever made it. That one restraint is what makes running away, throwing something and standing still all real choices, without a "distraction system" existing. Includes a drop-in investigator AI with a sight cone you can slip behind. |
+| **`floating-status-bars`** | Health, stamina, hunger — as bars above an actor's head, fed by naming getters on that actor's script. In world space because the contract exposes no viewport, so a script cannot find the screen edge; following the actor turns that limitation into the right answer. |
+| **`day-night-cycle`** | A clock that becomes pressure. Publishes a 0–1 darkness curve and a day number for other systems to read, announces each phase once, and dims the world through an overlay pinned to the player. It deliberately decides nothing about what night *means*. |
+
+### C# — for the native engine
+
+Components in `Source/`, compiled against the engine in this repository. Three of the four build on
+`input-mapping`, so installing one pulls it in.
+
+| Cookie | Requires | What it gives you |
+|---|---|---|
+| **`input-mapping`** | — | Keyboard, mouse and gamepad bindings a player can change, saved between runs. Rebinding, binding descriptions for on-screen prompts, and per-player device ownership so it works unchanged in couch co-op. |
+| **`touch-controls`** | `input-mapping` | On-screen sticks and buttons pushed through the virtual input layer, so a controller written for a keyboard needs no changes. Not drawn in the browser build — the HTML5 runtime has its own overlay in the page. |
+| **`couch-coop`** | `input-mapping` | Several players on one machine, joining by pressing a button, with a camera rig that frames everyone at once. Split-screen is separate engine work. |
+| **`remote-players`** | `input-mapping` | Host or join over the network: a client that connects is spawned, possessed and scoreboarded, and remote pawns interpolate at the 20 Hz send rate. |
+
+Each folder's `AGENT.md` is the real documentation — what it gives you, how to wire it up, what to
+tune, and what it deliberately does not do. Read that before installing, not after.
+
 ## Adding a cookie
 
 The easiest way is to build the thing in a game first, then bake it: Tools ▸ Bake Cookie from this
@@ -45,6 +77,8 @@ Rules worth knowing before you write one:
   a scene the way the `AGENT.md` says to, and run
   `npm run validate -- <dir> --strict` from `html5/`. A cookie whose own documentation does not
   validate is worse than no cookie.
+- **Add it to the list at the top of this file** in the same commit. A catalogue nobody can read
+  without opening seven folders is the thing the `provides` field and the summaries exist to avoid.
 
 Phase 1 is JavaScript-only and it is where every game starts, so a mechanic worth reusing is
 usually worth a `js` cookie before it is worth a C# one.

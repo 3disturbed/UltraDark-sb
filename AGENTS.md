@@ -89,6 +89,101 @@ Rules for this phase, and the reason for each:
   fresh session.
 
 ---
+---
+
+## Phase 1 field notes — where a session actually goes
+
+Written after building Jake01 from the Survival Crafting template in one sitting. The rules above
+say what to do; these are the things that cost hours anyway.
+
+### The order that works
+
+1. **Read the brief, pick the closest template, then look in `CookieJar/` before writing a line.**
+   There are `"engines": ["js"]` cookies now — `noise-and-hearing`, `floating-status-bars`,
+   `day-night-cycle` — and a cookie summary costs about thirty tokens against thousands to derive
+   the same module again. Filter on the engine: a `csharp` cookie is no use in phase 1.
+2. **Read `wiki/11-scripting.md` and the template's own scripts. Nothing else.** Then read
+   `bridge-api.json` for the member list. That is the whole reading budget; the engine source is
+   50,000 lines and putting it in context is the single most expensive thing a session can do.
+3. **Build the world in a script, not in the `.scene` file.** Jake01's scene is seven actors and
+   a `CityBuilder.js` that lays out 230 more. The layout becomes a dozen numbers at the top of a
+   file, which is what a prototype needs, and the diff stays readable.
+4. **Write the game's own harnesses before tuning anything.** They are what let you change a
+   number and know in nine seconds that nothing broke.
+5. `validate --strict`, `npm test`, then your harnesses. Then export, then hand it over.
+
+### Four things that pass every check and are still wrong
+
+**An actor proxy has no `addComponent`.** `Scene.createActor` returns
+`{id, name, tag, active, transform, getComponent, destroy}` — that is the whole proxy. Use
+`Scene.addComponent(proxy, "SpriteRenderer", {…})`. The bundled **Survival Crafting** template
+calls `enemy.addComponent(...)` on a spawned actor, so its night waves throw
+`enemy.addComponent is not a function` on the browser engine. Nothing catches it because the
+template smoke test stops long before nightfall.
+
+**`layerDepth`: LOW is drawn first and ends up at the BACK.** `SpriteBatch.end()` sorts ascending
+and draws in that order. The comment on `SpriteSortMode.BackToFront` says "high layerDepth first"
+and is the opposite of what the code does. Believing it inverted every depth in Jake01 — the road
+at 0.95, drawn last, over all 234 sprites. On screen that is a flat grey rectangle with no error
+anywhere, 106/106 tests green and a happy validator. **No bundled template sets `LayerDepth` at
+all**, so there is nothing to copy the convention from and nothing to catch it.
+`Games/Jake01/tools/draw-order.mjs` is a check worth stealing: sort the sprites the way the
+renderer will and fail if any layer is not strictly behind the next.
+
+*Unverified but worth knowing:* the C# renderer passes `LayerDepth` to MonoGame's
+`SpriteSortMode.BackToFront`, whose convention is the reverse. If that is right, a scene using
+`LayerDepth` renders inside-out between the two engines, and no test on either side references it.
+
+**There is no viewport in the scripting contract.** No window size, no camera bounds. A script
+therefore cannot pin anything to a screen corner or size a full-screen quad, which rules out a
+conventional HUD, a screen-space overlay and mouse-to-world aiming. The way through is to put it
+in world space and follow an actor: status bars above the player's head, and a tint large enough
+to cover any view centred on them. Both are in the CookieJar.
+
+**The bundled smoke test proves less than it looks like.** It runs sixty frames with no physics
+host and no asset loader — so it never reaches a day/night transition, and it never loads a script
+attached at runtime, which is how most things get spawned. Give the scene a real
+`PhysicsSystem2D` (gravity `{x: 0, y: 0}` for top-down, or everything falls off the map) and an
+`engine.assets.loadText` backed by the filesystem, and run for minutes of game time.
+`Games/Jake01/tools/soak.mjs` is the pattern; it found the `addComponent` bug in seconds.
+
+### Cross-script calls: primitives only
+
+`getComponent("ScriptComponent").call(name, ...args)` — `call` and `invoke` are the same function.
+Pass and return **numbers, strings and booleans**. They marshal identically under Jint and in the
+browser; objects and arrays do not reliably. So a HUD asks for `getHealth01()` rather than a
+`getStats()` that returns an object, and a loot table answers with an integer code rather than
+`{type: "wood"}`. It reads as more functions and it is the difference between working on both
+engines and working on one.
+
+### Two patterns that keep a prototype cheap
+
+**One ledger beats many scripts.** Jake01 has 52 searchable containers and no container script:
+the builder keeps parallel arrays keyed by actor id, and the survivor finds a container with
+`Physics.overlapCircle` and asks by `id`. Fifty-two actors instead of fifty-two script engines,
+and all the loot logic in one file.
+
+**Face the way you move.** Mouse aiming needs a screen-to-world conversion, which needs the
+viewport, which does not exist — and it is unplayable on a phone anyway. Rotating toward the
+movement direction costs one `Math.atan2`, works with `Input.joystickX/joystickY` for touch, and
+is resolution-independent. If the sprite is square the rotation is invisible: make it oblong, or
+give it a small second actor as a nose.
+
+### Smaller things, each of which cost a few minutes
+
+- `Physics.overlapCircle` **does not return triggers**. Anything you want to find with it needs a
+  non-trigger collider. This is also why Survival Crafting's `onTriggerEnter` gathering never
+  fires: its resource nodes are plain colliders, so `nearbyResource` stays null forever.
+- A collider with **no `Rigidbody2D` is static geometry** on both engines — that is how you build
+  walls.
+- **`Input.joystickX` throws when there is no touch state.** The bridge reads
+  `input()?.touch.leftJoystick.value.x` and only guards the first hop, so a headless input stub
+  needs a `touch: { leftJoystick: { value: { x: 0, y: 0 } } }`. The browser is fine.
+- The export's **service worker precaches everything** and uses `skipWaiting` + `clients.claim`,
+  so one reload picks up a new build — but the cache name carries the commit, so **commit before
+  you export** or the name does not change.
+- Keep every tuning number in a labelled block at the top of its script. The feedback loop on a
+  prototype is "make it faster", and that should be a one-line diff, not a search.
 
 ## Phase 2 — the native MonoGame build
 
@@ -340,8 +435,24 @@ modules, each carrying its own `AGENT.md` saying how to wire it up. In the edito
 `search_cookies` and `install_cookie`; from a terminal it is a folder to read. When a task
 produces something a second game would want, bake it back with `bake_cookie`.
 
+**Check the `engines` field first.** A cookie is `["csharp"]`, `["js"]` or both, and a C# cookie is
+no use in phase 1 — which is where every game starts, so that is the filter that matters. The
+JavaScript ones are:
+
+| Cookie | What it gives you |
+|---|---|
+| `noise-and-hearing` | enemies that hunt by ear: a sound is a position and a radius, and they walk to where it *was* |
+| `floating-status-bars` | meters in world space above an actor's head — the answer to having no viewport |
+| `day-night-cycle` | a clock publishing a 0–1 darkness curve and a day number, plus the overlay that dims the world |
+
 A cookie summary costs about thirty tokens. Deriving the same module again costs thousands, in
 every game that needs it. See `wiki/28-the-cookiejar.md`.
+
+Baking one back is the other half of the deal: a mechanic a second game would want is worth
+generalising while it is still fresh. For a `js` cookie there is nothing to compile, so the check
+is the validator — drop its scripts into a throwaway project, wire them up exactly as its
+`AGENT.md` says to, and run `npm run validate -- <dir> --strict`. A cookie whose own documentation
+does not validate is worse than no cookie.
 
 ---
 
