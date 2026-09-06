@@ -286,7 +286,7 @@ dotnet run --no-build --project SexyBiscuit.Build -c Release -- \
 | `--channel alpha\|beta\|demo` | `alpha` for nightlies, `beta` for playtest candidates, `demo` for public |
 | `--notes <text>` | release notes on the download card |
 | `--requirements <text>` | what a player needs; blank gets a per-platform default |
-| `--hidden` | upload but leave it **unavailable**, to be made live from the site's admin page |
+| `--hidden` | upload as a **closed** build: listed and downloadable only for a playtester |
 | `--no-replace` | make a version collision an error instead of replacing |
 
 From the editor: the **Publish** tab in Build Settings, or the `publish_build` MCP tool. Prefer
@@ -336,11 +336,20 @@ curl -s https://darksgames.app/api/v1/builds
 A build published with `--hidden` will not appear there. The human page is
 `https://darksgames.app/downloads`.
 
-**`--hidden` is stronger than "unlisted".** The publish result still prints a download URL, and
-that URL answers `404 not_found: That build is not available for download.` until the build is
-made live from the admin page. So a hidden build's link is not something to hand a playtester
-straight out of the log — publish to the `alpha` channel without `--hidden` if someone needs to
-download it now.
+**`--hidden` means closed testing, not invisible.** As of 2026-09-06 the builds API widens both
+the list and the download for a caller whose access token carries `playtester: true`, so a hidden
+build behaves exactly like the catalogue's `playtest: true` games: absent for the public, present
+and downloadable for the testers, and tagged PLAYTEST on `/downloads`.
+
+That makes `--hidden` the right flag for a game in closed testing — its native builds are gated the
+same way its web build is. Two things follow:
+
+- **A signed-out `curl` of `/api/v1/builds` is unchanged**, and the download answers
+  `404 not_found` with the same wording it uses for a build that does not exist. Confirming that a
+  closed build exists at an id would be a leak of its own.
+- The response now depends on the `Authorization` header, so it carries `Vary: Authorization` and
+  goes out `private, no-store` for a playtester. A shared cache that ignored this would serve one
+  tester's list to the public.
 
 ### Reporting back
 
