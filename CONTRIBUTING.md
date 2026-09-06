@@ -49,6 +49,7 @@ Match the surrounding file. In general:
 | `Scripting` | The Jint runtime and its bridge |
 | `Mcp` | The MCP server, tool registry and schema, the scene tools, undo, and the Claude Code plumbing (`Mcp/ClaudeCode`) |
 | `Code` | C# game projects: generation, `dotnet build`, the collectible assembly loader, engine rebuild + relaunch |
+| `CookieJar` | The module library: manifests, the catalogue, install and uninstall planning, baking, and the git runner jars use |
 
 A new subsystem gets its own folder and namespace, plus a page in `wiki/`.
 

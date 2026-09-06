@@ -52,6 +52,7 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [19. Steam](19-steam.md) | `SteamManager`, achievements, cloud, lobbies, workshop |
 | [25. AI Assistant & MCP](25-ai-assistant-mcp.md) | Claude inside the editor: the Assistant panel, the MCP server and its tools, C# hot reload, engine rebuild + restart |
 | [26. The HTML5 Port](26-html5.md) | The JavaScript engine under `html5/`, shared project files, the Web build target, and three bugs it found |
+| [28. The CookieJar](28-the-cookiejar.md) | The module library: cookies and jars, installing into a project, baking work back out, and the trust gate |
 
 ## Reference
 

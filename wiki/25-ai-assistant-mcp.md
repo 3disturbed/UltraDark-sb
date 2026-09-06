@@ -203,8 +203,24 @@ A project's own `[McpTool]` methods join the list with a `game_` prefix after
 | `sexybiscuit://actor-presets` | The Place Actors palette |
 | `sexybiscuit://scripting/api.d.ts` | TypeScript definitions for the JavaScript bridge |
 | `sexybiscuit://tools` | This catalogue |
+| `sexybiscuit://cookies` | The CookieJar catalogue: every reusable module and what it provides |
+| `sexybiscuit://cookies/installed` | What this project has installed |
 
-The prompt `build_level(brief)` asks for a level from a one-line description.
+The prompt `build_level(brief)` asks for a level from a one-line description, and
+`use_a_cookie(mechanic)` asks for one to be found in the library and wired up.
+
+### Cookies
+
+Nine of the tools are the module library: `search_cookies`, `get_cookie`,
+`install_cookie`, `uninstall_cookie`, `list_installed_cookies`, `bake_cookie`,
+`list_cookie_jars`, `add_cookie_jar` and `refresh_cookie_jar`. The assistant is
+told to search the jar before writing a common mechanic by hand, and to bake
+reusable work back when a task produces something a second game would want.
+
+Installing compiles and runs the cookie's code, so a jar that is not the engine's
+own has to be trusted by a person: `add_cookie_jar` records an address and never
+clones, and installing from a non-builtin jar raises a question in the editor.
+See [28. The CookieJar](28-the-cookiejar.md).
 
 ---
 

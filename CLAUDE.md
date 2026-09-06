@@ -25,6 +25,12 @@ Conventions: XML docs on public API, `// ----` section banners, British spelling
 named like `ARoundTripPreservesActorIdentity` with a why-comment, scenes destroyed in tests,
 `FlushPendingActors()` after every mutation before reading back.
 
+Before writing a common mechanic from scratch, look in the CookieJar: `CookieJar/` in this
+repository is a library of reusable modules, and each carries an `AGENT.md` saying how to wire it
+up. In the editor that is `search_cookies` and `install_cookie`; from a terminal it is a folder to
+read. When a task produces something a second game would want, bake it back (`bake_cookie`, or
+Tools in the editor). See `wiki/28-the-cookiejar.md`.
+
 When running inside the editor (the `sexybiscuit` MCP server is connected): the editor process
 is already running this code. Engine changes only take effect after `rebuild_engine_and_restart`;
 game-project changes after `reload_game_code`. Scene edits go through the MCP tools, not by
