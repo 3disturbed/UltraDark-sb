@@ -182,7 +182,7 @@ public sealed class InputManager
     /// <summary>What the game last asked for. The editor keeps its own cursor outside play mode.</summary>
     public bool IsCursorVisible { get; private set; } = true;
 
-    /// <summary>True while <see cref="LockCursor"/> is in effect.</summary>
+    /// <summary>True while <see cref="LockCursor()"/> is in effect.</summary>
     public bool IsCursorLocked => _cursorLocked;
 
     public void ShowCursor() => SetCursorVisible(true);
