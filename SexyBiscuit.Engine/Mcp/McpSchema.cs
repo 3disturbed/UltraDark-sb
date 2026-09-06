@@ -35,7 +35,8 @@ public static class McpSchema
             ["properties"] = properties,
         };
         if (required.Count > 0) schema["required"] = required;
-        schema["additionalProperties"] = false;
+        // No additionalProperties:false — Bind ignores unknown names anyway, and the line costs
+        // every tool a few tokens of context for the life of the session.
         return schema;
     }
 
@@ -60,8 +61,9 @@ public static class McpSchema
 
         if (p.HasDefaultValue)
         {
+            // A default the model would assume anyway (false, 0, empty) is not worth its tokens.
             var def = NormaliseDefault(p);
-            if (def != null) schema["default"] = ValueConverter.ToJson(def);
+            if (def != null && !IsUninformativeDefault(def)) schema["default"] = ValueConverter.ToJson(def);
         }
 
         required = !p.HasDefaultValue && !nullable;
@@ -69,6 +71,17 @@ public static class McpSchema
     }
 
     /// <summary>The schema fragment for a bare type (no description, default or nullability).</summary>
+    private static bool IsUninformativeDefault(object value) => value switch
+    {
+        bool b   => !b,
+        string s => s.Length == 0,
+        int i    => i == 0,
+        long l   => l == 0,
+        float f  => f == 0f,
+        double d => d == 0d,
+        _        => false,
+    };
+
     public static JsonObject ForType(Type t)
     {
         var underlying = Nullable.GetUnderlyingType(t);

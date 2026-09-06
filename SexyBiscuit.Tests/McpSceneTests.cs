@@ -41,6 +41,7 @@ internal sealed class SceneToolHarness : IDisposable
         Registry.RegisterInstance(new ComponentTools(Host));
         Registry.RegisterInstance(new MaterialTools(Host));
         Registry.RegisterInstance(new UndoTools(Undo));
+        Registry.RegisterInstance(new BatchTools(Host, Registry));
 
         Registry.BeforeMutation = (descriptor, args, _) =>
         {
@@ -89,9 +90,9 @@ public class SceneToolTests
 
         var view = h.Ok("spawn_actor", new { name = "Crate", components = new[] { "MeshRenderer" }, position = new[] { 1f, 2f, 3f } });
         Assert.Equal("Crate", view["name"]!.GetValue<string>());
-        Assert.Equal(new[] { 1f, 2f, 3f }, Floats(view["transform3d"]!["position"]));
+        Assert.Equal(new[] { 1f, 2f, 3f }, Floats(view["position"]));
 
-        var summary = h.Ok("get_scene_summary");
+        var summary = h.Ok("get_scene_summary", new { compact = false });
         var row = summary["actors"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == "Crate")!;
         var components = row["components"]!.AsArray().Select(c => c!.GetValue<string>()).ToList();
         Assert.Contains("Transform3D", components);
@@ -472,8 +473,9 @@ public class SceneToolTests
         using var h = new SceneToolHarness();
         h.Ok("spawn_actor", new { name = "Keep" });
 
-        var summary = h.Ok("new_scene", new { name = "Fresh", template = "empty" });
-        Assert.Empty(summary["actors"]!.AsArray());
+        var created = h.Call("new_scene", new { name = "Fresh", template = "empty" });
+        Assert.False(created.IsError, created.FirstText);
+        Assert.Contains("0 actors", created.FirstText);
         Assert.Equal("Fresh", h.Scene.Name);
         Assert.Null(h.Host.CurrentScenePath);
 
@@ -481,7 +483,8 @@ public class SceneToolTests
         Assert.Single(undone["undone"]!.AsArray());
         Assert.NotNull(h.Scene.FindByName("Keep"));
 
-        var threeD = h.Ok("new_scene", new { template = "default3d" });
+        h.Call("new_scene", new { template = "default3d" });
+        var threeD = h.Ok("get_scene_summary", new { compact = false });
         Assert.True(threeD["checks"]!["hasGameMode"]!.GetValue<bool>());
         Assert.True(threeD["checks"]!["hasPlayerStart"]!.GetValue<bool>());
     }
@@ -498,7 +501,7 @@ public class SceneToolTests
 
         var file = h.Call("get_scene_json", new { format = "file" });
         Assert.False(file.IsError);
-        Assert.Contains("\"type\": \"MeshRenderer\"", file.FirstText);
+        Assert.Contains("\"type\":\"MeshRenderer\"", file.FirstText);
 
         Assert.Contains("'view' or 'file'", h.Fails("get_scene_json", new { format = "xml" }).FirstText);
     }

@@ -76,6 +76,7 @@ public static class AssistantSelfTest
         registry.RegisterInstance(new ComponentTools(scene), engine);
         registry.RegisterInstance(new MaterialTools(scene), engine);
         registry.RegisterInstance(new UndoTools(undo), engine);
+        registry.RegisterInstance(new BatchTools(scene, registry), engine);
         registry.RegisterInstance(new UserInteraction(board, settings), new McpRegistrationOptions { Source = "editor" });
         selfTestTools = new SelfTestTools();
         registry.RegisterInstance(selfTestTools, new McpRegistrationOptions { Source = "editor" });

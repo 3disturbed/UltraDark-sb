@@ -82,28 +82,38 @@ public sealed class ComponentTools
     }
 
     [McpTool("list_component_types",
-        "Every component type that can be added, grouped by category (Rendering, Physics, Gameplay, Audio, Animation, " +
-        "AI, UI, Scripting…) with a one-line description, its required companions and whether it comes from the engine " +
-        "or the project's own code.")]
+        "The component types that can be added, grouped by category (Rendering, Physics, Gameplay, Audio, Animation, " +
+        "AI, UI, Scripting…). Names only by default; namesOnly=false adds a one-line description, required companions " +
+        "and whether each comes from the engine or the project.")]
     public McpToolResult ListComponentTypes(
         [McpParam("Only this category")] string? category = null,
-        [McpParam("Case-insensitive substring of the type name")] string? search = null)
+        [McpParam("Case-insensitive substring of the type name")] string? search = null,
+        [McpParam("Names grouped by category (default) or full JSON")] bool namesOnly = true)
     {
-        var list = new JsonArray();
+        var types = ReflectionUtil.FindComponentTypes()
+            .Where(t => category == null || string.Equals(ComponentReflection.Category(t), category, StringComparison.OrdinalIgnoreCase))
+            .Where(t => search == null || t.Name.Contains(search, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => ComponentReflection.Category(t)).ThenBy(t => t.Name)
+            .ToList();
 
-        foreach (var type in ReflectionUtil.FindComponentTypes().OrderBy(t => ComponentReflection.Category(t)).ThenBy(t => t.Name))
+        if (namesOnly)
         {
-            string cat = ComponentReflection.Category(type);
-            if (category != null && !string.Equals(cat, category, StringComparison.OrdinalIgnoreCase)) continue;
-            if (search != null && !type.Name.Contains(search, StringComparison.OrdinalIgnoreCase)) continue;
+            var lines = types.GroupBy(ComponentReflection.Category)
+                             .Select(g => $"{g.Key}: {string.Join(", ", g.Select(t => ComponentReflection.Source(t) == "project" ? t.Name + "*" : t.Name))}");
+            return McpToolResult.Text($"{types.Count} component type(s); * = from the project. describe_component_type gives properties.\n"
+                                      + string.Join('\n', lines));
+        }
 
+        var list = new JsonArray();
+        foreach (var type in types)
+        {
+            string summary = XmlDocs.Summary(type) ?? string.Empty;
             list.Add(new JsonObject
             {
                 ["type"]     = type.Name,
-                ["fullName"] = type.FullName,
-                ["category"] = cat,
+                ["category"] = ComponentReflection.Category(type),
                 ["source"]   = ComponentReflection.Source(type),
-                ["summary"]  = XmlDocs.Summary(type),
+                ["summary"]  = summary.Length > 100 ? summary[..99] + "…" : summary,
                 ["requires"] = new JsonArray(ComponentReflection.RequiredComponents(type).Select(r => (JsonNode)r.Name).ToArray()),
             });
         }

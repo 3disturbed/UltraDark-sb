@@ -59,7 +59,7 @@ public sealed class ActorTools
         scene.FlushPendingActors();
         _host.SelectActor(actor);
 
-        var result = McpToolResult.Json(SceneViews.ActorView(actor, _host), $"Spawned '{actor.Name}' (id {actor.Id}).");
+        var result = McpToolResult.Json(SceneViews.ActorStub(actor), $"Spawned '{actor.Name}' (id {actor.Id}).");
         foreach (var f in failed) result.WithWarning(f);
         return result;
     }
@@ -103,7 +103,7 @@ public sealed class ActorTools
         scene.FlushPendingActors();
         _host.SelectActor(actor);
 
-        return McpToolResult.Json(SceneViews.ActorView(actor, _host), $"Spawned {primitive} '{actor.Name}' (id {actor.Id}).");
+        return McpToolResult.Json(SceneViews.ActorStub(actor), $"Spawned {primitive} '{actor.Name}' (id {actor.Id}).");
     }
 
     [McpTool("place_actor",
@@ -139,7 +139,7 @@ public sealed class ActorTools
         scene.FlushPendingActors();
         _host.SelectActor(actor);
 
-        var result = McpToolResult.Json(SceneViews.ActorView(actor, _host), $"Placed {entry.Name} as '{actor.Name}' (id {actor.Id}).");
+        var result = McpToolResult.Json(SceneViews.ActorStub(actor), $"Placed {entry.Name} as '{actor.Name}' (id {actor.Id}).");
         foreach (var f in failed) result.WithWarning(f);
         return result;
     }
@@ -259,7 +259,7 @@ public sealed class ActorTools
         scene.FlushPendingActors();
         _host.SelectActor(copy);
 
-        return McpToolResult.Json(SceneViews.ActorView(copy, _host), $"Duplicated '{source.Name}' as '{copy.Name}' (id {copy.Id}).");
+        return McpToolResult.Json(SceneViews.ActorStub(copy), $"Duplicated '{source.Name}' as '{copy.Name}' (id {copy.Id}).");
     }
 
     [McpTool("set_transform",

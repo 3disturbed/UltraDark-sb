@@ -237,14 +237,28 @@ public class McpProtocolTests
     }
 
     [Fact]
-    public async Task StructuredContentAccompaniesObjectResults()
+    public async Task ObjectResultsAreSentOnceAsCompactTextLedByTheSummary()
     {
+        // Claude Code forwards structuredContent and drops the text when both are present, so the
+        // summary line and every warning never reached the model, and the wire carried the
+        // payload twice. One compact text copy now.
         await using var server = new McpTestServer();
         using var doc = await server.CallAsync("tools/call", new { name = "add", arguments = new { a = 2, b = 3 } });
 
         var result = doc.RootElement.GetProperty("result");
+        Assert.False(result.TryGetProperty("structuredContent", out _));
+        Assert.Equal("{\"sum\":5}", result.GetProperty("content")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task StructuredContentIsEmittedOnlyWhenTheRegistryOptsIn()
+    {
+        await using var server = new McpTestServer();
+        server.Registry.EmitStructuredContent = true;
+        using var doc = await server.CallAsync("tools/call", new { name = "add", arguments = new { a = 2, b = 3 } });
+
+        var result = doc.RootElement.GetProperty("result");
         Assert.Equal(5, result.GetProperty("structuredContent").GetProperty("sum").GetInt32());
-        Assert.Contains("\"sum\": 5", result.GetProperty("content")[0].GetProperty("text").GetString());
     }
 
     [Fact]
@@ -622,7 +636,7 @@ public class McpRegistryTests
 
         var moved = await registry.InvokeAsync("move", Args(new { position = new[] { 1, 2, 3 }, tint = "#FF0000" }), McpCallContext.None);
         Assert.False(moved.IsError, moved.FirstText);
-        Assert.Contains("\"tint\": \"#FF0000FF\"", moved.FirstText);
+        Assert.Contains("\"tint\":\"#FF0000FF\"", moved.FirstText);
 
         var lit = await registry.InvokeAsync("light", Args(new { type = "spot" }), McpCallContext.None);
         Assert.Equal("Spot", lit.FirstText);

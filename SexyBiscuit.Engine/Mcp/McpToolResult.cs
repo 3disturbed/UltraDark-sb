@@ -19,14 +19,21 @@ public sealed class McpToolResult
     public static McpToolResult Text(string text) => new McpToolResult().WithText(text);
 
     /// <summary>
-    /// Serialises a value as indented JSON text (optionally preceded by a one-line summary)
-    /// and also attaches it as structured content.
+    /// Serialises a value as compact JSON text, preceded by a one-line summary when given, and
+    /// keeps the tree as <see cref="StructuredContent"/> for callers in this process.
     /// </summary>
+    /// <remarks>
+    /// The text is what the model reads. It used to be indented and to travel beside a
+    /// <c>structuredContent</c> copy of the same tree; Claude Code forwards the structured copy
+    /// and drops the text when both are present, so the summary line and every warning were
+    /// invisible to the model, and the wire carried the payload twice. Now there is one compact
+    /// copy on the wire (see <see cref="ToJsonNode"/>) and the summary leads it.
+    /// </remarks>
     public static McpToolResult Json(object value, string? leadingSummary = null)
     {
         var node   = McpJson.ToNode(value);
         var result = new McpToolResult();
-        string body = McpJson.ToText(node, indented: true);
+        string body = McpJson.ToText(node, indented: false);
 
         result.WithText(string.IsNullOrEmpty(leadingSummary) ? body : leadingSummary + "\n" + body);
         result.StructuredContent = WrapForStructured(node);
@@ -83,8 +90,12 @@ public sealed class McpToolResult
     /// <summary>The first text block, or an empty string. Used for logs and summaries.</summary>
     public string FirstText => Content.OfType<McpTextContent>().FirstOrDefault()?.Text ?? "";
 
-    /// <summary>The wire shape: <c>{ content: […], isError?, structuredContent? }</c>.</summary>
-    public JsonObject ToJsonNode()
+    /// <summary>
+    /// The wire shape: <c>{ content: […], isError?, structuredContent? }</c>. The structured copy
+    /// is sent only when asked for (<see cref="McpToolRegistry.EmitStructuredContent"/>), because a
+    /// client that has it ignores the text — and the text is where the summary and warnings are.
+    /// </summary>
+    public JsonObject ToJsonNode(bool includeStructuredContent = false)
     {
         var content = new JsonArray();
         foreach (var block in Content)
@@ -99,7 +110,7 @@ public sealed class McpToolResult
 
         var o = new JsonObject { ["content"] = content };
         if (IsError) o["isError"] = true;
-        if (StructuredContent != null) o["structuredContent"] = StructuredContent.DeepClone();
+        if (includeStructuredContent && StructuredContent != null) o["structuredContent"] = StructuredContent.DeepClone();
         return o;
     }
 

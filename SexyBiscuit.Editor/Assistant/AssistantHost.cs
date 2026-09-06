@@ -323,7 +323,7 @@ public sealed class AssistantHost : IDisposable
         string summary   = state.BuildSummary != null ? $", {state.BuildSummary}" : "";
         string selection = state.SelectedActorName != null ? $" '{state.SelectedActorName}' is selected again." : "";
         _resumeMessage = $"[editor] The SexyBiscuit editor restarted ({state.Reason}{summary}). The project and scene were reopened.{selection} " +
-                         "Continue where you left off; call get_project_info, then get_scene_summary if you need to re-check the scene, and re-list tools if any are missing.";
+                         "Continue where you left off; call get_context, then get_scene_summary if you need to re-check the scene, and re-list tools if any are missing.";
 
         _startRequested = true;
         _startForced    = true;

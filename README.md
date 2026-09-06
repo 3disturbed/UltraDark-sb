@@ -1016,78 +1016,69 @@ Shown in Debug overlay when a network session is active:
 
 ## 17. Export & Platform Build System
 
-One-click export to every supported platform. Accessible from the editor Build Settings panel and the CLI.
+One command per game: the `sbengine` CLI (`SexyBiscuit.Build/`) stages, publishes, packages,
+reports and uploads; the editor's Build Settings panel runs the same pipeline for one platform.
+Reference: [wiki/18](wiki/18-build-export.md).
 
 ### Supported Targets
 
-| Platform | Runtime | Output |
-|---|---|---|
-| Windows x64 | MonoGame DesktopGL or DirectX | Self-contained `.exe` + assets |
-| Windows x86 | MonoGame DesktopGL | Self-contained `.exe` + assets |
-| Linux x64 | MonoGame DesktopGL (OpenGL) | ELF binary; AppImage option |
-| macOS x64 + ARM64 | MonoGame DesktopGL | `.app` bundle; universal binary via `lipo` |
-| Android | MonoGame Android | Signed `.apk` / `.aab` (Play Store ready) |
-| iOS | MonoGame iOS | Xcode project + `.ipa` (TestFlight ready) |
-| Steam | DesktopGL + Steamworks.NET | SteamPipe depot folder |
-| Web | HTML5 / WebGL2 (the JavaScript engine under `html5/`) | Static site: `index.html` + `engine/` + project files |
-| Xbox | MonoGame UWP stub (planned) | UWP package |
+| Platform | Output |
+|---|---|
+| Windows x64 / x86 | self-contained single-file `.exe` beside the staged content, zipped |
+| Linux x64 | self-contained single-file binary, `.tar.gz` |
+| macOS x64 / ARM64 | self-contained single-file binary, `.tar.gz` (unsigned: right-click Open the first time) |
+| Web | static site — `index.html`, `engine/`, the project's files — installable to a home screen with a manifest and a service worker, zipped |
+| Steam (Windows / Linux / macOS) | the desktop build plus an `app_build.vdf` for `steamcmd` |
+| Android / iOS | validated (keystore, team id) and staged; no APK or IPA yet — the web build is the mobile build |
 
 ### Export Process
-Each build runs these steps in order:
+Each target runs these steps in order, collecting every error rather than stopping:
 
-1. **Asset cooking** — compress textures (DXT1/DXT5/BC7 desktop; ASTC 4×4 mobile); encode audio to OGG Vorbis; strip editor-only metadata
-2. **Script bundling** — collect all `.js` files; optional minification for Release; sourcemaps for Debug/Development
-3. **Scene baking** — serialise all referenced scenes and prefabs to binary format for fast load
-4. **Platform defines** — inject `PLATFORM_WINDOWS`, `PLATFORM_ANDROID`, `STEAMWORKS`, `DEBUG` etc. into the build
-5. **Dependency copy** — MonoGame runtime DLLs, Steamworks.NET, physics libs, NVorbis
-6. **Signing** — Android keystore; iOS provisioning profile; Windows Authenticode (stub)
-7. **Packaging** — zip archive (Windows/Linux), `.app` bundle (macOS), `.apk`/`.aab` (Android)
-8. **Web staging** (Web only) — copy the HTML5 runtime beside the project and write the page that boots it
+1. **Validate** — name, version, output folder, start scene, project root, platform fields
+2. **Directories** — `Assets/ Scripts/ Scenes/ Logs/`
+3. **Asset cooking** — `AssetCooker` over the project's `Assets/` (incremental, by source hash)
+4. **Scripts and scenes** — copied as they are; the same files both engines read
+5. **Settings** — the project's `ProjectSettings.json` with the build's metadata added
+6. **Platform defines** — `PLATFORM_WINDOWS`, `ARCH_ARM64`, `BUILD_RELEASE`, `STEAMWORKS`, …
+7. **Steam VDF** (Steam targets)
+8. **Web staging** (Web) — the HTML5 runtime beside the project, the page, the manifest, the icons, the service worker
+9. **Publish** (desktop) — `dotnet publish -r <rid> --self-contained -p:PublishSingleFile=true`; a project without C# gets a generated player project
+10. **Package** — `.zip` or `.tar.gz` beside the platform folder
+11. **Upload** (`--upload`) — one multipart POST per archive to the configured endpoint, with the version, commit and checksum
+
+`dist/build-report.json` and one console line per target are the result.
 
 ### Build Configurations
-| Config | Hot Reload | Asset Cook | Debug Overlay | Symbols |
-|---|---|---|---|---|
-| Debug | Yes | No | On by default | Full |
-| Development | No | Yes | F1 toggle | Partial |
-| Release | No | Yes | Disabled | Stripped |
+| Config | Hot Reload (editor) | Stats overlay in the web build | Symbols |
+|---|---|---|---|
+| Debug | Yes | On | Full |
+| Development | Yes | On | Full |
+| Release | No | Off | Stripped |
 
 ### CLI
 ```bash
-sbengine build --platform windows-x64 --config release --output ./dist
-sbengine build --platform linux-x64  --config release --output ./dist
-sbengine build --platform android    --keystore ./release.keystore --config release
-sbengine build --platform steam      --depot 123456 --branch beta
-sbengine build --all --config release --output ./dist
+dotnet build SexyBiscuit.Build/SexyBiscuit.Build.csproj -c Release
+dotnet run --no-build --project SexyBiscuit.Build -c Release -- --project Games/Foo --all --upload
+dotnet run --no-build --project SexyBiscuit.Build -c Release -- --project Games/Foo --platform web
+dotnet run --no-build --project SexyBiscuit.Build -c Release -- --project Games/Foo --platform osx-arm64,linux-x64 --config release --version 1.2.0
 ```
 
+`--all` is web + win-x64 + osx-arm64 + linux-x64. The release workflow (`.github/workflows/release.yml`)
+runs the same command on a matrix and prints the combined summary.
+
 ### Steam Publishing
-Build Settings → SteamPipe tab:
-- App ID, Depot ID, branch name
-- **Upload to Steam** button — generates `app_build.vdf`, runs `steamcmd` automatically
-- Beta branch support — publish to `beta` without touching `default`
+The Steam targets write `app_build.vdf`; run `steamcmd +run_app_build` on it yourself. The
+editor's Steam tab does not run `steamcmd`.
 
-### Android
-- `AndroidManifest.xml` editable in editor; auto-populated with app ID, permissions, icons
-- Keystore manager — generate or import keystore; stored encrypted in project settings
-- Target API level, minimum SDK selector
-- Screen orientation lock: portrait / landscape / sensor
+### Mobile
+The installable web build (`webInstallable`, on by default) installs from the site on Android
+and iPhone and runs offline. Native Android/iOS targets are a later milestone.
 
-### iOS
-- Generates a ready-to-open Xcode project; **Open in Xcode** button in editor
-- Bundle ID, Team ID, provisioning profile fields
-- App icon auto-generated at all required sizes from a single 1024×1024 source image
-- Universal (iPhone + iPad) toggle
-
-### Asset Cooking Detail
-| Asset | Desktop | Mobile | Override |
-|---|---|---|---|
-| Texture (opaque) | DXT1 | ASTC 4×4 | Per-texture in `.meta` file |
-| Texture (alpha) | DXT5 | ASTC 4×4 | Per-texture in `.meta` file |
-| Texture (high quality) | BC7 | ASTC 4×4 | Per-texture in `.meta` file |
-| Audio | OGG Vorbis q5 | OGG Vorbis q4 | Force WAV per-file if flagged |
-| 3D Model | Tangents generated; LOD baked | Same | Strip blend shapes if unused |
-
-Incremental cook — only assets whose source file hash changed since the last build are re-cooked.
+### Asset Cooking
+`AssetCooker` copies every asset, re-processing only the ones whose source hash changed.
+Textures are compressed on Windows targets when `texconv.exe` is on the PATH and copied
+otherwise; audio is encoded with `oggenc` when it is present and copied otherwise. There is no
+ASTC, BC7 or LOD baking.
 
 ---
 
@@ -1614,11 +1605,11 @@ scene from a C# project without destroying it.
 
 ### Scripting
 
-Project `.js` files run unchanged. Everything the Jint bridge declares is present
-with the same names and shapes, plus the API the bundled templates already assume
-and do not get under Jint — `log()`, `Input.isKeyHeld`, `actor.getComponent`,
-`actor.transform`, the `Stay` and `Exit` collision hooks. Those template scripts
-run here.
+Project `.js` files run unchanged. The Jint bridge and the browser bridge implement one
+contract, `html5/src/scripting/bridge-api.json`, member for member — `log()`,
+`Input.isKeyHeld`, `actor.getComponent`, `Scene.createActor`, all twelve collision and
+trigger hooks — and a test on each side holds its bridge to the file. Every bundled template
+runs under both engines, and a smoke test on each side keeps it that way.
 
 ### Exporting
 
