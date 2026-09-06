@@ -59,10 +59,11 @@ white for anything about noise or alertness.
 
 ## Draw order
 
-`depthBack` (0.12) and `depthFill` (0.10) are `layerDepth` values, and **high layerDepth is drawn
-first**, so low means in front. The defaults sit in front of a world drawn at 0.2 and up. If you
-also have a full-screen tint — a night overlay, a damage flash — give it a depth **above** these
-or it will dim the bars along with everything else.
+`depthBack` (0.90) and `depthFill` (0.92) are `layerDepth` values. **`SpriteBatch.end()` sorts
+ascending and draws in that order, so high means in front** — read the sort, not the comment on
+`SpriteSortMode.BackToFront`, which says the opposite of what the code does. The defaults sit in
+front of a world drawn below 0.9. If you also have a full-screen tint — a night overlay, a damage
+flash — give it a depth **below** these, or it will dim the bars along with everything else.
 
 ## What it does not do
 

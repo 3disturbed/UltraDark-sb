@@ -41,10 +41,11 @@ var barGap    = 5;
 var firstY    = -26;      // how far above the actor the first bar sits
 var hideWhenFull = false; // true: a bar at 1.0 disappears, for a tidier screen
 
-// Draw order: high layerDepth is drawn first, so these must be LOW to sit in
-// front of the world. Anything you want in front of the bars needs a lower one.
-var depthBack = 0.12;
-var depthFill = 0.10;
+// Draw order: the renderer sorts ASCENDING by layerDepth and draws in that
+// order, so these must be HIGH to sit in front of the world. Anything you want
+// in front of the bars needs a higher one still.
+var depthBack = 0.90;
+var depthFill = 0.92;
 
 // ---------------------------------------------------------------------------
 // State

@@ -39,16 +39,20 @@ sees the edge of the night as a square around them, which looks exactly as bad a
 
 ## Draw order is the thing to get right
 
-`overlayDepth` (0.2) is a `layerDepth`, and **high layerDepth is drawn first**, so:
+`overlayDepth` (0.80) is a `layerDepth`. **`SpriteBatch.end()` sorts ascending and draws in that
+order, so a LOW depth is drawn first and ends up at the back.** Read the sort, not the comment on
+`SpriteSortMode.BackToFront`, which says the opposite of what the code does.
 
 | Depth | What belongs there |
 |---|---|
-| 0.4 – 0.95 | the world: ground, walls, props, actors — everything the dark should dim |
-| **0.2** | **the overlay** |
-| 0.1 – 0.19 | anything that must stay bright *through* the night: fire, torches, muzzle flash, HUD |
+| 0.05 – 0.7 | the world: ground, walls, props, actors — everything the dark should dim |
+| **0.80** | **the overlay** |
+| 0.85 – 1.0 | anything that must stay bright *through* the night: fire, torches, muzzle flash, HUD |
 
-Getting this wrong is quiet and confusing: a fire drawn at 0.25 is behind the overlay, so the one
-light source in the scene gets dimmed by the darkness it exists to push back.
+Getting this wrong is quiet and expensive. Invert the whole scheme and the ground is drawn last,
+on top of the entire game — a flat grey rectangle, no error anywhere, every test still passing.
+Get one layer wrong and a fire is behind the overlay, so the only light source in the scene is
+dimmed by the darkness it exists to push back.
 
 ## The shape of a day
 

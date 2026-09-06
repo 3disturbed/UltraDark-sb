@@ -33,10 +33,11 @@ var overlaySize = 4200;   // must comfortably exceed the widest view you expect
 var nightDark  = 175;     // alpha at the dead of night, 0-255
 var darkR = 6, darkG = 8, darkB = 20;
 
-// Draw order: high layerDepth is drawn first, so this must be LOWER than the
-// world it dims and HIGHER than anything that should stay bright through it --
-// a fire, a torch, a HUD.
-var overlayDepth = 0.2;
+// Draw order: the renderer sorts ASCENDING by layerDepth and draws in that
+// order, so LOW is drawn first and ends up at the back. The overlay must be
+// HIGHER than the world it dims and LOWER than anything that should stay bright
+// through it -- a fire, a torch, a HUD.
+var overlayDepth = 0.80;
 
 var announce = true;      // log each phase change once
 
