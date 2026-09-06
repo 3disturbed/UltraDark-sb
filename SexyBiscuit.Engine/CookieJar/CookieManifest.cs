@@ -63,6 +63,8 @@ public sealed class CookieProvides
     [JsonPropertyName("tools")]        public List<string> Tools        { get; set; } = new();
 
     /// <summary>Every C# type name the cookie declares, which is what can collide.</summary>
+    /// <remarks>Computed, so it is never written: the lock file records what the manifest said.</remarks>
+    [JsonIgnore]
     public IEnumerable<string> TypeNames => Components.Concat(ActorClasses);
 }
 

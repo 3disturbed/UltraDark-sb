@@ -84,21 +84,30 @@ public static class CookieUninstaller
         }
 
         // Deepest first, and only when empty: a folder the author has put their own files in stays.
+        // The walk continues into the parents, so removing the last cookie does not leave an empty
+        // Source/Cookies behind, but it stops before the project's own top-level folders.
         var removedDirectories = new List<string>();
         foreach (string relative in plan.Cookie.Directories.OrderByDescending(d => d.Length))
         {
-            string absolute = Path.Combine(projectRoot, relative.Replace('/', Path.DirectorySeparatorChar));
-            try
+            string? current = relative;
+
+            while (!string.IsNullOrEmpty(current) && current.Contains('/'))
             {
-                if (Directory.Exists(absolute) && !Directory.EnumerateFileSystemEntries(absolute).Any())
+                string absolute = Path.Combine(projectRoot, current.Replace('/', Path.DirectorySeparatorChar));
+                try
                 {
+                    if (!Directory.Exists(absolute) || Directory.EnumerateFileSystemEntries(absolute).Any()) break;
+
                     Directory.Delete(absolute);
-                    removedDirectories.Add(relative);
+                    removedDirectories.Add(current);
                 }
-            }
-            catch (Exception)
-            {
-                // A folder that will not go is not worth failing an uninstall over.
+                catch (Exception)
+                {
+                    break;   // a folder that will not go is not worth failing an uninstall over
+                }
+
+                int slash = current.LastIndexOf('/');
+                current = slash > 0 ? current[..slash] : null;
             }
         }
 

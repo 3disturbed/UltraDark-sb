@@ -507,6 +507,8 @@ public class CookieInstallTests
         Assert.False(File.Exists(fixture.ProjectFile("Source/Cookies/BrickWall/BrickWall.cs")));
         Assert.Empty(CookieLockFile.Load(fixture.ProjectRoot).Cookies);
         Assert.DoesNotContain("Assets/Cookies/brick-wall", outcome.RemovedDirectories);  // still has mine.png
+        Assert.Contains("Source/Cookies", outcome.RemovedDirectories);                   // empty parent goes too
+        Assert.True(Directory.Exists(fixture.ProjectFile("Source")));                    // the project's own folder stays
     }
 
     [Fact]
