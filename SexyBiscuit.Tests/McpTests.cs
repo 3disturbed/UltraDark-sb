@@ -877,11 +877,26 @@ public class ValueConverterTests
 public class QueuedDispatcherTests
 {
     /// <summary>Queues work from a thread-pool thread and hands back the pending task itself.</summary>
-    private static async Task<Task<T>> EnqueueAsync<T>(QueuedMcpDispatcher dispatcher, Func<T> work, CancellationToken cancellation = default)
+    /// <summary>
+    /// Queues work from a thread that is definitely not the bound one, and returns once it is on
+    /// the queue.
+    /// </summary>
+    /// <remarks>
+    /// A dedicated thread rather than <c>Task.Run</c>: the dispatcher runs work inline when the
+    /// caller is already the main thread, it decides that by managed thread id, and the test binds
+    /// the main thread on a pool thread. So the pool could hand <c>Task.Run</c> the very thread the
+    /// test had bound, the item would run instead of queueing, and a drain would come back one
+    /// short -- occasionally, and only under load.
+    /// </remarks>
+    private static Task<Task<T>> EnqueueAsync<T>(QueuedMcpDispatcher dispatcher, Func<T> work, CancellationToken cancellation = default)
     {
         Task<T>? queued = null;
-        await Task.Run(() => { queued = dispatcher.InvokeAsync(work, cancellation); });
-        return queued!;
+
+        var thread = new Thread(() => queued = dispatcher.InvokeAsync(work, cancellation)) { IsBackground = true };
+        thread.Start();
+        thread.Join();
+
+        return Task.FromResult(queued!);
     }
 
     [Fact]
