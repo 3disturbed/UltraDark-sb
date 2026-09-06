@@ -540,3 +540,156 @@ public class CookieInstallTests
         Assert.True(CookieUninstaller.Plan(fixture.ProjectRoot, lockFile, "base", force: true).IsApplicable);
     }
 }
+
+public class CookieBakeTests
+{
+    private const string Prefab = """
+    { "name": "Thing", "components": [ { "type": "MeshRenderer",
+      "properties": { "AlbedoTexturePath": "Assets/tex.png" } } ] }
+    """;
+
+    private static void WriteProjectFile(CookieFixture fixture, string relative, string content)
+    {
+        string path = fixture.ProjectFile(relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+    }
+
+    private static BakeRequest Request(CookieFixture fixture) => new(
+        Project:           fixture.Project(),
+        Id:                "spinner",
+        Name:              "Spinner",
+        Summary:           "Spins an actor.",
+        AgentInstructions: "Add a Spinner to any actor and set DegreesPerSecond.",
+        DestinationJar:    fixture.JarPath,
+        Files:             new[] { "Source/Spinner.cs", "Assets/tex.png", "Scenes/Thing.prefab" },
+        NextSteps:         new[] { "Add a Spinner component to an actor." });
+
+    private static CookieFixture ProjectToBake(string tag)
+    {
+        var fixture = new CookieFixture(tag);
+        WriteProjectFile(fixture, "Source/Spinner.cs",
+            "namespace TestGame.Components;\n\npublic sealed class Spinner : Component\n{\n    public float DegreesPerSecond { get; set; } = 90f;\n}\n");
+        WriteProjectFile(fixture, "Assets/tex.png", "not really a png");
+        WriteProjectFile(fixture, "Scenes/Thing.prefab", Prefab);
+        return fixture;
+    }
+
+    [Fact]
+    public void BakingDerivesWhatTheCookieProvidesAndMovesItToItsOwnNamespace()
+    {
+        using var fixture = ProjectToBake("bake");
+
+        var plan = CookieBaker.Plan(Request(fixture));
+        var outcome = CookieBaker.Apply(plan);
+
+        Assert.Equal(new[] { "csharp" }, outcome.Manifest.Engines);
+        Assert.Equal("Spinner", Assert.Single(outcome.Manifest.Provides.Components));
+        Assert.Equal("Thing.prefab", Assert.Single(outcome.Manifest.Provides.Prefabs));
+        Assert.Contains("Source/Spinner.cs", outcome.Renamespaced);
+        Assert.Contains("namespace Cookies.Spinner;",
+                        File.ReadAllText(Path.Combine(outcome.Directory, "Source", "Spinner.cs")));
+        Assert.DoesNotContain(outcome.Validation, p => p.Severity == CookieSeverity.Error);
+    }
+
+    [Fact]
+    public void BakingThenInstallingIntoAFreshProjectRoundTrips()
+    {
+        // The whole point of the jar: work done in one game turns up, wired the same way, in the
+        // next one. Asset references have to survive both directions.
+        using var fixture = ProjectToBake("roundtrip");
+        CookieBaker.Apply(CookieBaker.Plan(Request(fixture)));
+
+        // In the cookie, the reference is the cookie's own copy.
+        string baked = File.ReadAllText(Path.Combine(fixture.JarPath, "spinner", "Scenes", "Thing.prefab"));
+        Assert.Equal("Assets/tex.png",
+                     JsonNode.Parse(baked)!["components"]![0]!["properties"]!["AlbedoTexturePath"]!.GetValue<string>());
+
+        // A different project entirely.
+        string freshRoot = Path.Combine(fixture.Root, "fresh");
+        Directory.CreateDirectory(freshRoot);
+        var fresh    = new CookieProjectContext(freshRoot, "FreshGame");
+        var lockFile = new CookieLockFile();
+
+        var cookie = fixture.Scan().Find("spinner")!;
+        CookieInstaller.Apply(CookiePlanner.Plan(cookie, fresh, lockFile), fresh, lockFile);
+
+        string installed = File.ReadAllText(Path.Combine(freshRoot, "Scenes", "Cookies", "spinner", "Thing.prefab"));
+        Assert.Equal("Assets/Cookies/spinner/tex.png",
+                     JsonNode.Parse(installed)!["components"]![0]!["properties"]!["AlbedoTexturePath"]!.GetValue<string>());
+        Assert.True(File.Exists(Path.Combine(freshRoot, "Assets", "Cookies", "spinner", "tex.png")));
+        Assert.Contains("namespace Cookies.Spinner;",
+                        File.ReadAllText(Path.Combine(freshRoot, "Source", "Cookies", "Spinner", "Spinner.cs")));
+    }
+
+    [Fact]
+    public void BakingStripsTheCookiesFolderFromFilesAnotherCookieInstalled()
+    {
+        // Re-baking something installed from a cookie must not nest Cookies/x/Cookies/y.
+        using var fixture = new CookieFixture("nested");
+        WriteProjectFile(fixture, "Source/Cookies/Dash/Dash.cs", "namespace Cookies.Dash;\npublic sealed class Dash : Component { }\n");
+
+        var request = Request(fixture) with { Files = new[] { "Source/Cookies/Dash/Dash.cs" }, Id = "dash-two" };
+        var outcome = CookieBaker.Apply(CookieBaker.Plan(request));
+
+        Assert.Equal("Source/Dash.cs", Assert.Single(outcome.Files));
+    }
+
+    [Fact]
+    public void AFileOutsideTheKnownFoldersIsReportedRatherThanBaked()
+    {
+        using var fixture = ProjectToBake("stray");
+        WriteProjectFile(fixture, "Notes/todo.txt", "later");
+
+        var plan = CookieBaker.Plan(Request(fixture) with { Files = new[] { "Notes/todo.txt" } });
+
+        Assert.True(plan.IsApplicable);
+        Assert.Contains(plan.Conflicts, c => c.Subject == "Notes/todo.txt" && !c.Blocking);
+        Assert.Empty(plan.Files);
+    }
+}
+
+public class CookieValidatorTests
+{
+    [Fact]
+    public void AProvidedPrefabThatIsNotInTheCookieIsAnError()
+    {
+        using var fixture = new CookieFixture("validate");
+        string dir = fixture.WriteCookie("dash", CookieFixture.Manifest("dash"));
+        File.WriteAllText(Path.Combine(dir, Cookie.ManifestFileName),
+            CookieFixture.Manifest("dash").Replace("\"provides\": { \"components\": [] }",
+                                                   "\"provides\": { \"prefabs\": [\"Absent.prefab\"] }"));
+
+        var cookie = fixture.Scan().Find("dash")!;
+        Assert.Contains(CookieValidator.Validate(cookie),
+                        p => p.Severity == CookieSeverity.Error && p.Message.Contains("Absent.prefab"));
+    }
+
+    [Fact]
+    public void DeclaringAnEngineWithoutShippingItsCodeIsAWarning()
+    {
+        using var fixture = new CookieFixture("engines");
+        fixture.WriteCookie("dash", CookieFixture.Manifest("dash", engines: "\"csharp\", \"js\""),
+                            new Dictionary<string, string> { ["Source/Dash.cs"] = "namespace Cookies.Dash;\n" });
+
+        var problems = CookieValidator.Validate(fixture.Scan().Find("dash")!);
+
+        Assert.Contains(problems, p => p.Severity == CookieSeverity.Warning && p.Message.Contains("'js' engine"));
+        Assert.DoesNotContain(problems, p => p.Message.Contains("'csharp' engine"));
+    }
+
+    [Fact]
+    public void DeepValidationFlagsAReferenceTheCookieDoesNotShip()
+    {
+        using var fixture = new CookieFixture("deep");
+        fixture.WriteCookie("dash", CookieFixture.Manifest("dash"), new Dictionary<string, string>
+        {
+            ["Source/Dash.cs"]      = "namespace Cookies.Dash;\n",
+            ["Scenes/Dash.prefab"]  = """{ "name": "Dash", "components": [ { "type": "SpriteRenderer", "properties": { "TexturePath": "Assets/missing.png" } } ] }""",
+        });
+
+        var problems = CookieValidator.Validate(fixture.Scan().Find("dash")!, deep: true);
+
+        Assert.Contains(problems, p => p.Message.Contains("Assets/missing.png"));
+    }
+}
