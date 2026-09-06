@@ -266,6 +266,13 @@ public sealed class TouchManager
     /// This is the same code path with the device swapped out — the position, delta and phase
     /// bookkeeping is identical, so a test drives what a phone would.
     /// </remarks>
+    /// <summary>
+    /// Supplies this frame's touches from somewhere other than the touch panel: a test, or a
+    /// desktop simulating a finger with the mouse so an on-screen control can be tried in the
+    /// editor, which has no touch panel at all.
+    /// </summary>
+    public void SubmitTouches(IEnumerable<TouchPoint> touches) => ApplyTouches(touches);
+
     internal void ApplyTouches(IEnumerable<TouchPoint> touches)
     {
         _touches.Clear();

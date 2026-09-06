@@ -126,6 +126,19 @@ public abstract class Widget
     // Input handling
     // -------------------------------------------------------------------------
     /// <summary>
+    /// Handles one pointer: the mouse, or one finger. The default forwards to
+    /// <see cref="HandleInput(Vector2,bool,bool)"/>, so every widget written against a single
+    /// cursor keeps working and gains touch without being changed.
+    /// </summary>
+    /// <remarks>
+    /// Override this instead when a widget has to tell two fingers apart -- an on-screen stick
+    /// claims one by id and follows it until it lifts. A widget that only overrides the older
+    /// method sees both pointers in turn, which is right for a button and wrong for a slider.
+    /// </remarks>
+    public virtual void HandlePointer(in Pointer pointer)
+        => HandleInput(pointer.Position, pointer.IsDown, pointer.JustPressed);
+
+    /// <summary>
     /// Default input handling: hover detection and click raising.
     /// Subclasses override to add drag, press-state, etc.
     /// </summary>
