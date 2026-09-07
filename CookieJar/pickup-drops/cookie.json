@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "id": "pickup-drops",
+  "name": "Pickup Drops",
+  "version": "1.0.0",
+  "summary": "Coins, hearts and whatever else falls on the floor: pooled, timed, magnetised, and collected with one call.",
+  "description": "A drop is a row in parallel arrays over a pool of reused actors, because a good wave drops dozens and a ScriptComponent per coin is a script engine per coin. It handles the lifetime, the blink before one expires so nothing silently vanishes while you are walking to it, and an optional magnet whose reach comes from an upgrade the collector holds. What a pickup MEANS is not its business: collecting one is a single onPickup(kind, value) call to the script you name, once per pickup rather than once per drop per frame.",
+  "tags": ["pickups", "loot", "currency", "drops", "pooling", "magnet"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["PickupDrops.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put PickupDrops.js on a manager actor and tag it Pickups.",
+    "Fill in KINDS: one row per thing that can drop, with its colour, size and lifetime.",
+    "Implement onPickup(kind, value) on your collector -- that is the whole coupling.",
+    "Set magnetSource to a getter returning how many stacks of a pull effect the collector holds, or leave it empty."
+  ]
+}

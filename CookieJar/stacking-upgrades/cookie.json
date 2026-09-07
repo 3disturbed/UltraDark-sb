@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "id": "stacking-upgrades",
+  "name": "Stacking Upgrades",
+  "version": "1.0.0",
+  "summary": "A bag of upgrades that stack, recomputed from scratch every time, and never deduplicated.",
+  "description": "The spine of a roguelite build. Upgrades are a list of ids with the duplicates left in, and every stat is recomputed from that list whenever it changes -- so two copies are exactly two applications, always, with no special case anywhere, and removing one is as exact as adding one. Effects are a data table rather than a switch, so adding an upgrade is one row that whatever draws your cards can also read. It deliberately does not know what a stat means: it adds numbers up and hands them over.",
+  "tags": ["roguelite", "upgrades", "stats", "build", "draft", "perks"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["Upgrades.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put Upgrades.js on whatever owns the stats, usually the player, and tag it Upgrades.",
+    "Fill in UPGRADES: one row per upgrade, each with a list of {stat, op, value} effects.",
+    "Read them with stat(\"maxHp\") and mul(\"damage\") -- never cache the result, it changes.",
+    "Put anything that must be re-derived rather than read into onStatsChanged()."
+  ]
+}
