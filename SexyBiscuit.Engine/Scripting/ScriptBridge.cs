@@ -223,6 +223,51 @@ public sealed class ScriptBridge
         // actor.addComponent("BoxCollider2D")
         obj.Set("addComponent", Fn("addComponent", (_, args) => AddComponentValue(_actor, args.At(0), JsValue.Undefined), length: 1));
 
+        // ---- hierarchy -------------------------------------------------------
+
+        // actor.parent — null at the scene root.
+        Accessor(obj, "parent",
+            getter: (_, _) => _actor.Parent is { } p ? WrapActorAsProxy(p) : JsValue.Null,
+            setter: null, _engine);
+
+        // actor.children — a fresh array each read, so a script cannot mutate the engine's list.
+        Accessor(obj, "children",
+            getter: (_, _) => NewArray(_actor.Children.Select(WrapActorAsProxy)),
+            setter: null, _engine);
+
+        // actor.attachTo(other, keep = true). `keep` defaults to true: the common case is
+        // "hold this pickup where it is and make it follow the player", not "snap it to the
+        // player's origin".
+        obj.Set("attachTo", Fn("attachTo", (_, args) =>
+        {
+            var parent = args.At(0).IsNull() || args.At(0).IsUndefined() ? null : Unwrap(args.At(0));
+            if (parent == null && !(args.At(0).IsNull() || args.At(0).IsUndefined()))
+            {
+                Warn("actor.attachTo: the first argument is not an actor.");
+                return JsValue.Undefined;
+            }
+
+            bool keep = args.Length < 2 || args.At(1).IsUndefined() || TypeConverter.ToBoolean(args.At(1));
+            try { _actor.AttachTo(parent, keep); }
+            catch (InvalidOperationException ex) { Warn($"actor.attachTo: {ex.Message}"); }
+            return JsValue.Undefined;
+        }, length: 2));
+
+        // actor.detach(keep = true)
+        obj.Set("detach", Fn("detach", (_, args) =>
+        {
+            bool keep = args.Length < 1 || args.At(0).IsUndefined() || TypeConverter.ToBoolean(args.At(0));
+            _actor.AttachTo(null, keep);
+            return JsValue.Undefined;
+        }, length: 1));
+
+        // actor.findChild(name, recursive = false)
+        obj.Set("findChild", Fn("findChild", (_, args) =>
+        {
+            var found = _actor.FindChild(args.At(0).ToString(), TypeConverter.ToBoolean(args.At(1)));
+            return found != null ? WrapActorAsProxy(found) : JsValue.Null;
+        }, length: 2));
+
         return obj;
     }
 

@@ -59,7 +59,13 @@ export function deserialize(json, options = {}) {
     for (const layerDto of dto?.layers ?? []) {
         const layer = scene.getOrCreateLayer(layerDto?.name ?? 'default', layerDto?.order ?? 0);
         for (const actorDto of layerDto?.actors ?? []) {
-            scene.addActor(buildActor(actorDto, warn), layer.name);
+            const actor = buildActor(actorDto, warn);
+            scene.addActor(actor, layer.name);
+
+            // A child is an actor in its own right: it needs its own place in a layer
+            // to be started, updated and drawn. It goes in the parent's layer, which
+            // is the one it was written under.
+            for (const descendant of actor.descendants()) scene.addActor(descendant, layer.name);
         }
     }
 
@@ -171,6 +177,14 @@ export function buildActor(dto, warn = () => {}) {
         }
     }
 
+    // Children last: the parent's own transform has to be in place before a child is
+    // attached to it. `keepWorldTransform: false` is the whole point — the file stores a
+    // child's transform as its local offset, so rebasing it into the parent's space would
+    // apply that offset twice.
+    for (const childDto of dto?.children ?? []) {
+        buildActor(childDto, warn).attachTo(actor, false);
+    }
+
     return actor;
 }
 
@@ -254,7 +268,10 @@ export function buildSceneDto(scene) {
         layers: scene.layers.map((layer) => ({
             name: layer.name,
             order: layer.order,
-            actors: layer.actors.map(buildActorDto),
+            // Attached actors are written inside their parent's `children`, so the
+            // layer lists only roots. Writing them at both levels would load the
+            // subtree twice.
+            actors: layer.actors.filter((a) => !a.parent).map(buildActorDto),
         })),
     };
 }
@@ -331,6 +348,9 @@ function finishActorDto(dto, actor) {
         dto.rotation3 = t3.localRotation.toArray().map(round4);
         dto.scale3 = t3.localScale.toArray().map(round4);
     }
+
+    // Children come last, after `components`, exactly where the C# writer puts them.
+    if (actor.children.length > 0) dto.children = actor.children.map(buildActorDto);
 
     // Drop the keys the C# writer omits when they carry no information, so files
     // written by the two engines compare cleanly.

@@ -38,6 +38,26 @@
       "destroy": {
         "kind": "fn",
         "shared": true
+      },
+      "parent": {
+        "kind": "prop",
+        "shared": true
+      },
+      "children": {
+        "kind": "prop",
+        "shared": true
+      },
+      "attachTo": {
+        "kind": "fn",
+        "shared": true
+      },
+      "detach": {
+        "kind": "fn",
+        "shared": true
+      },
+      "findChild": {
+        "kind": "fn",
+        "shared": true
       }
     },
     "transform": {

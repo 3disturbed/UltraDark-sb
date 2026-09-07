@@ -53,6 +53,19 @@ export function createScriptGlobals(actor, services = {}) {
         getComponent(name) { return wrapComponent(actor.getComponent(name)); },
         addComponent(name) { return wrapComponent(actor.addComponent(name)); },
         destroy() { actor.destroy(); },
+
+        // ---- hierarchy -------------------------------------------------------
+        get parent() { return wrapActor(actor.parent); },
+        get children() { return actor.children.map(wrapActor); },
+        // `keep` defaults to true: the common case is "hold this pickup where it is
+        // and make it follow the player", not "snap it to the player's origin".
+        attachTo(other, keep = true) {
+            actor.attachTo(unwrapActor(other), keep !== false);
+        },
+        detach(keep = true) { actor.attachTo(null, keep !== false); },
+        findChild(name, recursive = false) {
+            return wrapActor(actor.findChild(String(name), Boolean(recursive)));
+        },
     };
     proxyToActor.set(actorProxy, actor);
 
