@@ -144,9 +144,10 @@ say what to do; these are the things that cost hours anyway.
 ### The order that works
 
 1. **Read the brief, pick the closest template, then look in `CookieJar/` before writing a line.**
-   There are `"engines": ["js"]` cookies now — `noise-and-hearing`, `floating-status-bars`,
-   `day-night-cycle` — and a cookie summary costs about thirty tokens against thousands to derive
-   the same module again. Filter on the engine: a `csharp` cookie is no use in phase 1.
+   There are six `"engines": ["js"]` cookies now — `noise-and-hearing`, `floating-status-bars`,
+   `day-night-cycle`, `wave-director`, `projectile-pool` and `draft-picker` — and a cookie summary
+   costs about thirty tokens against thousands to derive the same module again. Filter on the
+   engine: a `csharp` cookie is no use in phase 1.
 2. **Read `wiki/11-scripting.md` and the template's own scripts. Nothing else.** Then read
    `bridge-api.json` for the member list. That is the whole reading budget; the engine source is
    50,000 lines and putting it in context is the single most expensive thing a session can do.
@@ -591,6 +592,9 @@ JavaScript ones are:
 | `noise-and-hearing` | enemies that hunt by ear: a sound is a position and a radius, and they walk to where it *was* |
 | `floating-status-bars` | meters in world space above an actor's head — the answer to having no viewport |
 | `day-night-cycle` | a clock publishing a 0–1 darkness curve and a day number, plus the overlay that dims the world |
+| `wave-director` | endless escalating waves and a boss cadence, where a wave is a *budget* rather than a headcount — plus the stall-breaker, without which one rooted enemy in a corner is a wave that never ends |
+| `projectile-pool` | hundreds of projectiles in one script over a pool, swept so a fast one cannot step over its target between frames |
+| `draft-picker` | one of N cards between rounds, in world space and said in colour and pips, because the contract has neither a viewport nor a font |
 
 A cookie summary costs about thirty tokens. Deriving the same module again costs thousands, in
 every game that needs it. See `wiki/28-the-cookiejar.md`.
