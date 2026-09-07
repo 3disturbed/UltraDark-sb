@@ -249,7 +249,7 @@ function shepherd(dt, nx, ny, dist) {
         t = phase ? 2.0 : 3.0;
         plantZone(player.transform.x + (Math.random() - 0.5) * 220,
                   player.transform.y + (Math.random() - 0.5) * 220,
-                  150, phase ? 7.0 : 5.5);
+                  120, phase ? 7.0 : 5.5);
     }
 
     if (t2 <= 0 && swarm) {
@@ -268,8 +268,12 @@ function plantZone(x, y, r, life) {
     var a = Scene.createActor("Zone", x, y);
     if (!a) { return; }
     a.tag = "Fx";
+    // Drawn at the full diameter even though the damage is a circle inside it:
+    // over-drawing danger makes a player cautious, under-drawing it makes the
+    // game unfair. The alpha is low so it reads as a haze rather than a wall --
+    // at 150 two overlapping zones looked like level geometry.
     Scene.addComponent(a, "SpriteRenderer", {
-        Tint: { R: 40, G: 10, B: 70, A: 150 },
+        Tint: { R: 40, G: 10, B: 70, A: 95 },
         Size: [r * 2, r * 2],
         LayerDepth: depthZone
     });

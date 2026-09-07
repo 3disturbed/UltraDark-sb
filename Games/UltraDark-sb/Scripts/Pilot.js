@@ -78,7 +78,13 @@ var PILOT_ACD     = [12,   10,    9,     11,    14,    16,    13,    12   ];
 var depthHull  = 0.50;
 var depthNose  = 0.52;
 var depthBlade = 0.53;
-var depthFlash = 0.85;      // above the dark: muzzle flash is a light source
+// No hull glow. A pale square one layer above the overlay was tried, to keep the
+// patch around the ship readable once the dark is at full strength -- and on a
+// native frame it dominated the screen instead of lifting it. A square is the
+// wrong shape for a light, and the contract has no way to make a round one: a
+// radial falloff needs a texture. The dark stays legible because everything that
+// matters in it is drawn ABOVE it -- muzzle flash, explosions, the boss's rings
+// and the HUD -- which is the whole reason for the depth ladder.
 
 // ===========================================================================
 // Tuning -- mods. Stackable, all of them.

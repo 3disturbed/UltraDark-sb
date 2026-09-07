@@ -17,8 +17,11 @@
 // ===========================================================================
 // Tuning -- the arena
 // ===========================================================================
-var arenaHalf   = 950;       // a square, half-width in px
-var tileStep    = 190;       // grid spacing of the floor marks
+// Two screens across at 1280x720. Bigger than this and an early wave reads as
+// an empty grid with one enemy on it -- the arena was 2600 wide to begin with
+// and a frame of wave 3 had a single grunt in view.
+var arenaHalf   = 780;       // a square, half-width in px
+var tileStep    = 165;       // grid spacing of the floor marks
 
 // ===========================================================================
 // Tuning -- the waves

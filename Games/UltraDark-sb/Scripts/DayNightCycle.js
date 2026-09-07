@@ -30,7 +30,12 @@ var startAt   = 0.0;      // where the first day begins; 0.05 starts you at dawn
 // ---------------------------------------------------------------------------
 var followTag  = "Player";
 var overlaySize = 4200;   // must comfortably exceed the widest view you expect
-var nightDark  = 175;     // alpha at the dead of night, 0-255
+// Measured off a native frame: the overlay blends exactly as configured, and at
+// 175 a wave-20 arena still sat at 62% brightness -- dim, but not dark, and this
+// game is called UltraDark. At 205 the world goes to about a fifth and the only
+// things you can read are the ones drawn above the overlay: muzzle flash,
+// explosions, the boss's rings and your own hull.
+var nightDark  = 205;     // alpha at the dead of night, 0-255
 var darkR = 6, darkG = 8, darkB = 20;
 
 // Draw order: the renderer sorts ASCENDING by layerDepth and draws in that
