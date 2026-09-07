@@ -37,7 +37,20 @@ public class RenderSystem2D
     public SpriteSortMode SortMode { get; set; } = SpriteSortMode.FrontToBack;
 
     /// <summary>BlendState used for the main scene batch.</summary>
-    public BlendState BlendState { get; set; } = BlendState.AlphaBlend;
+    /// <remarks>
+    /// <b>NonPremultiplied</b>, not AlphaBlend. MonoGame's AlphaBlend expects colours
+    /// whose RGB has already been multiplied by their alpha; the engine hands it
+    /// straight <see cref="Color"/> values from a scene file or a script, so a
+    /// translucent sprite ADDED its full colour and merely attenuated what was
+    /// behind it. A night overlay tinted (6, 8, 20) at alpha ZERO therefore lifted
+    /// every pixel in the game by exactly (6, 8, 20) — visible only as "the palette
+    /// is slightly off", which is how it survived.
+    ///
+    /// The browser engine composites with <c>ctx.globalAlpha</c>, which is straight
+    /// alpha, so this is also what makes the two agree: before this, any sprite with
+    /// an alpha looked different natively than it did in the prototype.
+    /// </remarks>
+    public BlendState BlendState { get; set; } = BlendState.NonPremultiplied;
 
     /// <summary>SamplerState used for the main scene batch. Default is PointClamp for pixel art.</summary>
     public SamplerState SamplerState { get; set; } = SamplerState.PointClamp;

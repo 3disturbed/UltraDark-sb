@@ -231,7 +231,10 @@ public sealed class EngineHost : IDisposable
 
         if (ui.Elements.Count == 0) return;
 
-        SpriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        // NonPremultiplied for the same reason the scene batch uses it: a panel
+        // written "#161920e6" is a straight colour with an alpha, not a
+        // premultiplied one.
+        SpriteBatch.Begin(blendState: BlendState.NonPremultiplied, samplerState: SamplerState.PointClamp);
         ui.Draw(SpriteBatch);
         SpriteBatch.End();
     }
