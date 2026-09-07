@@ -195,8 +195,10 @@ public sealed class ScriptBridge
             _engine);
 
         // actor.active (get/set)
+        // `IsActive && !IsDestroyed`, which is what every internal check in the
+        // engine already uses. See WrapActorAsProxy for why.
         Accessor(obj, "active",
-            getter: (_, _) => Bool(_actor.IsActive),
+            getter: (_, _) => Bool(_actor.IsActive && !_actor.IsDestroyed),
             setter: (_, args) => { _actor.IsActive = TypeConverter.ToBoolean(args.At(0)); return JsValue.Undefined; },
             _engine);
 
@@ -1128,8 +1130,23 @@ public sealed class ScriptBridge
             setter: (_, args) => { actor.Tag = args.At(0).ToString(); return JsValue.Undefined; },
             _engine);
 
+        // A DESTROYED actor is not active, whatever its IsActive flag still says.
+        //
+        // `IsActive` is an ordinary field and Destroy() does not clear it, so a
+        // script holding a reference to something that has since been destroyed
+        // read `active === true` forever. Every internal check in the engine is
+        // `!IsActive || _destroyed`; the script API exposed only half of that,
+        // and `active` is the ONLY liveness signal a script has -- there is no
+        // `isDestroyed` in the contract.
+        //
+        // What that costs is not a crash. A script caches a reference, guards it
+        // with `if (!thing || thing.active !== true) refresh()`, and the guard
+        // never fires: it keeps talking to a corpse. In UltraDark-sb every boss
+        // after the first took no damage from the player's gun, because the
+        // projectile pool's cached boss script belonged to the boss before it.
+        // It read exactly like a balance problem.
         Accessor(obj, "active",
-            getter: (_, _) => Bool(actor.IsActive),
+            getter: (_, _) => Bool(actor.IsActive && !actor.IsDestroyed),
             setter: (_, args) => { actor.IsActive = TypeConverter.ToBoolean(args.At(0)); return JsValue.Undefined; },
             _engine);
 

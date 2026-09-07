@@ -46,7 +46,8 @@ export function createScriptGlobals(actor, services = {}) {
         set name(value) { actor.name = String(value); },
         get tag() { return actor.tag; },
         set tag(value) { actor.tag = String(value); },
-        get active() { return actor.isActive; },
+        // `isActive && !isDestroyed` — see wrapActor for why the flag alone lies.
+        get active() { return actor.isActive && !actor.isDestroyed; },
         set active(value) { actor.isActive = Boolean(value); },
         get transform() { return transformProxy; },
         get transform3d() { return transform3DProxy(); },
@@ -460,7 +461,22 @@ export function wrapActor(target) {
         set name(value) { target.name = String(value); },
         get tag() { return target.tag; },
         set tag(value) { target.tag = String(value); },
-        get active() { return target.isActive; },
+        // A DESTROYED actor is not active, whatever its isActive flag says.
+        //
+        // `isActive` is a plain field and destroy() does not clear it, so a
+        // script holding a reference to something since destroyed read
+        // `active === true` forever. Every internal check in the engine is
+        // `!isActive || _destroyed`; the script API exposed only half of it, and
+        // `active` is the ONLY liveness signal a script has — the contract has
+        // no `isDestroyed`.
+        //
+        // What that costs is not a crash. A script caches a reference, guards it
+        // with `if (!thing || thing.active !== true) refresh()`, and the guard
+        // never fires: it goes on talking to a corpse. In UltraDark-sb every
+        // boss after the first took no damage from the player's gun, because the
+        // projectile pool's cached boss script belonged to the previous boss. It
+        // read exactly like a balance problem.
+        get active() { return target.isActive && !target.isDestroyed; },
         set active(value) { target.isActive = Boolean(value); },
         transform: {
             get x() { return target.transform.position.x; },

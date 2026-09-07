@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Jint.Native;
+using Jint.Runtime;
 using Jint.Native.Object;
 using SexyBiscuit.Engine.Code;
 using SexyBiscuit.Engine.Core;
@@ -161,6 +162,49 @@ public class ActorProxyParityTests
                 Assert.Equal(10f, t3.Position.X, 3);
                 Assert.Equal(-4f, t3.Position.Z, 3);
                 Assert.Equal(3f, t3.LocalScale.Y, 3);
+            }
+            finally { scene.Destroy(); }
+        }
+    }
+
+    [Fact]
+    public void AReferenceHeldAcrossADestroyReportsInactive()
+    {
+        // `active` is the ONLY liveness signal a script has — there is no
+        // `isDestroyed` in the contract — so it has to mean what the engine
+        // means internally, which is `IsActive && !IsDestroyed` at every check.
+        //
+        // It did not. `IsActive` is an auto-property that Destroy() never
+        // clears, so a script holding a reference to something long gone read
+        // `active === true` for the rest of the session. The shape that breaks
+        // is the ordinary one: cache a reference, refresh it when it stops being
+        // active, and never refresh because it never stops. In UltraDark-sb that
+        // made every boss after the first immune to the player's gun — the
+        // projectile pool was delivering the damage to the previous boss's
+        // script. It read exactly like a balance problem.
+        var project = new ScriptProject();
+        var scene = new Engine.Core.Scene("Liveness");
+
+        var host = scene.AddActor(new Actor("Host"));
+        var script = host.AddComponent<ScriptComponent>();
+        script.ScriptPath = project.Write("Host.js", "function onStart() {}");
+
+        var subject = scene.AddActor(new Actor("Boss"));
+        scene.FlushPendingActors();
+        scene.Update(0f);
+
+        using (project)
+        {
+            try
+            {
+                var proxy = (ObjectInstance)script.Runtime!.Bridge.WrapActorAsProxy(subject);
+                Assert.True(TypeConverter.ToBoolean(proxy.Get("active")), "a live actor is active");
+
+                subject.Destroy();
+                scene.FlushPendingActors();
+
+                Assert.False(TypeConverter.ToBoolean(proxy.Get("active")),
+                    "a reference held across a destroy must report inactive, not stale truth");
             }
             finally { scene.Destroy(); }
         }
