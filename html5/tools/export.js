@@ -55,7 +55,12 @@ export function exportWeb({ projectDir, out, pwa = false, icon, version, configu
     const settings = JSON.parse(settingsText.replace(/^﻿/, ''));
 
     const appName = config.windowTitle || path.basename(project);
-    version = version ?? settings.version ?? settings.Version ?? '1.0.0';
+
+    // BuildSettings.json first, because that is the file `sbengine` versions a
+    // build from. Reading only ProjectSettings meant the same project exported as
+    // 1.0.1 natively and 1.0.0 on the web — two builds wearing one version, which
+    // is exactly what this file's header promises cannot happen.
+    version = version ?? buildSettingsVersion(project) ?? settings.version ?? settings.Version ?? '1.0.0';
     const slug = slugify(appName);
     const outDir = path.resolve(out ?? path.join(project, 'dist', 'Web'));
 
@@ -207,6 +212,19 @@ export function listFiles(dir) {
 }
 
 /** The HEAD commit of the repository containing dir, read from .git without spawning git. */
+/** The version in BuildSettings.json, which is the one a native build carries. */
+export function buildSettingsVersion(projectDir) {
+    const file = path.join(projectDir, 'BuildSettings.json');
+    if (!fs.existsSync(file)) return null;
+    try {
+        const settings = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\ufeff/, ''));
+        const version = settings.version ?? settings.Version;
+        return typeof version === 'string' && version.length > 0 ? version : null;
+    } catch {
+        return null;   // a malformed file falls back rather than failing the export
+    }
+}
+
 export function readGitSha(dir) {
     let current = path.resolve(dir);
     while (current) {
@@ -222,12 +240,27 @@ export function readGitSha(dir) {
                 const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim();
                 const ref = /^ref:\s*(.+)$/.exec(head);
                 if (!ref) return head;
-                const refFile = path.join(gitDir, ref[1]);
-                if (fs.existsSync(refFile)) return fs.readFileSync(refFile, 'utf8').trim();
-                const packed = path.join(gitDir, 'packed-refs');
-                if (fs.existsSync(packed)) {
-                    const line = fs.readFileSync(packed, 'utf8').split('\n').find((l) => l.endsWith(' ' + ref[1]));
-                    if (line) return line.split(' ')[0];
+                // A worktree's gitdir holds HEAD but no refs: those live in the
+                // common dir it points at. Missing this returned null, the cache
+                // name fell back to "local", and every export from a worktree
+                // produced a service worker whose name never changed — so a
+                // redeploy left every existing player on the build they already
+                // had, which is the worst possible way for this to fail.
+                const commonFile = path.join(gitDir, 'commondir');
+                const dirs = [gitDir];
+                if (fs.existsSync(commonFile)) {
+                    dirs.push(path.resolve(gitDir, fs.readFileSync(commonFile, 'utf8').trim()));
+                }
+
+                for (const dir of dirs) {
+                    const refFile = path.join(dir, ref[1]);
+                    if (fs.existsSync(refFile)) return fs.readFileSync(refFile, 'utf8').trim();
+
+                    const packed = path.join(dir, 'packed-refs');
+                    if (fs.existsSync(packed)) {
+                        const line = fs.readFileSync(packed, 'utf8').split('\n').find((l) => l.endsWith(' ' + ref[1]));
+                        if (line) return line.split(' ')[0];
+                    }
                 }
             } catch {
                 return null;

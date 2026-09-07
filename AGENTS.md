@@ -124,6 +124,10 @@ HTML5 development builds go on the server as a Game Card instead.
 
 Rules for this phase, and the reason for each:
 
+- **A game has real UI now.** `UI.panel/label/bar/button/image` are screen-space and anchored, and
+  `UI.width`/`UI.height` are the viewport the contract went years without. Text works on both
+  engines. Do not build another HUD out of world-space sprites over the player's head; reach for
+  the `hud-kit` cookie, and `screen-effects` for shake, flash, fade and hit-stop.
 - **Do not read the engine source to write a game.** Read `wiki/11-scripting.md` and the
   template's own scripts. The engine is over 50,000 lines of C#; putting it in context is the
   single most expensive thing a session can do.
@@ -639,6 +643,21 @@ img.save('/tmp/shot.png'); print(Counter(img.getdata()).most_common(3))"
 One number tells you most of it: if a single colour is 99% of the screen, nothing is drawing, or
 one thing is drawing over everything. `(100, 149, 237)` is MonoGame's default clear — that is an
 empty window, not a dark game.
+
+### A bare collider is scenery, and scenery must not fall
+
+Every template builds its world out of actors carrying a SpriteRenderer and a collider and nothing
+else — walls, crates, parked cars — and their comments call that "static geometry on both engines".
+
+The browser makes it true by never integrating a collider that has no body. This engine
+auto-created a `Rigidbody2D`, and a fresh one is **Dynamic**, so in a native build all of that
+scenery accelerated off the bottom of the screen. The player and the enemies looked fine, which is
+what made it confusing: their scripts set a velocity every frame, and that overwrites an
+accumulating fall.
+
+`GravityScale = 0` is not the fix — Aether has no per-body gravity and the property is stored for
+game logic only. The auto-created body is now kinematic, which Aether does respect
+(`BareColliderTests`).
 
 ### layerDepth: the engines do not agree yet
 
