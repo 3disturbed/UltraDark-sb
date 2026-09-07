@@ -37,6 +37,31 @@ var bars = [
 //   ];
 var stats = [];
 
+// A bar for something that is not always on screen: a boss, a captured point,
+// a burning building. It appears when the thing does and is gone when it is.
+//
+// Each tracker names a TAG rather than a script, and that is the whole of it --
+// the bar's lifetime IS the actor's lifetime, so nothing on the other side has
+// to remember to show it, hide it, or tell the HUD that the fight is over. A
+// boss that dies in a way nobody anticipated still takes its bar with it.
+//
+//   var trackers = [
+//       { tag: "Boss", source: "getHealth01", name: "getName",
+//         colour: "#ff4d4d", flag: "isInvuln", flagText: "SHIELDED" },
+//   ];
+//
+// `source` is a 0..1 getter, as everywhere else. `name` is the heading: a
+// getter name if the actor knows what it is called, or a plain string if you
+// do. `flag` is a getter returning 1 while the target cannot be hurt -- the
+// difference between "my shots are missing" and "my shots do not count", which
+// a player cannot tell apart from a bar that simply is not moving.
+//
+// `colour` is a fixed hex string; `colourSource` names a getter returning one
+// instead, for a bar that should be the colour of the thing it is measuring --
+// which is how a player knows, without being told, that this is a different
+// boss from the last one, or that the same boss has changed.
+var trackers = [];
+
 // ---------------------------------------------------------------------------
 // Shape
 // ---------------------------------------------------------------------------
@@ -48,6 +73,17 @@ var rowHeight   = 14;
 var labelWidth  = 34;
 var textScale   = 1;
 var titleScale  = 2;
+
+// The tracked bar: wide, top-centre, above everything the player is dodging.
+// A fraction of the viewport rather than a fixed width, because a bar sized for
+// a desktop is most of a phone.
+var trackerWidth   = 0.42;      // of the viewport
+var trackerMax     = 620;       // ...but never wider than this
+var trackerMin     = 220;
+var trackerHeight  = 14;
+var trackerTop     = 16;
+var trackerGap     = 6;
+var trackerScale   = 2;
 
 var panelColour = "#1a1d24";
 var trackColour = "#2a2d34";
@@ -72,6 +108,7 @@ var panel = null;
 var titleLabel = null;
 var rows = [];                 // { label, bar, valueLabel }
 var statRows = [];             // { label, valueLabel, source, script, prefix, suffix, decimals }
+var trackerRows = [];          // { bar, nameLabel, tag, source, name, flag, flagText }
 var messageLabel = null;
 var messageTimer = 0;
 
@@ -153,6 +190,38 @@ function build() {
     messageLabel = UI.label(0, -marginY - 6, "", {
         anchor: "bottom", scale: 2, tint: textColour, visible: false,
     });
+
+    buildTrackers();
+}
+
+// The tracked bars are built once, hidden, and shown when their actor turns up.
+// Building them on demand instead would put an allocation in the frame a boss
+// arrives -- the frame that already spawns the boss, its collider and its
+// script -- and that is the one frame of the fight a player will notice.
+function buildTrackers() {
+    for (var i = 0; i < trackers.length; i++) {
+        var t = trackers[i];
+        var top = trackerTop + i * (trackerHeight + trackerGap + 8 * trackerScale + 4);
+
+        // x: 0 against a "top" anchor centres the element on its own width, so
+        // neither of these needs to know how wide the window is.
+        var bar = UI.bar(0, top, trackerWidth * 640, trackerHeight, 1, {
+            anchor: "top", tint: t.colour || "#ff4d4d", background: trackColour,
+            scale: 1, align: "center", visible: false,
+        });
+
+        var nameLabel = UI.label(0, top + trackerHeight + trackerGap, "", {
+            anchor: "top", scale: trackerScale, tint: textColour,
+            align: "center", visible: false,
+        });
+
+        trackerRows.push({
+            bar: bar, nameLabel: nameLabel, top: top,
+            tag: t.tag, source: t.source || "getHealth01",
+            name: t.name || "", flag: t.flag || "", flagText: t.flagText || "",
+            colour: t.colour || "#ff4d4d", colourSource: t.colourSource || "",
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +238,8 @@ function onUpdate(dt) {
         overlay.width = UI.width;
         overlay.height = UI.height;
     }
+
+    updateTrackers();
 
     for (var si = 0; si < statRows.length; si++) {
         var stat = statRows[si];
@@ -198,6 +269,75 @@ function onUpdate(dt) {
     if (messageTimer > 0) {
         messageTimer -= dt;
         if (messageTimer <= 0) { messageLabel.visible = false; }
+    }
+}
+
+/**
+ * One pass over the tracked bars: find the actor, read it, show or hide.
+ *
+ * The actor is looked up by tag EVERY frame and never cached. A boss is
+ * destroyed by whatever kills it, and a cached proxy to a destroyed actor is a
+ * bar that keeps reporting the health of something that is not there -- the
+ * failure mode being a full red bar over an empty arena. A tag lookup is a scan
+ * of the scene, so this is for a handful of things, not a hundred.
+ */
+function updateTrackers() {
+    if (trackerRows.length === 0) { return; }
+
+    // Sized from the viewport each frame for the same reason the overlay is:
+    // the window can change under it.
+    var barW = Math.round(UI.width * trackerWidth);
+    if (barW > trackerMax) { barW = trackerMax; }
+    if (barW < trackerMin) { barW = trackerMin; }
+    if (barW > UI.width - 16) { barW = UI.width - 16; }
+
+    for (var i = 0; i < trackerRows.length; i++) {
+        var row = trackerRows[i];
+        var host = row.tag ? Scene.findFirstByTag(row.tag) : null;
+        var script = host ? host.getComponent("ScriptComponent") : null;
+
+        if (!script) {
+            row.bar.visible = false;
+            row.nameLabel.visible = false;
+            continue;
+        }
+
+        var value = Number(script.call(row.source));
+        if (!(value >= 0)) { value = 0; }       // NaN too: a getter that is not there
+        if (value > 1) { value = 1; }
+
+        row.bar.width = barW;
+        row.bar.value = value;
+        row.bar.visible = true;
+
+        // The heading: a getter name if the actor knows what it is called, the
+        // string itself if it does not.
+        var heading = row.name;
+        if (heading !== "") {
+            var named = script.call(row.name);
+            if (named !== undefined && named !== null && named !== "") { heading = String(named); }
+        }
+        // Invulnerable is a state, not a smaller number. Said twice on purpose:
+        // the fill goes grey, which is the half a player reads without looking,
+        // and the heading says the word, which is the half that explains it.
+        // Without either, a shielded boss reads as a bug in your gun.
+        //
+        // The word goes on the HEADING and not on the bar because a bar draws
+        // its text in the same colour as its fill, so text on a bar is legible
+        // over the empty part and invisible over the full part -- which is to
+        // say invisible exactly while the boss is shielded and healthy.
+        var shielded = row.flag !== "" && Number(script.call(row.flag)) > 0;
+        if (shielded && row.flagText !== "") { heading = heading === "" ? row.flagText : heading + "  " + row.flagText; }
+
+        row.nameLabel.text = heading;
+        row.nameLabel.visible = heading !== "";
+        row.nameLabel.tint = shielded ? dimColour : textColour;
+        var colour = row.colour;
+        if (row.colourSource !== "") {
+            var live = script.call(row.colourSource);
+            if (live !== undefined && live !== null && live !== "") { colour = String(live); }
+        }
+        row.bar.tint = shielded ? dimColour : colour;
     }
 }
 
