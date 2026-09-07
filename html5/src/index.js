@@ -47,6 +47,12 @@ export {
     generateRoomCode, isRoomCode, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH,
 } from './net/index.js';
 
+// ---- Darks Games account and social ----
+export {
+    DarksGames, DarksGamesUser,
+    loadDarksGamesSdks, loadScript, resetSdkCache, DG_ORIGIN,
+} from './dg/index.js';
+
 // ---- Scene ------------------------------------------------------------------
 export {
     SceneSerializer, serialize, deserialize, buildActor, buildActorDto,

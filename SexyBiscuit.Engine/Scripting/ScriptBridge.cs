@@ -9,6 +9,7 @@ using Jint.Runtime.Interop;
 using Microsoft.Xna.Framework;
 using SexyBiscuit.Engine.Audio;
 using SexyBiscuit.Engine.Core;
+using SexyBiscuit.Engine.DarksGames;
 using SexyBiscuit.Engine.Input;
 using SexyBiscuit.Engine.Networking;
 using SexyBiscuit.Engine.Physics;
@@ -72,6 +73,7 @@ public sealed class ScriptBridge
     public ObjectInstance PhysicsProxy   { get; }
     public ObjectInstance TimeProxy      { get; }
     public ObjectInstance NetworkProxy   { get; }
+    public ObjectInstance DarksGamesProxy { get; }
     public ObjectInstance UiProxy        { get; }
 
     /// <summary>The engine every proxy allocates on. Used by <see cref="ComponentProxy"/>.</summary>
@@ -100,6 +102,7 @@ public sealed class ScriptBridge
         PhysicsProxy   = BuildPhysicsProxy();
         TimeProxy      = BuildTimeProxy();
         NetworkProxy   = BuildNetworkProxy();
+        DarksGamesProxy = BuildDarksGamesProxy();
         UiProxy        = BuildUiProxy();
 
         // The `actor` global is a proxy too: Scene.destroy(actor) must find its way back.
@@ -1300,6 +1303,125 @@ public sealed class ScriptBridge
         }
         catch (Exception) { return JsValue.Null; }
     }
+
+    // =========================================================================
+    // DG proxy — the Darks Games account and social layer
+    // =========================================================================
+
+    /// <summary>Handlers this script registered with the DG runtime.</summary>
+    private readonly List<Action> _dgUnsubscribes = new();
+
+    /// <summary>Drops this script's DG handlers. Called when the component goes away.</summary>
+    internal void DisposeDarksGames()
+    {
+        foreach (var unsubscribe in _dgUnsubscribes) unsubscribe();
+        _dgUnsubscribes.Clear();
+    }
+
+    private static DarksGamesRuntime? Dg => DarksGamesRuntime.Instance;
+
+    private ObjectInstance BuildDarksGamesProxy()
+    {
+        var obj = NewObj();
+
+        // Every read is safe signed out, and safe with no runtime at all. A game that never
+        // ships to DarksGames still runs every line of a script that uses this.
+        Accessor(obj, "available", getter: (_, _) => Bool(Dg != null),          setter: null, _engine);
+        Accessor(obj, "signedIn",  getter: (_, _) => Bool(Dg?.SignedIn ?? false), setter: null, _engine);
+        Accessor(obj, "userId",    getter: (_, _) => Str(Dg?.User.Id),          setter: null, _engine);
+        Accessor(obj, "userName",  getter: (_, _) => Str(Dg?.User.Name),        setter: null, _engine);
+        Accessor(obj, "handle",    getter: (_, _) => Str(Dg?.User.Handle),      setter: null, _engine);
+        Accessor(obj, "displayName", getter: (_, _) => new JsString(Dg?.User.DisplayName ?? "Player"), setter: null, _engine);
+        Accessor(obj, "game",      getter: (_, _) => new JsString(Dg?.Game ?? string.Empty), setter: null, _engine);
+
+        // DG.presence({ state: "wave 7", detail: "…", joinCode: "ABC234", players: 3, max: 4 })
+        obj.Set("presence", Fn("presence", (_, args) =>
+        {
+            if (Dg == null) return JsValue.Undefined;
+            if (args.At(0) is not ObjectInstance fields)
+            {
+                Warn("DG.presence: pass an object, e.g. { state: 'lobby', joinCode: room }.");
+                return JsValue.Undefined;
+            }
+
+            Dg.Presence(
+                Text(fields.Get("state"), "playing"),
+                Text(fields.Get("detail"), string.Empty),
+                fields.Get("joinCode") is { } code && !code.IsUndefined() && !code.IsNull() ? code.ToString() : null,
+                fields.Get("joinable") is { } joinable && !joinable.IsUndefined()
+                    ? TypeConverter.ToBoolean(joinable) : true,
+                Count(fields.Get("players")),
+                Count(fields.Get("max")));
+            return JsValue.Undefined;
+        }, length: 1));
+
+        obj.Set("clearPresence", Fn("clearPresence", (_, _) => { Dg?.ClearPresence(); return JsValue.Undefined; }));
+
+        // DG.achievement("first_clear") / DG.achievement("kills", 10)
+        obj.Set("achievement", Fn("achievement", (_, args) =>
+        {
+            Dg?.Achievement(args.At(0).ToString(), Count(args.At(1)));
+            return JsValue.Undefined;
+        }, length: 2));
+
+        // DG.loadSave() -- the save arrives on the "save" event, because a game loop cannot wait.
+        obj.Set("loadSave", Fn("loadSave", (_, _) => { Dg?.LoadSave(); return JsValue.Undefined; }));
+
+        obj.Set("saveCloud", Fn("saveCloud", (_, args) =>
+        {
+            Dg?.WriteSave(ToJsonNode(args.At(0)), (int)Num(args.At(1), 1f));
+            return JsValue.Undefined;
+        }, length: 2));
+
+        obj.Set("on", Fn("on", (_, args) =>
+        {
+            string eventName = args.At(0).ToString();
+            if (Dg == null) return JsValue.Undefined;
+            if (args.At(1) is not Jint.Native.Function.Function handler)
+            {
+                Warn($"DG.on('{eventName}'): the second argument must be a function.");
+                return JsValue.Undefined;
+            }
+
+            var runtime = Dg;
+            Action? unsubscribe = eventName switch
+            {
+                "user" => Subscribe<DarksGamesUser>(
+                    h => runtime.UserChanged += h, h => runtime.UserChanged -= h,
+                    user => Call(handler, Bool(user.SignedIn), Str(user.Id), new JsString(user.DisplayName))),
+                "save" => Subscribe<DarksGamesSave?>(
+                    h => runtime.SaveLoaded += h, h => runtime.SaveLoaded -= h,
+                    save => Call(handler, save == null ? JsValue.Null : FromJsonNode(save.Data))),
+                "saveConflict" => Subscribe<DarksGamesSave>(
+                    h => runtime.SaveConflict += h, h => runtime.SaveConflict -= h,
+                    save => Call(handler, FromJsonNode(save.Data))),
+                "achievement" => Subscribe<string, bool>(
+                    h => runtime.AchievementReported += h, h => runtime.AchievementReported -= h,
+                    (key, ok) => Call(handler, new JsString(key), Bool(ok))),
+                _ => null,
+            };
+
+            if (unsubscribe == null)
+            {
+                Warn($"DG.on: unknown event '{eventName}'. Try user, save, saveConflict or achievement.");
+                return JsValue.Undefined;
+            }
+
+            _dgUnsubscribes.Add(unsubscribe);
+            return Fn("off", (_, _) => { unsubscribe(); _dgUnsubscribes.Remove(unsubscribe); return JsValue.Undefined; });
+        }, length: 2));
+
+        return obj;
+    }
+
+    private static JsValue Str(string? value) => value == null ? JsValue.Null : new JsString(value);
+
+    private static string Text(JsValue value, string fallback)
+        => value.IsUndefined() || value.IsNull() ? fallback : value.ToString();
+
+    /// <summary>A seat count from a script, or null when it did not give one.</summary>
+    private static int? Count(JsValue value)
+        => value.IsUndefined() || value.IsNull() ? null : (int)TypeConverter.ToNumber(value);
 
     // =========================================================================
     // Components

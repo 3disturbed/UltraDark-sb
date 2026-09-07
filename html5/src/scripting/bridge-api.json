@@ -481,6 +481,60 @@
         "kind": "fn",
         "shared": true
       }
+    },
+    "DG": {
+      "available": {
+        "kind": "prop",
+        "shared": true
+      },
+      "signedIn": {
+        "kind": "prop",
+        "shared": true
+      },
+      "userId": {
+        "kind": "prop",
+        "shared": true
+      },
+      "userName": {
+        "kind": "prop",
+        "shared": true
+      },
+      "handle": {
+        "kind": "prop",
+        "shared": true
+      },
+      "displayName": {
+        "kind": "prop",
+        "shared": true
+      },
+      "game": {
+        "kind": "prop",
+        "shared": true
+      },
+      "presence": {
+        "kind": "fn",
+        "shared": true
+      },
+      "clearPresence": {
+        "kind": "fn",
+        "shared": true
+      },
+      "achievement": {
+        "kind": "fn",
+        "shared": true
+      },
+      "loadSave": {
+        "kind": "fn",
+        "shared": true
+      },
+      "saveCloud": {
+        "kind": "fn",
+        "shared": true
+      },
+      "on": {
+        "kind": "fn",
+        "shared": true
+      }
     }
   },
   "bare": {

@@ -17,6 +17,7 @@ import { coerce } from '../core/PropertyTypes.js';
 import { applyProperties } from '../scene/SceneSerializer.js';
 import { widestLine } from '../ui/UiCanvas.js';
 import { NetworkManager as NetworkManagerClass } from '../net/NetworkManager.js';
+import { DarksGames as DarksGamesClass } from '../dg/DarksGames.js';
 
 /** The events `Network.on` accepts. The Jint bridge accepts exactly these. */
 const NETWORK_EVENTS = ['message', 'playerJoined', 'playerLeft', 'connected', 'disconnected'];
@@ -26,6 +27,9 @@ const NETWORK_EVENTS = ['message', 'playerJoined', 'playerLeft', 'connected', 'd
  * UI elements. Keyed by a symbol so it is not a global a script can see.
  */
 export const DISPOSE = Symbol('sb.script.dispose');
+
+/** The events `DG.on` accepts. The Jint bridge accepts exactly these. */
+const DG_EVENTS = ['user', 'save', 'saveConflict', 'achievement'];
 
 /** Proxies handed to scripts, mapped back to the actor each stands for. */
 const proxyToActor = new WeakMap();
@@ -386,6 +390,79 @@ export function createScriptGlobals(actor, services = {}) {
         },
     };
 
+    // ---- DG — the Darks Games account and social layer ------------------------
+    //
+    // Member for member the same proxy the Jint bridge installs. Every read is
+    // safe signed out and safe with no runtime at all, so a game that never ships
+    // to DarksGames still runs every line of a script that uses this.
+
+    const dg = () => DarksGamesClass.instance;
+
+    /** Handlers this script registered with the DG runtime. */
+    const dgUnsubscribes = [];
+
+    const dgProxy = {
+        get available() { return dg() != null; },
+        get signedIn() { return dg()?.signedIn ?? false; },
+        get userId() { return dg()?.user?.id ?? null; },
+        get userName() { return dg()?.user?.name ?? null; },
+        get handle() { return dg()?.user?.handle ?? null; },
+        get displayName() { return dg()?.user?.displayName ?? 'Player'; },
+        get game() { return dg()?.game ?? ''; },
+
+        presence(fields) {
+            const runtime = dg();
+            if (!runtime) return;
+            if (typeof fields !== 'object' || fields === null) {
+                log('warn', "DG.presence: pass an object, e.g. { state: 'lobby', joinCode: room }.");
+                return;
+            }
+            runtime.presence(fields);
+        },
+
+        clearPresence() { dg()?.clearPresence(); },
+
+        achievement(key, increment) {
+            dg()?.reportAchievement(String(key), increment == null ? undefined : Number(increment));
+        },
+
+        // The save arrives on the "save" event, not as a return value: the Jint bridge
+        // cannot await, and one contract has to describe both engines.
+        loadSave() { dg()?.requestSave(); },
+
+        saveCloud(data, version = 1) {
+            dg()?.writeSave(data ?? null, { version: Number(version) || 1 });
+        },
+
+        on(event, handler) {
+            const name = String(event);
+            const runtime = dg();
+            if (!runtime) return () => {};
+            if (typeof handler !== 'function') {
+                log('warn', `DG.on('${name}'): the second argument must be a function.`);
+                return () => {};
+            }
+            if (!DG_EVENTS.includes(name)) {
+                log('warn', `DG.on: unknown event '${name}'. Try ${DG_EVENTS.join(', ')}.`);
+                return () => {};
+            }
+
+            // `user` reports the same three arguments the Jint bridge reports, rather than
+            // the user object: a script written against one engine has to read on the other.
+            const wrapped = name === 'user'
+                ? (user) => handler(Boolean(user?.signedIn), user?.id ?? null, user?.displayName ?? 'Player')
+                : handler;
+
+            const unsubscribe = runtime.on(name, wrapped);
+            dgUnsubscribes.push(unsubscribe);
+            return () => {
+                unsubscribe();
+                const i = dgUnsubscribes.indexOf(unsubscribe);
+                if (i >= 0) dgUnsubscribes.splice(i, 1);
+            };
+        },
+    };
+
     // ---- UI — screen space, which the world-space globals above cannot reach ---
     //
     // Every element the script makes is owned by the host's canvas, and every
@@ -472,6 +549,7 @@ export function createScriptGlobals(actor, services = {}) {
         Physics: physicsProxy,
         Time: timeProxy,
         Network: networkProxy,
+        DG: dgProxy,
 
         // Bare logging functions. The templates call `log(...)` with no namespace.
         log: debugProxy.log,
@@ -486,6 +564,8 @@ export function createScriptGlobals(actor, services = {}) {
         value: () => {
             for (const unsubscribe of networkUnsubscribes) unsubscribe();
             networkUnsubscribes.length = 0;
+            for (const unsubscribe of dgUnsubscribes) unsubscribe();
+            dgUnsubscribes.length = 0;
             uiProxy.clear();
         },
     });

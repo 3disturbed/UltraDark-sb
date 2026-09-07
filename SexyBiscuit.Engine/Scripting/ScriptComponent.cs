@@ -123,6 +123,7 @@ public sealed class ScriptComponent : Component
         // Network.on callback keeps firing into a dead Jint object every time a message
         // arrives, which is a leak that only shows up as a growing stall.
         Runtime?.Bridge.DisposeNetwork();
+        Runtime?.Bridge.DisposeDarksGames();
     }
 
     public override void OnCollisionEnter(CollisionData data) => DispatchCollision("onCollisionEnter", data);
