@@ -62,8 +62,29 @@ public sealed class NetworkManager : IDisposable
     public bool IsClient  { get; private set; }
     public bool IsRunning { get; private set; }
 
-    /// <summary>True when this process is both ends of the session — a listen server or solo play.</summary>
-    public bool IsHost => IsServer && IsClient;
+    /// <summary>
+    /// True when this peer is the session's authority — the one that should run the
+    /// simulation, spawn enemies and decide outcomes.
+    /// </summary>
+    /// <remarks>
+    /// A listen server and a solo session are the authority because they are the server. In a
+    /// relayed room nobody is: every player reaches the room server down a socket of their
+    /// own, and the relay owns identity but simulates nothing. So the room's authority is the
+    /// lowest client id present — a rule every peer can evaluate for itself, with no extra
+    /// message, and which hands the role to somebody else the moment the current host leaves.
+    /// </remarks>
+    public bool IsHost
+    {
+        get
+        {
+            if (IsServer) return true;
+            if (!IsRunning || LocalClientId < 0) return false;
+
+            foreach (int id in _players.Keys)
+                if (id < LocalClientId) return false;
+            return true;
+        }
+    }
 
     /// <summary>True once the server has accepted us, or immediately when we are the server.</summary>
     public bool IsConnected => IsRunning && (IsServer || LocalClientId >= 0);

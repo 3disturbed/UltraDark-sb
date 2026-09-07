@@ -93,8 +93,24 @@ export class NetworkManager {
         this.objects = new Map();
     }
 
-    /** True when this process is both ends of the session. */
-    get isHost() { return this.isServer && this.isClient; }
+    /**
+     * True when this peer is the session's authority — the one that should run the
+     * simulation, spawn enemies and decide outcomes.
+     *
+     * A solo session is the authority because it is the server. In a relayed room
+     * nobody is: every player reaches the room server down a socket of their own, and
+     * the relay owns identity but simulates nothing. So the room's authority is the
+     * lowest client id present — a rule every peer can evaluate for itself, with no
+     * extra message, and which hands the role to somebody else the moment the current
+     * host leaves.
+     */
+    get isHost() {
+        if (this.isServer) return true;
+        if (!this.isRunning || this.localClientId < 0) return false;
+
+        for (const id of this.players.keys()) if (id < this.localClientId) return false;
+        return true;
+    }
 
     /** True once the server has accepted us, or immediately when we are the server. */
     get isConnected() { return this.isRunning && (this.isServer || this.localClientId >= 0); }
