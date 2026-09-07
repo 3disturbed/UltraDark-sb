@@ -322,7 +322,7 @@ public class WebExportTests : IDisposable
         static List<string> Placeholders(string path)
             => Regex.Matches(File.ReadAllText(path), @"\{\{(\w+)\}\}").Select(m => m.Groups[1].Value).Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
 
-        Assert.Equal(new[] { "pwaBoot", "pwaHead", "scene", "stats", "themeColor", "title" }, Placeholders(Path.Combine(templates, "index.html.tmpl")));
+        Assert.Equal(new[] { "build", "pwaBoot", "pwaHead", "scene", "stats", "themeColor", "title" }, Placeholders(Path.Combine(templates, "index.html.tmpl")));
         Assert.Equal(new[] { "name", "shortName", "themeColor" }, Placeholders(Path.Combine(templates, "manifest.webmanifest.tmpl")));
         Assert.Equal(new[] { "cacheName", "precache" }, Placeholders(Path.Combine(templates, "sw.js.tmpl")));
 

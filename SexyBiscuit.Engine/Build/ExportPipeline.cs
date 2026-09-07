@@ -708,6 +708,14 @@ public class ExportPipeline
         string stats = config.Configuration == BuildConfiguration.Release ? "false" : "true";
         string slug  = Slugify(config.AppName);
 
+        // One string identifying this build, used as the service worker's cache
+        // name AND stamped into the page. A console paste from a player then says
+        // which build they are running, which is otherwise unanswerable: a stale
+        // service worker serves old files whose line numbers look exactly like
+        // today's.
+        string? headSha = GitInfo.TryReadHeadSha(projectRoot);
+        string buildId = $"{slug}-{version}-{(headSha != null ? headSha.Substring(0, 8) : "local")}";
+
         string pwaHead = string.Empty;
         string pwaBoot = string.Empty;
 
@@ -745,6 +753,7 @@ public class ExportPipeline
             ["scene"]      = scene,
             ["stats"]      = stats,
             ["themeColor"] = ThemeColour,
+            ["build"]      = System.Net.WebUtility.HtmlEncode(buildId),
             ["pwaHead"]    = pwaHead,
             ["pwaBoot"]    = pwaBoot,
         }), Utf8NoBom);
@@ -771,7 +780,6 @@ public class ExportPipeline
         // The worker is written last: its precache list is every other file.
         if (config.WebInstallable)
         {
-            string? sha = GitInfo.TryReadHeadSha(projectRoot);
             var precache = ListFiles(platformOutputDir)
                 .Where(f => f != "sw.js" && f != "HOW-TO-RUN.txt")
                 .Select(f => "./" + f)
@@ -779,7 +787,7 @@ public class ExportPipeline
 
             File.WriteAllText(Path.Combine(platformOutputDir, "sw.js"), Fill(Template(templatesDir, "sw.js.tmpl"), new()
             {
-                ["cacheName"] = $"{slug}-{version}-{(sha != null ? sha.Substring(0, 8) : "local")}",
+                ["cacheName"] = buildId,
                 ["precache"]  = JsonSerializer.Serialize(precache, new JsonSerializerOptions { WriteIndented = true }),
             }), Utf8NoBom);
             Log("  Written: sw.js");

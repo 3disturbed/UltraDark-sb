@@ -92,6 +92,13 @@ export function exportWeb({ projectDir, out, pwa = false, icon, version, configu
     const stats = configuration === 'Release' ? 'false' : 'true';
     const gitSha = readGitSha(project);
 
+    // One string that identifies this build, used as the service worker's cache
+    // name AND stamped into the page. A console paste from a player then says
+    // which build they are running, which is otherwise unanswerable: a stale
+    // service worker serves old files whose line numbers look exactly like the
+    // new ones.
+    const buildId = `${slug}-${version}-${gitSha ? gitSha.slice(0, 8) : 'local'}`;
+
     let pwaHead = '';
     let pwaBoot = '';
     if (pwa) {
@@ -116,6 +123,7 @@ export function exportWeb({ projectDir, out, pwa = false, icon, version, configu
         scene: escapeHtml(scene),
         stats,
         themeColor: THEME_COLOUR,
+        build: escapeHtml(buildId),
         pwaHead,
         pwaBoot,
     }));
@@ -138,7 +146,7 @@ export function exportWeb({ projectDir, out, pwa = false, icon, version, configu
     if (pwa) {
         const precache = listFiles(outDir).filter((f) => f !== 'sw.js' && f !== 'HOW-TO-RUN.txt');
         fs.writeFileSync(path.join(outDir, 'sw.js'), fill(template('sw.js.tmpl'), {
-            cacheName: `${slug}-${version}-${gitSha ? gitSha.slice(0, 8) : 'local'}`,
+            cacheName: buildId,
             precache: JSON.stringify(precache.map((f) => `./${f}`), null, 2),
         }));
         log('  Written: sw.js');
