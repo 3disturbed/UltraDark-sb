@@ -661,18 +661,62 @@ accumulating fall.
 game logic only. The auto-created body is now kinematic, which Aether does respect
 (`BareColliderTests`).
 
-### layerDepth: the engines do not agree yet
+### layerDepth sorts on both engines, and higher is nearer
 
-The browser sorts on `layerDepth` and draws **ascending, so the highest depth is in front**. The
-native renderer, measured with `Games/DepthProbe` across three runs whose depths and creation
-order disagree in every combination, **does not sort at all** — the sprite created last is in
-front, whatever the depths say — even though its batch is opened with `SpriteSortMode.BackToFront`.
-Why the sort does not take is not yet understood, and it is written down here rather than guessed
-at.
+Both engines draw **ascending, so the highest depth is in front**. MonoGame's constant names
+mislead here: `BackToFront` draws the *highest* depth first, which lands it at the *back* — the
+exact inverse of the browser — so `RenderSystem2D` opens its batch with **`FrontToBack`**.
 
-Until it is fixed, a project that must look the same on both engines has to **create its actors
-back-to-front as well as depth them back-to-front**. When it is fixed, both engines move together
-and `spriteSortMode.test.js` is where the agreed direction is recorded.
+This section used to say the native renderer did not sort at all. That was true, it was fixed, and
+the note outlived the fix by a day, during which it was telling people to **create their actors
+back-to-front** instead. That is not merely stale, it is unusable advice: a game that sorts by
+*position* — anything top-down where you walk in front of one wall and behind the next — cannot be
+laid out in creation order, because an actor is created once and the relationship changes with
+every step.
+
+Re-measured with `Games/DepthProbe` on a native Linux build, 2026-09-07: a red sprite created
+FIRST at depth 0.90 fills the window over a blue one created after it at 0.10.
+`spriteSortMode.test.js` now reads the sort mode out of `RenderSystem2D.cs` and fails on anything
+but `FrontToBack`. If you ever doubt it again, run the probe — it takes four minutes.
+
+### 2.5D: one rule, and a pivot
+
+A flat top-down game gives each *kind* of thing a fixed depth, and reads as a diagram. The fix is
+one rule: things that lie flat keep a band, things that **stand up** sort by where their feet are.
+
+Height is a `Pivot`, never a position. One sprite sized `[w, h + height]` with a pivot that hangs
+it upward from the footprint's south edge is the whole extrusion; the actor, and therefore its
+collider, never moves. Lift the actor instead and you walk straight through the wall you can see.
+
+`Pivot` is not listed in `bridge-api.json`, and does not need to be: `Scene.addComponent` matches
+property-bag keys case-insensitively against the component's schema on both engines, so **any**
+serialised property is settable from script.
+
+Three failures this shape produces, none of which any gate catches:
+
+- Anything that subdivides or measures a standing object must read its **collider**, not its
+  sprite. The sprite is the extruded face and is taller than the thing is deep, so rubble from a
+  shattered wall scatters up the screen into the air above the hole.
+- A top face is a separate actor with no collider and no script, so nothing on it can notice that
+  its wall has gone. Every hole leaves a roof hanging over it unless caps are tracked.
+- Full-screen overlays parked at a comfortable-looking `0.8` are now in the **middle** of the
+  standing band, so half the map sorts over the top of the dark and stands in full daylight at
+  night.
+
+The `depth-2-5d`, `breakable-walls` and `top-down-driving` cookies carry all of this.
+
+### The renderer culls, and the cost of 2.5D is fill rate
+
+`SpriteRenderer` skips anything that provably cannot touch the viewport; a pass with no camera
+(a tool, a test, an identity transform) culls nothing. The bound is the distance to the furthest
+**corner** and respects the pivot — measuring from the centre culls an extruded wall while the
+visible half of it is still on screen, which reads as flickering geometry rather than as a bug in
+culling.
+
+Do not expect culling to pay for height. On the Jake01 city under Xvfb software rendering it moved
+9,462 actors from 38 fps to 45, against 51-65 for the same map flat. Most of what 2.5D costs is
+**fill rate** — a wall face is three times the pixels it was — and fill rate is what a GPU is for.
+Trimming actor counts barely touches it.
 
 ---
 
