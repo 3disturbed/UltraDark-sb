@@ -1,8 +1,8 @@
 {
   "appName": "UltraDark",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "startScene": "Scenes/Ultradark",
-  "config": "Release",
+  "configuration": "Release",
   "upload": {
     "appSlug": "ultradark-sb",
     "channel": "alpha",
