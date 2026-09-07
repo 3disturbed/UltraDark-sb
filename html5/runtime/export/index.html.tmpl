@@ -6,6 +6,7 @@
      in the stylesheet keep the controls out from under it. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
 <meta name="theme-color" content="{{themeColor}}">
+<meta name="sb-build" content="{{build}}">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -22,6 +23,11 @@
 
 <script type="module">
 import { boot } from './engine/runtime/Runtime.js';
+
+// First line in the console, on purpose. A service worker can serve a build
+// that is months old with line numbers identical to today's, so "which build is
+// this?" has to be answerable from a console paste alone.
+console.log('%cSexyBiscuit build%c {{build}}', 'font-weight:bold', '');
 
 const runtime = await boot();
 

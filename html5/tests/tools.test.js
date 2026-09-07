@@ -160,7 +160,7 @@ test('the page template and the C# exporter share their placeholders', () => {
     const templates = path.join(repoRoot, 'html5', 'runtime', 'export');
     const placeholders = (file) => [...new Set([...fs.readFileSync(path.join(templates, file), 'utf8').matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))].sort();
 
-    assert.deepEqual(placeholders('index.html.tmpl'), ['pwaBoot', 'pwaHead', 'scene', 'stats', 'themeColor', 'title']);
+    assert.deepEqual(placeholders('index.html.tmpl'), ['build', 'pwaBoot', 'pwaHead', 'scene', 'stats', 'themeColor', 'title']);
     assert.deepEqual(placeholders('manifest.webmanifest.tmpl'), ['name', 'shortName', 'themeColor']);
     assert.deepEqual(placeholders('sw.js.tmpl'), ['cacheName', 'precache']);
     assert.throws(() => fill('{{missing}}', {}), /placeholder/);
