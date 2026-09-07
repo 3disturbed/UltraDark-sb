@@ -8,7 +8,20 @@ const CACHE = "{{cacheName}}";
 const PRECACHE = {{precache}};
 
 self.addEventListener("install", (event) => {
-    event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)).then(() => self.skipWaiting()));
+    // `cache: "reload"` on every precache request, so install goes to the
+    // network rather than through the browser's HTTP cache.
+    //
+    // Without it the worker caches whatever the HTTP layer happened to be
+    // holding, and then serves that for as long as this build lasts. A server
+    // that sends a long max-age for the game's scripts -- which is the right
+    // header for bundles with a hash in the filename, and the wrong one for an
+    // export whose paths are stable across builds -- therefore gets PINNED into
+    // the service worker, and no amount of clearing the worker fixes it, because
+    // the staleness is one layer further down.
+    event.waitUntil(
+        caches.open(CACHE)
+            .then((cache) => cache.addAll(PRECACHE.map((url) => new Request(url, { cache: "reload" }))))
+            .then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -54,7 +67,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
         caches.match(request, { ignoreSearch: true }).then((cached) => {
             if (cached) return cached;
-            return fetch(request).then((response) => {
+            return fetch(new Request(request, { cache: "reload" })).then((response) => {
                 if (response.ok) {
                     const copy = response.clone();
                     caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
