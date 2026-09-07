@@ -1,0 +1,93 @@
+// social — the server-to-server client for {{slug}}.
+//
+// This is the trusted path. An unlock sent from here is a fact: the server
+// watched it happen. One reported by a client is a claim, so anything that gates
+// a ranking or an entitlement comes through here.
+//
+// Never throws, three-second timeout, and a silent no-op when DG_APP_SECRET is
+// unset — a development box and a staging copy without the secret both have to
+// run. Mint one with, as darks, in /srv/darksgames/games/dg-accounts:
+//     node scripts/seed-apps.js --rotate {{slug}}
+
+const HUB = process.env.DG_HUB_URL || 'https://darksgames.app/api/v1/social/s2s';
+const APP = process.env.DG_APP_SLUG || '{{slug}}';
+const SECRET = process.env.DG_APP_SECRET || '';
+const TIMEOUT_MS = 3000;
+
+const enc = encodeURIComponent;
+
+async function call(method, path, body) {
+    if (!SECRET) return null;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+        const res = await fetch(HUB + path, {
+            method,
+            signal: controller.signal,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-DG-App': APP,
+                'X-DG-App-Secret': SECRET,
+            },
+            body: body === undefined ? undefined : JSON.stringify(body),
+        });
+
+        if (res.status === 204) return true;
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+            console.warn(`[social] ${method} ${path} -> ${res.status} ${json?.error ?? ''}`);
+            return null;
+        }
+        return json;
+    } catch (err) {
+        console.warn(`[social] ${method} ${path} failed: ${err.message}`);
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function claim(jwt, key) {
+    try {
+        return JSON.parse(Buffer.from(String(jwt).split('.')[1], 'base64url').toString('utf8'))[key] ?? null;
+    } catch { return null; }
+}
+
+export const social = {
+    enabled: Boolean(SECRET),
+
+    /** Boot: upsert the definitions. Re-PUT on every start; it upserts. */
+    registerAchievements: (achievements) => call('PUT', '/achievements', { achievements }),
+
+    /** Unlock outright. Idempotent; only the first unlock fans out to friends. */
+    unlock: (userId, key) => call('POST', `/users/${enc(userId)}/achievements/${enc(key)}`, { unlock: true }),
+
+    /** Counting: { increment: n } or { progress: absolute }. Unlocks at the target. */
+    progress: (userId, key, opts) =>
+        call('POST', `/users/${enc(userId)}/achievements/${enc(key)}`, opts ?? { increment: 1 }),
+
+    /** Server-authoritative presence. Expires after 120 s: re-send every <= 60 while in a room. */
+    presence: (userId, body) => call('POST', `/users/${enc(userId)}/presence`, body),
+    presenceClear: (userId) => call('DELETE', `/users/${enc(userId)}/presence`),
+
+    /** A line in the activity feed: { title, detail?, icon? }. At most 60 a day per player. */
+    milestone: (userId, body) => call('POST', `/users/${enc(userId)}/activity`, body),
+
+    /** A player's friend ids — enough for "friends on this server". */
+    friendIds: async (userId) => (await call('GET', `/users/${enc(userId)}/friends`))?.friends ?? [],
+
+    /** The party a launch token belongs to, so members can be seated together. */
+    partyInfo: async (launchToken) => {
+        const party = claim(launchToken, 'pty');
+        if (!party) return null;
+        return (await call('GET', `/parties/${enc(party)}?launchToken=${enc(launchToken)}`))?.party ?? null;
+    },
+
+    /** The host's server announcing the room it made, rather than the host's client. */
+    partyRoom: async (launchToken, room) => {
+        const party = claim(launchToken, 'pty');
+        if (!party) return null;
+        return call('POST', `/parties/${enc(party)}/room`, { launchToken, ...room });
+    },
+};

@@ -18,6 +18,10 @@ export class HierarchyPanel {
         this._openMenu = null;
         this._dismissMenu = null;
 
+        // The actor a drag started on. Chrome will not let dragover read the payload, so
+        // the drop target has nothing else to check "would this make a cycle?" against.
+        this._dragCandidate = null;
+
         state.hierarchyChanged.add(() => this.render());
         state.selectionChanged.add(() => this._highlight());
     }
@@ -49,10 +53,27 @@ export class HierarchyPanel {
             if (this._filter && actors.length === 0) continue;
 
             this.root.append(this._layerRow(layer, actors));
-            for (const actor of actors) this.root.append(this._actorRow(actor, layer));
+
+            // While filtering, matches are listed flat: a match whose parent does not
+            // match would otherwise be hidden inside a branch that was filtered away.
+            if (this._filter) {
+                for (const actor of actors) this.root.append(this._actorRow(actor, layer, 0));
+                continue;
+            }
+
+            for (const actor of actors) {
+                if (actor.parent) continue;   // drawn under its parent instead
+                this._appendSubtree(actor, layer, 0);
+            }
         }
 
         this._highlight();
+    }
+
+    /** Appends an actor and, indented beneath it, everything attached to it. */
+    _appendSubtree(actor, layer, depth) {
+        this.root.append(this._actorRow(actor, layer, depth));
+        for (const child of actor.children) this._appendSubtree(child, layer, depth + 1);
     }
 
     _layerRow(layer, actors) {
@@ -74,16 +95,44 @@ export class HierarchyPanel {
             el('span.sb-layer-count', { text: String(actors.length) }));
     }
 
-    _actorRow(actor, layer) {
+    _actorRow(actor, layer, depth = 0) {
         // A button, not a div: the row is a click target, and a div is not
         // reachable by keyboard or announced as actionable.
         const row = el('button.sb-actor-row', {
             type: 'button',
+            draggable: true,
             dataset: { actorId: String(actor.id) },
-            title: `${actor.name}  (${actor.tag})`,
+            title: `${actor.hierarchyPath}  (${actor.tag})`,
+            style: depth > 0 ? { paddingLeft: `${8 + depth * 14}px` } : null,
             onclick: () => this.state.selectActor(actor),
             ondblclick: () => this.editor.focusOnActor(actor),
+
+            // Drag an actor onto another to attach it. The id rides in the drag data
+            // rather than in a field on `this`, so a drag that starts in this panel and
+            // ends somewhere else cannot leave a stale actor behind.
+            ondragstart: (e) => {
+                e.dataTransfer.setData('application/x-sb-actor', String(actor.id));
+                e.dataTransfer.effectAllowed = 'move';
+                this._dragCandidate = actor;
+            },
+            ondragend: () => { this._dragCandidate = null; },
+            ondragover: (e) => {
+                const dragged = this._draggedFrom(e);
+                if (!dragged || dragged === actor || actor.isDescendantOf(dragged)) return;
+                e.preventDefault();                       // "yes, you may drop here"
+                e.dataTransfer.dropEffect = 'move';
+                row.classList.add('is-drop-target');
+            },
+            ondragleave: () => row.classList.remove('is-drop-target'),
+            ondrop: (e) => {
+                row.classList.remove('is-drop-target');
+                const dragged = this._draggedFrom(e);
+                if (!dragged || dragged === actor) return;
+                e.preventDefault();
+                this.editor.attachActor(dragged, actor);
+            },
         },
+            depth > 0 ? el('span.sb-actor-branch', { text: '└' }) : null,
             el('span.sb-actor-icon', { text: iconFor(actor) }),
             el('span.sb-actor-name', { text: truncate(actor.name, 28) }),
             actor.tag !== 'Untagged' ? el('span.sb-actor-tag', { text: actor.tag }) : null,
@@ -94,8 +143,30 @@ export class HierarchyPanel {
                 onclick: (e) => { e.stopPropagation(); this._menu(actor, layer, e); },
             }));
 
-        if (!actor.isActive) row.classList.add('is-inactive');
+        // Greyed out when an ancestor is off too: a child of a disabled parent is not
+        // running either, and the outliner should not claim otherwise.
+        if (!actor.isActiveInHierarchy) row.classList.add('is-inactive');
         return row;
+    }
+
+    /** The actor a drag event is carrying, or null when it is carrying something else. */
+    _draggedFrom(event) {
+        const raw = event.dataTransfer?.getData('application/x-sb-actor');
+        if (!raw) {
+            // Chrome hides the data during dragover for security; the types list is all
+            // that is readable there, so fall back to the actor recorded at dragstart.
+            return event.dataTransfer?.types?.includes('application/x-sb-actor')
+                ? this._dragCandidate ?? null
+                : null;
+        }
+        return this._byId(Number(raw));
+    }
+
+    _byId(id) {
+        for (const layer of this.editor.scene?.layers ?? []) {
+            for (const actor of layer.actors) if (actor.id === id) return actor;
+        }
+        return null;
     }
 
     _menu(actor, layer, event) {
@@ -112,6 +183,12 @@ export class HierarchyPanel {
                 this.state.markDirty();
                 this.render();
             }),
+            actor.parent
+                ? this._menuItem(`Detach from ${actor.parent.name}`, () => this.editor.detachActor(actor))
+                : null,
+            actor.children.length > 0
+                ? this._menuItem('Detach children', () => this.editor.detachActor(actor, true))
+                : null,
             el('hr'),
             ...this.editor.scene.layers
                 .filter((l) => l !== layer)

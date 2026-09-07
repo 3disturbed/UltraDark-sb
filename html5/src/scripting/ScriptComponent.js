@@ -17,7 +17,8 @@
 import { Component } from '../core/Component.js';
 import { registerComponent } from '../core/TypeRegistry.js';
 import { PropertyType as P } from '../core/PropertyTypes.js';
-import { createScriptGlobals, wrapActor, wrapCollisionData, SCRIPT_HOOKS } from './ScriptBridge.js';
+import { createScriptGlobals, wrapActor, wrapCollisionData, SCRIPT_HOOKS, DISPOSE } from './ScriptBridge.js';
+import { NetworkManager } from '../net/NetworkManager.js';
 
 /** Attaches a JavaScript file to an actor. */
 export class ScriptComponent extends Component {
@@ -35,6 +36,10 @@ export class ScriptComponent extends Component {
         this._started = false;
         this._loading = null;
         this._initialised = false;
+
+        /** Unsubscribes this script from the network message channel, when it wanted one. */
+        this._networkOff = null;
+        this._globals = null;
 
         /** The last load error, surfaced by the editor's inspector. */
         this.error = null;
@@ -71,10 +76,36 @@ export class ScriptComponent extends Component {
 
         // A script still loading gets its `onStart` once the load resolves.
         if (this._loading) return;
+        this._subscribeToNetwork();
         this._call('onStart');
     }
 
-    update(dt) { this._call('onUpdate', dt); }
+    update(dt) {
+        // A session may start after this component did — a lobby script calls
+        // Network.startServer from onUpdate — so the subscription is retried until it
+        // takes. It costs one boolean per frame on a script that has no such hook.
+        if (!this._networkOff) this._subscribeToNetwork();
+        this._call('onUpdate', dt);
+    }
+
+    /**
+     * Subscribes to the message channel, but only for a script that declares the hook.
+     *
+     * Subscribing unconditionally would put every scripted actor in the scene on a
+     * handler that does nothing, and a message-heavy game has hundreds.
+     */
+    _subscribeToNetwork() {
+        if (this._networkOff) return;
+        if (!this._hooks?.onNetworkMessage && !this._delegate?.onNetworkMessage) return;
+
+        const manager = NetworkManager.instance;
+        if (!manager) return;
+
+        this._networkOff = manager.on('message', (sender, type, payload) => {
+            this._call('onNetworkMessage', type, payload, sender);
+        });
+    }
+
     fixedUpdate(dt) { this._call('onFixedUpdate', dt); }
     lateUpdate(dt) { this._call('onLateUpdate', dt); }
 
@@ -93,6 +124,15 @@ export class ScriptComponent extends Component {
             this._delegate.onDestroy?.();
             this._delegate = null;
         }
+
+        // The script's own network handlers and UI go with it. Without this a destroyed
+        // actor's Network.on callback keeps firing every time a message arrives, which is
+        // a leak that only shows up as a growing stall.
+        this._networkOff?.();
+        this._networkOff = null;
+        this._globals?.[DISPOSE]?.();
+        this._globals = null;
+
         this._hooks = {};
         this._functions = {};
     }
@@ -176,6 +216,7 @@ export class ScriptComponent extends Component {
 
     _instantiateFunctions(source) {
         const globals = createScriptGlobals(this.actor);
+        this._globals = globals;
         const names = Object.keys(globals);
 
         // Each script gets its own function scope, so two components running the

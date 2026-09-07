@@ -64,6 +64,17 @@ read. When a task produces something a second game would want, bake it back (`ba
 Tools in the editor). A cookie summary costs about thirty tokens; deriving the module again costs
 thousands, every game. See `wiki/28-the-cookiejar.md`.
 
+Multiplayer and Darks Games accounts are one wire and one contract across both engines.
+`wiki/15-networking.md` covers the transport seam (WebSocket is the shared wire; LiteNetLib UDP is
+desktop-only), the frame table, rooms and link-to-join; `node html5/tools/roomserver.js` is the
+relay a web build joins through. `wiki/29-darksgames.md` covers identity, presence, Join, parties,
+cloud saves and achievements — set a catalogue slug and the exported build carries them, and
+`--gated` writes the closed-testing host. Read those two before touching `SexyBiscuit.Engine/
+Networking/`, `SexyBiscuit.Engine/DarksGames/`, `html5/src/net/` or `html5/src/dg/`.
+
+Actors form a tree: `AttachTo`/`Detach`, both transforms following, destroy cascading to the
+subtree, and children nested in the scene file. See `wiki/02-core-architecture.md#attachment`.
+
 The HTML5 port is documented in `html5/README.md` and `wiki/26-html5.md`. Both engines' action
-maps, euler conventions, scripting contract and hook lists are pinned by tests that read the other
-side's source, so they fail if the two drift apart.
+maps, euler conventions, scripting contract, hook lists, wire protocol and replication tags are
+pinned by tests that read the other side's source, so they fail if the two drift apart.

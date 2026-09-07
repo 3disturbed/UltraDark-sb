@@ -9,7 +9,12 @@
     "./editor": "./editor/Editor.js",
     "./runtime": "./runtime/Runtime.js"
   },
-  "files": ["src", "editor", "runtime", "README.md"],
+  "files": [
+    "src",
+    "editor",
+    "runtime",
+    "README.md"
+  ],
   "scripts": {
     "test": "node --test tests/*.test.js",
     "serve": "node tools/serve.js",
@@ -18,10 +23,20 @@
     "validate": "node tools/validate.js",
     "export": "node tools/export.js",
     "upload": "node tools/upload.js",
-    "usage": "node tools/usage.js"
+    "usage": "node tools/usage.js",
+    "rooms": "node tools/roomserver.js"
   },
-  "engines": { "node": ">=22" },
-  "keywords": ["game-engine", "webgl", "html5", "sexybiscuit"],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "game-engine",
+    "webgl",
+    "html5",
+    "sexybiscuit"
+  ],
   "license": "MIT",
-  "sideEffects": ["./src/**/*.js"]
+  "sideEffects": [
+    "./src/**/*.js"
+  ]
 }

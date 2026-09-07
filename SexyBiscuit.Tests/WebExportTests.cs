@@ -322,11 +322,43 @@ public class WebExportTests : IDisposable
         static List<string> Placeholders(string path)
             => Regex.Matches(File.ReadAllText(path), @"\{\{(\w+)\}\}").Select(m => m.Groups[1].Value).Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
 
-        Assert.Equal(new[] { "build", "pwaBoot", "pwaHead", "scene", "stats", "themeColor", "title" }, Placeholders(Path.Combine(templates, "index.html.tmpl")));
+        Assert.Equal(new[] { "build", "dgBoot", "dgHead", "pwaBoot", "pwaHead", "scene", "stats", "themeColor", "title" }, Placeholders(Path.Combine(templates, "index.html.tmpl")));
         Assert.Equal(new[] { "name", "shortName", "themeColor" }, Placeholders(Path.Combine(templates, "manifest.webmanifest.tmpl")));
         Assert.Equal(new[] { "cacheName", "precache" }, Placeholders(Path.Combine(templates, "sw.js.tmpl")));
 
         Assert.Throws<InvalidOperationException>(() => ExportPipeline.Fill("{{missing}}", new()));
+    }
+
+    [Fact]
+    public void TheDarksGamesTagsAreIdenticalToTheNodeExporters()
+    {
+        // Two exporters write one page. A game exported by the CLI and the same game exported
+        // by `node tools/export.js` have to load the same SDKs in the same order, or one of the
+        // two silently ships without a friends list.
+        var repo = EngineRepoLocator.Find();
+        Assert.NotNull(repo);
+        string js = File.ReadAllText(Path.Combine(repo!.Root, "html5", "tools", "export.js"));
+
+        var (head, boot) = ExportPipeline.DarksGamesTags("my-game");
+
+        Assert.Contains("dg-account.v1.js", head);
+        Assert.Contains("dg-overlay.v1.js", head);
+        Assert.True(head.IndexOf("dg-account", StringComparison.Ordinal)
+                  < head.IndexOf("dg-overlay", StringComparison.Ordinal),
+            "the account SDK has to come first: the overlay asks it for a token");
+        Assert.Contains("defer", head);
+
+        // The Node side declares the same two files and the same handler hook.
+        Assert.Contains("dg-account.v1.js", js);
+        Assert.Contains("dg-overlay.v1.js", js);
+        Assert.Contains("window.sbJoinRoom", js);
+        Assert.Contains("window.sbJoinRoom", boot);
+        Assert.Contains("\"my-game\"", boot);
+
+        // And no slug means nothing at all: a game that never ships to DarksGames must not
+        // load a byte from it.
+        Assert.Equal((string.Empty, string.Empty), ExportPipeline.DarksGamesTags(""));
+        Assert.Equal((string.Empty, string.Empty), ExportPipeline.DarksGamesTags(null));
     }
 
     /// <summary>A download is one file; the archive lists every staged file.</summary>

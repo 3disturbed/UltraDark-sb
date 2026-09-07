@@ -144,11 +144,11 @@ public class ReplicationSystem
                     byte[] filtered = FilterOwnerOnlyMembers(netObj, dirtyState, forOwner: false);
                     if (!HasZeroEntries(filtered))
                         nm.SendToClient(clientId, EncodeStateUpdate(netObj.NetworkId, filtered),
-                            LiteNetLib.DeliveryMethod.Unreliable);
+                            NetDelivery.Unreliable);
                 }
                 else
                 {
-                    nm.SendToClient(clientId, packet, LiteNetLib.DeliveryMethod.Unreliable);
+                    nm.SendToClient(clientId, packet, NetDelivery.Unreliable);
                 }
             }
         }
@@ -169,7 +169,7 @@ public class ReplicationSystem
             if (dirtyState.Length == 0 || HasZeroEntries(dirtyState)) continue;
 
             byte[] packet = EncodeStateUpdate(netObj.NetworkId, dirtyState);
-            nm.SendToServer(packet, LiteNetLib.DeliveryMethod.Unreliable);
+            nm.SendToServer(packet, NetDelivery.Unreliable);
         }
     }
 
@@ -205,16 +205,7 @@ public class ReplicationSystem
     // -------------------------------------------------------------------------
 
     private static byte[] EncodeStateUpdate(uint networkId, byte[] stateData)
-    {
-        using var ms = new System.IO.MemoryStream();
-        using var bw = new System.IO.BinaryWriter(ms);
-        bw.Write((byte)PacketType.StateUpdate);
-        bw.Write(networkId);
-        bw.Write(stateData.Length);
-        bw.Write(stateData);
-        bw.Flush();
-        return ms.ToArray();
-    }
+        => new NetWriter(NetMessage.State).UInt(networkId).Bytes(stateData).ToArray();
 
     // Returns true when the count prefix in a CollectLocalState payload is 0.
     private static bool HasZeroEntries(byte[] data)

@@ -214,8 +214,54 @@ public class Actor
     public Scene?    Scene     { get; }
     public Layer?    Layer_    { get; }     // the owning Layer object
     public uint      Id        { get; }     // process-unique, from a static counter
+
+    public Actor?               Parent   { get; }   // null at the scene root
+    public IReadOnlyList<Actor> Children { get; }
 }
 ```
+
+### Attachment
+
+Actors form a tree. Attaching drives **both** transforms, which is the reason it lives
+on the actor rather than on a `Transform`: a 3D actor parented through the 2D transform
+alone inherits nothing, because no 3D renderer reads that transform.
+
+```csharp
+turret.AttachTo(tank);                              // keeps its world position
+muzzle.AttachTo(turret, keepWorldTransform: false); // treats its transform as a local offset
+turret.Detach();                                    // back to the scene root
+tank.DetachChildren();                              // let the children go, keep the tank
+```
+
+```csharp
+actor.Parent;                 // Actor?
+actor.Children;               // IReadOnlyList<Actor>
+actor.Root;                   // topmost ancestor, or itself
+actor.IsActiveInHierarchy;    // false when any ancestor is inactive
+actor.IsDescendantOf(other);
+actor.FindChild("Turret");                  // direct children
+actor.FindChild("Muzzle", recursive: true); // the whole subtree
+actor.FindChildByPath("Turret/Barrel/Muzzle");
+actor.Descendants();          // depth first, parents before their children
+actor.HierarchyPath;          // "Tank/Turret/Muzzle"
+```
+
+Three rules worth knowing before you rely on them:
+
+- **`keepWorldTransform` defaults to `true`.** Attaching a pickup to a moving player leaves
+  it exactly where it is. Pass `false` when the child's current transform is meant to be the
+  socket offset — which is what the scene loader does, because a file already stores a
+  child's transform in its parent's space.
+- **Destroying a parent destroys its subtree.** A turret must not be left hanging in the air
+  when its tank dies. Call `DetachChildren()` first when the children really are meant to
+  survive.
+- **A cycle throws.** Every walk here is an unguarded loop, so a cycle is a hang rather than
+  a wrong answer, and `AttachTo` refuses to create one.
+
+Adding an actor to a scene adds everything attached to it, and `MoveActor` moves the whole
+subtree — so a prefab, a duplicate or a loaded scene never leaves a child unregistered and
+invisible. Scene files nest children inside their parent (see
+[12. Scenes and Prefabs](12-scenes-prefabs.md)).
 
 ### Lifespan
 

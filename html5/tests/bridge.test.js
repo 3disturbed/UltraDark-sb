@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import {
     Scene, Actor, Transform3D, Rigidbody2D, BoxCollider2D, SpriteRenderer, ScriptComponent,
     createScriptGlobals, wrapActor, unwrapActor, wrapCollisionData, SCRIPT_HOOKS, MouseButton, CollisionData,
+    NetworkManager,
 } from '../src/index.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -178,10 +179,22 @@ test('a script can create, extend and destroy actors and call into another scrip
     assert.equal(found.invoke('nested'), undefined, 'a nested function is not reachable');
     assert.equal(found.invoke('missing'), undefined);
 
-    // The network stub keeps a multiplayer script alive as a solo game.
+    // A multiplayer script with no session is the single-player case, not an error:
+    // hosting starts a loopback session, so the same script drives the same code path
+    // alone as it does in a lobby.
+    assert.equal(globals.Network.isConnected, false, 'nothing is running yet');
+
+    // A send with no session is a no-op, not an implicit host: a script broadcasting a
+    // position every frame must not silently start a game nobody asked for.
+    globals.Network.sendToAll('noop', {});
+    assert.equal(NetworkManager.instance, null, 'sending did not start a session');
+
+    assert.equal(globals.Network.startServer(), true);
+    assert.equal(globals.Network.isHost, true);
     assert.equal(globals.Network.isLocalPlayer(0), true);
-    assert.equal(globals.Network.startServer(), false);
-    assert.ok(messages.some((m) => m.includes('running solo')));
+    assert.equal(globals.Network.localId, 0);
+    globals.Network.disconnect();
+    NetworkManager.instance?.dispose();
 });
 
 test('an invoke made before the script has loaded runs once it has, before onStart', () => {

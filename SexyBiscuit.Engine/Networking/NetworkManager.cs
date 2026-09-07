@@ -1,42 +1,57 @@
-using LiteNetLib;
-using LiteNetLib.Utils;
-using System.Net;
-using System.Net.Sockets;
-using Microsoft.Xna.Framework;
-using SexyBiscuit.Engine.Core;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace SexyBiscuit.Engine.Networking;
 
 // ---------------------------------------------------------------------------
 // NetworkManager.cs
-// Main networking façade using LiteNetLib.
+// The façade: sessions, connections, packet dispatch, replication and RPC.
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Internal packet type discriminator (1 byte prefix on every packet)
-// ---------------------------------------------------------------------------
-internal enum PacketType : byte
+/// <summary>Which wire a session runs on.</summary>
+public enum NetTransportKind
 {
-    StateUpdate     = 1,
-    Rpc             = 2,
-    SpawnObject     = 3,
-    DespawnObject   = 4,
-    ClientConnected = 5,
-    Ping            = 6,
+    /// <summary>
+    /// Binary WebSocket. The only one a browser can speak, so it is the default: a session
+    /// started this way can be joined from a web build and from a desktop build at once.
+    /// </summary>
+    WebSocket,
+
+    /// <summary>
+    /// UDP via LiteNetLib. Faster, and the only transport that can genuinely drop a stale
+    /// state update — but desktop-to-desktop only.
+    /// </summary>
+    Udp,
+
+    /// <summary>
+    /// Wired to itself in memory. A single-player run of a multiplayer game, and every test.
+    /// </summary>
+    Loopback,
 }
 
 /// <summary>
-/// Singleton façade over LiteNetLib that provides server/client transport,
-/// drives the <see cref="ReplicationSystem"/> and <see cref="RpcSystem"/>,
-/// and exposes connection lifecycle events.
+/// The engine's networking façade: it owns the transport, assigns client ids, dispatches
+/// frames, and drives the <see cref="ReplicationSystem"/> and <see cref="RpcSystem"/>.
 /// </summary>
-public class NetworkManager : IDisposable
+/// <remarks>
+/// <para>
+/// <b>Nothing is sent or received until <see cref="Tick"/> is pumped.</b> The manager is not
+/// wired into the game loop, because a game that is not networked should pay nothing for the
+/// fact that it could be.
+/// </para>
+/// <para>
+/// The frames are defined by <see cref="NetProtocol"/> and mirrored by the browser engine, so a
+/// script written against <c>Network.*</c> behaves the same in both. The transport is chosen at
+/// <see cref="StartServer"/> time and never leaks past this class.
+/// </para>
+/// </remarks>
+public sealed class NetworkManager : IDisposable
 {
     // -------------------------------------------------------------------------
     // Singleton
     // -------------------------------------------------------------------------
 
-    /// <summary>The active NetworkManager, or <c>null</c> if not running.</summary>
+    /// <summary>The running NetworkManager, or <c>null</c> when there is none.</summary>
     public static NetworkManager? Instance { get; private set; }
 
     // -------------------------------------------------------------------------
@@ -48,13 +63,52 @@ public class NetworkManager : IDisposable
     public bool IsRunning { get; private set; }
 
     /// <summary>
-    /// The local client ID as assigned by the server. Only valid on clients.
-    /// Always -1 on a dedicated server.
+    /// True when this peer is the session's authority — the one that should run the
+    /// simulation, spawn enemies and decide outcomes.
+    /// </summary>
+    /// <remarks>
+    /// A listen server and a solo session are the authority because they are the server. In a
+    /// relayed room nobody is: every player reaches the room server down a socket of their
+    /// own, and the relay owns identity but simulates nothing. So the room's authority is the
+    /// lowest client id present — a rule every peer can evaluate for itself, with no extra
+    /// message, and which hands the role to somebody else the moment the current host leaves.
+    /// </remarks>
+    public bool IsHost
+    {
+        get
+        {
+            if (IsServer) return true;
+            if (!IsRunning || LocalClientId < 0) return false;
+
+            foreach (int id in _players.Keys)
+                if (id < LocalClientId) return false;
+            return true;
+        }
+    }
+
+    /// <summary>True once the server has accepted us, or immediately when we are the server.</summary>
+    public bool IsConnected => IsRunning && (IsServer || LocalClientId >= 0);
+
+    /// <summary>
+    /// The local client id the server assigned. Always <c>0</c> on the server itself, and
+    /// <c>-1</c> on a client until <see cref="NetMessage.Welcome"/> arrives.
     /// </summary>
     public int LocalClientId { get; private set; } = -1;
 
-    /// <summary>Round-trip time in milliseconds. Populated on client only.</summary>
+    /// <summary>Round-trip time in milliseconds. Populated on clients.</summary>
     public int Ping { get; private set; }
+
+    /// <summary>The name this peer introduced itself with. Set it before connecting.</summary>
+    public string PlayerName { get; set; } = "Player";
+
+    /// <summary>The room code this session belongs to, when it was started with one.</summary>
+    public string Room { get; private set; } = "";
+
+    /// <summary>Which transport the session is running on.</summary>
+    public NetTransportKind Transport { get; private set; } = NetTransportKind.Loopback;
+
+    /// <summary>Every player in the session, local one included, by client id.</summary>
+    public IReadOnlyDictionary<int, string> Players => _players;
 
     // -------------------------------------------------------------------------
     // Sub-systems
@@ -67,48 +121,60 @@ public class NetworkManager : IDisposable
     // Events
     // -------------------------------------------------------------------------
 
-    /// <summary>Server-side: a client has connected. Argument is the client ID.</summary>
+    /// <summary>Server-side: a client has joined. The argument is its client id.</summary>
     public event Action<int>? OnClientConnected;
 
-    /// <summary>Server-side: a client has disconnected. Argument is the client ID.</summary>
+    /// <summary>Server-side: a client has left.</summary>
     public event Action<int>? OnClientDisconnected;
 
-    /// <summary>Client-side: successfully connected to a server.</summary>
+    /// <summary>Client-side: the server accepted us and <see cref="LocalClientId"/> is set.</summary>
     public event Action? OnConnectedToServer;
 
-    /// <summary>Client-side: disconnected from the server.</summary>
-    public event Action? OnDisconnectedFromServer;
+    /// <summary>Client-side: the session ended. The argument is the reason, when the server gave one.</summary>
+    public event Action<string>? OnDisconnectedFromServer;
+
+    /// <summary>
+    /// Clients: the server wants a networked actor built. The game supplies the actor — the
+    /// engine sends a name, not a prefab.
+    /// </summary>
+    public event Action<uint, string, int, byte[]>? OnSpawnObject;
+
+    /// <summary>Clients: the server wants a networked actor destroyed.</summary>
+    public event Action<uint>? OnDespawnObject;
+
+    /// <summary>
+    /// A message from another peer: <c>(senderClientId, type, payload)</c>. This is the channel
+    /// <c>Network.sendToAll</c> reaches; the engine never looks inside the payload.
+    /// </summary>
+    public event Action<int, string, JsonNode?>? OnMessage;
+
+    /// <summary>Another player joined or left the session.</summary>
+    public event Action<int, string>? OnPlayerJoined;
+    public event Action<int>?         OnPlayerLeft;
 
     // -------------------------------------------------------------------------
-    // LiteNetLib internals
+    // Internals
     // -------------------------------------------------------------------------
 
-    private NetManager?              _netManager;
-    private EventBasedNetListener?   _listener;
+    private INetworkTransport? _transport;
 
-    // Server: clientId -> NetPeer
-    private readonly Dictionary<int, NetPeer> _peers       = new();
-    private readonly object                    _peersLock   = new();
+    // Server: our client id per peer, and back again.
+    private readonly Dictionary<int, NetPeerHandle> _clients = new();
+    private readonly Dictionary<int, string>        _players = new();
 
-    // Client: single connection to server
-    private NetPeer? _serverPeer;
+    // Client: the one peer that is the server.
+    private NetPeerHandle? _serverPeer;
 
-    // Monotonically increasing client ID counter (server-side)
-    private int _nextClientId = 1;
-
-    // Network ID counter (server-side)
+    private int  _nextClientId  = 1;
     private uint _nextNetworkId = 1;
+    private int  _maxClients    = 16;
 
-    // Pending inbound packets — accumulated during PollEvents, processed in Tick
-    private readonly System.Collections.Concurrent.ConcurrentQueue<InboundPacket> _inboundQueue = new();
-
-    // Ping probe timer (client only)
-    private float _pingTimer;
+    private float       _pingTimer;
     private const float PingInterval = 1f;
 
-    // -------------------------------------------------------------------------
-    // Construction
-    // -------------------------------------------------------------------------
+    /// <summary>A loopback session's other half, kept so both ends can be pumped from one Tick.</summary>
+    private NetworkManager? _loopbackPeer;
+    private bool            _isLoopbackClientHalf;
 
     public NetworkManager()
     {
@@ -118,472 +184,627 @@ public class NetworkManager : IDisposable
         Instance = this;
     }
 
-    // -------------------------------------------------------------------------
-    // Server API
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Starts a LiteNetLib server on <paramref name="port"/>.
-    /// </summary>
-    public void StartServer(int port, int maxClients = 16)
-    {
-        if (IsRunning) throw new InvalidOperationException("NetworkManager is already running.");
-
-        IsServer = true;
-        IsClient = false;
-
-        _listener = new EventBasedNetListener();
-        _netManager = new NetManager(_listener)
-        {
-            AutoRecycle         = true,
-            UnconnectedMessagesEnabled = false,
-        };
-
-        _listener.ConnectionRequestEvent += request =>
-        {
-            if (_peers.Count < maxClients)
-                request.AcceptIfKey("SexyBiscuit");
-            else
-                request.Reject();
-        };
-
-        _listener.PeerConnectedEvent += peer =>
-        {
-            int clientId = _nextClientId++;
-            // Store mapping: we use peer.Id as the key since it's int
-            lock (_peersLock)
-            {
-                _peers[clientId] = peer;
-                // Attach the clientId to the peer's Tag for reverse lookup
-                peer.Tag = clientId;
-            }
-
-            // Notify the new client of its assigned ID
-            SendClientConnectedPacket(peer, clientId);
-
-            Console.WriteLine($"[NetworkManager] Client {clientId} connected (peer {peer.Id}).");
-            OnClientConnected?.Invoke(clientId);
-        };
-
-        _listener.PeerDisconnectedEvent += (peer, info) =>
-        {
-            int clientId = GetClientId(peer);
-            lock (_peersLock) { _peers.Remove(clientId); }
-            Console.WriteLine($"[NetworkManager] Client {clientId} disconnected: {info.Reason}.");
-            OnClientDisconnected?.Invoke(clientId);
-        };
-
-        _listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>
-        {
-            int senderId = GetClientId(peer);
-            EnqueueInbound(reader.GetRemainingBytes(), senderId: senderId);
-        };
-
-        _netManager.Start(port);
-        IsRunning = true;
-
-        Console.WriteLine($"[NetworkManager] Server started on port {port}.");
-    }
-
-    /// <summary>Stops the server and disconnects all clients.</summary>
-    public void StopServer()
-    {
-        if (!IsServer || !IsRunning) return;
-        _netManager?.Stop();
-        IsRunning = false;
-        IsServer  = false;
-        lock (_peersLock) { _peers.Clear(); }
-        Console.WriteLine("[NetworkManager] Server stopped.");
-    }
-
-    /// <summary>
-    /// Kicks a connected client with an optional human-readable reason.
-    /// </summary>
-    public void KickClient(int clientId, string reason = "")
-    {
-        NetPeer? peer;
-        lock (_peersLock) { _peers.TryGetValue(clientId, out peer); }
-        if (peer == null)
-        {
-            Console.Error.WriteLine($"[NetworkManager] KickClient: no peer for clientId={clientId}.");
-            return;
-        }
-
-        var writer = new NetDataWriter();
-        writer.Put(reason);
-        peer.Disconnect(writer);
-        Console.WriteLine($"[NetworkManager] Kicked client {clientId}: {reason}");
-    }
-
-    /// <summary>Snapshot of connected client IDs at the time of the call.</summary>
-    public IEnumerable<int> ConnectedClientIds
-    {
-        get
-        {
-            lock (_peersLock)
-            {
-                return _peers.Keys.ToArray();
-            }
-        }
-    }
+    /// <summary>For the second half of a loopback pair, which must not claim the singleton.</summary>
+    private NetworkManager(bool _) { }
 
     // -------------------------------------------------------------------------
-    // Client API
+    // Starting a session
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Connects to a server as a client.
+    /// Starts a server on <paramref name="port"/>.
     /// </summary>
+    /// <param name="port">The port to bind.</param>
+    /// <param name="maxClients">How many peers may connect.</param>
+    /// <param name="transport">
+    /// Which wire to use. <see cref="NetTransportKind.WebSocket"/> by default, because it is the
+    /// only one a browser can join and a native client speaks it too. Choose
+    /// <see cref="NetTransportKind.Udp"/> when every player is on a desktop build and dropping a
+    /// stale update matters more than reaching the web.
+    /// </param>
+    /// <param name="room">A room code to report in the handshake. Cosmetic to the engine.</param>
+    public void StartServer(int port, int maxClients = 16,
+                            NetTransportKind transport = NetTransportKind.WebSocket,
+                            string room = "")
+    {
+        RequireStopped();
+
+        _maxClients = maxClients;
+        Transport   = transport;
+        Room        = room;
+
+        _transport = transport switch
+        {
+            NetTransportKind.Udp => LiteNetLibTransport.Listen(port, maxClients),
+            NetTransportKind.WebSocket => WebSocketNetTransport.Listen(port, maxClients),
+            _ => throw new ArgumentException(
+                "A loopback session is started with StartSolo, which makes both ends at once.", nameof(transport)),
+        };
+
+        WireTransport();
+        _transport.Start();
+
+        IsServer      = true;
+        IsClient      = false;
+        IsRunning     = true;
+        LocalClientId = 0;
+        _players[0]   = PlayerName;
+
+        Log($"server listening on {transport.ToString().ToLowerInvariant()} port {port}");
+    }
+
+    /// <summary>Connects to a server over UDP.</summary>
     public void ConnectToServer(string address, int port)
     {
-        if (IsRunning) throw new InvalidOperationException("NetworkManager is already running.");
+        RequireStopped();
 
-        IsClient = true;
-        IsServer = false;
-
-        _listener = new EventBasedNetListener();
-        _netManager = new NetManager(_listener)
-        {
-            AutoRecycle = true,
-        };
-
-        _listener.PeerConnectedEvent += peer =>
-        {
-            _serverPeer = peer;
-            Console.WriteLine($"[NetworkManager] Connected to server {address}:{port}.");
-            // LocalClientId is assigned by the server via ClientConnected packet
-            OnConnectedToServer?.Invoke();
-        };
-
-        _listener.PeerDisconnectedEvent += (peer, info) =>
-        {
-            _serverPeer = null;
-            Console.WriteLine($"[NetworkManager] Disconnected from server: {info.Reason}.");
-            OnDisconnectedFromServer?.Invoke();
-        };
-
-        _listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>
-        {
-            EnqueueInbound(reader.GetRemainingBytes(), senderId: -1);
-        };
-
-        _netManager.Start();
-        _netManager.Connect(address, port, "SexyBiscuit");
-        IsRunning = true;
-
-        Console.WriteLine($"[NetworkManager] Connecting to {address}:{port}...");
+        Transport  = NetTransportKind.Udp;
+        _transport = LiteNetLibTransport.Connect(address, port);
+        StartAsClient($"{address}:{port}");
     }
 
-    /// <summary>Gracefully disconnects from the server.</summary>
-    public void Disconnect()
+    /// <summary>
+    /// Connects to a <c>ws://</c> or <c>wss://</c> server — a room server, or another player's
+    /// listen server.
+    /// </summary>
+    public void ConnectToUrl(string url, string room = "")
     {
-        if (!IsClient || !IsRunning) return;
-        _serverPeer?.Disconnect();
-        _netManager?.Stop();
-        IsRunning = false;
-        IsClient  = false;
-        _serverPeer = null;
-        Console.WriteLine("[NetworkManager] Disconnected from server.");
+        RequireStopped();
+
+        Room       = room;
+        Transport  = NetTransportKind.WebSocket;
+        _transport = WebSocketNetTransport.Connect(url);
+        StartAsClient(url);
+    }
+
+    /// <summary>
+    /// Starts a session with no socket at all: this process is both server and client.
+    /// </summary>
+    /// <remarks>
+    /// A multiplayer game played alone should not be a different game. Every frame still goes
+    /// through the same encode, dispatch and replication path a real one does, so solo play
+    /// exercises the netcode instead of bypassing it — which is what stops "works alone, breaks
+    /// in a lobby".
+    /// </remarks>
+    public void StartSolo()
+    {
+        RequireStopped();
+
+        var (serverEnd, clientEnd) = LoopbackTransport.CreatePair();
+
+        Transport = NetTransportKind.Loopback;
+        _transport = serverEnd;
+        WireTransport();
+
+        // The client half is a second manager that does not claim the singleton: the game keeps
+        // talking to this one, which is both ends at once.
+        var client = new NetworkManager(false)
+        {
+            Transport             = NetTransportKind.Loopback,
+            PlayerName            = PlayerName,
+            _transport            = clientEnd,
+            _isLoopbackClientHalf = true,
+        };
+        client.WireTransport();
+        client.ForwardTo(this);
+
+        _loopbackPeer = client;
+
+        IsServer      = true;
+        IsClient      = true;
+        IsRunning     = true;
+        LocalClientId = 0;
+        _players[0]   = PlayerName;
+
+        client.IsClient  = true;
+        client.IsRunning = true;
+
+        serverEnd.Start();
+        clientEnd.Start();
+
+        Log("solo session started (loopback)");
+    }
+
+    private void StartAsClient(string label)
+    {
+        WireTransport();
+        _transport!.Start();
+
+        IsClient      = true;
+        IsServer      = false;
+        IsRunning     = true;
+        LocalClientId = -1;
+
+        Log($"connecting to {label}…");
+    }
+
+    private void RequireStopped()
+    {
+        if (IsRunning)
+            throw new InvalidOperationException(
+                "NetworkManager is already running. Call StopServer() or Disconnect() first.");
     }
 
     // -------------------------------------------------------------------------
-    // Tick — call from SBEngine.FixedUpdate
+    // Ending a session
+    // -------------------------------------------------------------------------
+
+    /// <summary>Stops the server and drops every client.</summary>
+    public void StopServer()
+    {
+        if (!IsServer) return;
+
+        foreach (var peer in _clients.Values.ToArray())
+            _transport?.Disconnect(peer, "server closed");
+
+        Teardown();
+        Log("server stopped");
+    }
+
+    /// <summary>Leaves the session.</summary>
+    public void Disconnect()
+    {
+        if (!IsRunning) return;
+
+        if (IsServer) { StopServer(); return; }
+        Teardown();
+        Log("disconnected");
+    }
+
+    private void Teardown()
+    {
+        _loopbackPeer?.Teardown();
+        _loopbackPeer = null;
+
+        _transport?.Stop();
+        _transport?.Dispose();
+        _transport = null;
+
+        _clients.Clear();
+        _players.Clear();
+        _serverPeer   = null;
+        IsRunning     = false;
+        IsServer      = false;
+        IsClient      = false;
+        LocalClientId = -1;
+        Ping          = 0;
+    }
+
+    /// <summary>Disconnects one client with a reason it will see.</summary>
+    public void KickClient(int clientId, string reason = "")
+    {
+        if (!IsServer || !_clients.TryGetValue(clientId, out var peer)) return;
+
+        // The reason rides in a frame of its own: a WebSocket close code carries no text a
+        // browser can read back, and a UDP disconnect payload is not visible to the browser
+        // engine at all. One frame works on every transport.
+        Send(peer, new NetWriter(NetMessage.Kick).String(reason).ToArray(), NetDelivery.ReliableOrdered);
+        _transport?.Disconnect(peer, reason);
+        Log($"kicked client {clientId}: {reason}");
+    }
+
+    /// <summary>The connected client ids, as of the call. Server only.</summary>
+    public IEnumerable<int> ConnectedClientIds => _clients.Keys.ToArray();
+
+    // -------------------------------------------------------------------------
+    // The pump
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Polls LiteNetLib for new events, drains the inbound packet queue,
-    /// and drives the ReplicationSystem. Call this every fixed-update.
+    /// Polls the transport, dispatches everything that arrived, and drives replication. Call it
+    /// once per frame; nothing moves without it.
     /// </summary>
     public void Tick(float dt)
     {
         if (!IsRunning) return;
 
-        // Let LiteNetLib deliver events (fires the listener callbacks above,
-        // which enqueue packets into _inboundQueue)
-        _netManager?.PollEvents();
+        _transport?.Poll();
+        _loopbackPeer?._transport?.Poll();
 
-        // Drain inbound queue
-        while (_inboundQueue.TryDequeue(out var packet))
-            DispatchInboundPacket(packet);
-
-        // Drive replication
         Replication.Tick(dt, this);
 
-        // Client-side ping probe
-        if (IsClient)
+        if (IsClient && !IsHost)
         {
             _pingTimer += dt;
             if (_pingTimer >= PingInterval)
             {
                 _pingTimer = 0f;
-                SendPingProbe();
+                SendToServer(new NetWriter(NetMessage.Ping)
+                    .Double(Now()).ToArray(), NetDelivery.Unreliable);
             }
-
-            // Update RTT from LiteNetLib peer stat
-            if (_serverPeer != null)
-                Ping = _serverPeer.Ping;
         }
     }
 
     // -------------------------------------------------------------------------
-    // Send helpers
+    // Transport wiring
     // -------------------------------------------------------------------------
 
-    /// <summary>Sends a packet from the client to the server.</summary>
-    public void SendToServer(byte[] data, DeliveryMethod method = DeliveryMethod.ReliableOrdered)
+    private void WireTransport()
     {
-        if (!IsClient || _serverPeer == null) return;
-        var writer = new NetDataWriter();
-        writer.Put(data);
-        _serverPeer.Send(writer, method);
-    }
-
-    /// <summary>Sends a packet from the server to a specific client.</summary>
-    public void SendToClient(int clientId, byte[] data,
-                             DeliveryMethod method = DeliveryMethod.ReliableOrdered)
-    {
-        NetPeer? peer;
-        lock (_peersLock) { _peers.TryGetValue(clientId, out peer); }
-        if (peer == null) return;
-
-        var writer = new NetDataWriter();
-        writer.Put(data);
-        peer.Send(writer, method);
+        var transport = _transport!;
+        transport.PeerConnected    += OnPeerConnected;
+        transport.PeerDisconnected += OnPeerDisconnected;
+        transport.FrameReceived    += OnFrameReceived;
     }
 
     /// <summary>
-    /// Broadcasts a packet to all connected clients, optionally excluding one.
+    /// Points the loopback client half's events at the manager the game actually holds, so solo
+    /// play raises the same events a real client does.
     /// </summary>
-    public void SendToAll(byte[] data,
-                          DeliveryMethod method = DeliveryMethod.ReliableOrdered,
-                          int excludeClientId = -1)
+    private void ForwardTo(NetworkManager host)
     {
-        List<NetPeer> peers;
-        lock (_peersLock) { peers = new List<NetPeer>(_peers.Values); }
+        OnMessage                += (sender, type, payload) => host.OnMessage?.Invoke(sender, type, payload);
+        OnSpawnObject            += (id, name, owner, state) => host.OnSpawnObject?.Invoke(id, name, owner, state);
+        OnDespawnObject          += id => host.OnDespawnObject?.Invoke(id);
+        OnConnectedToServer      += () => host.OnConnectedToServer?.Invoke();
+        OnDisconnectedFromServer += reason => host.OnDisconnectedFromServer?.Invoke(reason);
+    }
 
-        var writer = new NetDataWriter();
-        writer.Put(data);
-
-        foreach (var peer in peers)
+    private void OnPeerConnected(NetPeerHandle peer)
+    {
+        if (IsServer && !_isLoopbackClientHalf)
         {
-            if (excludeClientId >= 0 && GetClientId(peer) == excludeClientId) continue;
-            peer.Send(writer, method);
+            // The server waits for Hello before assigning an id: a peer that connects and never
+            // introduces itself is a port scan, and should not take a seat.
+            return;
+        }
+
+        // Client: introduce ourselves.
+        _serverPeer = peer;
+        var hello = new JsonObject
+        {
+            ["proto"] = NetProtocolVersion.Current,
+            ["name"]  = PlayerName,
+            ["room"]  = Room,
+        };
+        Send(peer, NetProtocol.EncodeJson(NetMessage.Hello, hello), NetDelivery.ReliableOrdered);
+    }
+
+    private void OnPeerDisconnected(NetPeerHandle peer, NetDisconnectReason reason)
+    {
+        if (IsServer && peer.Tag is int clientId && !_isLoopbackClientHalf)
+        {
+            _clients.Remove(clientId);
+            _players.Remove(clientId);
+            Broadcast(new NetWriter(NetMessage.PeerLeft).Int(clientId).ToArray(),
+                      NetDelivery.ReliableOrdered);
+            OnClientDisconnected?.Invoke(clientId);
+            OnPlayerLeft?.Invoke(clientId);
+            Log($"client {clientId} left ({reason})");
+            return;
+        }
+
+        if (ReferenceEquals(peer, _serverPeer) || _serverPeer == null)
+        {
+            _serverPeer = null;
+            OnDisconnectedFromServer?.Invoke(_kickReason ?? reason.ToString());
+            _kickReason = null;
+        }
+    }
+
+    private string? _kickReason;
+
+    private void OnFrameReceived(NetPeerHandle peer, ReadOnlyMemory<byte> payload)
+    {
+        try
+        {
+            Dispatch(peer, payload.Span);
+        }
+        catch (NetProtocolException ex)
+        {
+            // A bad frame is a peer, not a bug: log it and drop the peer rather than taking the
+            // session down with an unhandled exception on the game thread.
+            Console.Error.WriteLine($"[NetworkManager] bad frame from {peer}: {ex.Message}");
+            if (IsServer) _transport?.Disconnect(peer, "protocol error");
         }
     }
 
     // -------------------------------------------------------------------------
-    // Internal — network ID allocation
+    // Dispatch
     // -------------------------------------------------------------------------
 
-    /// <summary>Allocates and returns the next unique NetworkId. Server-side only.</summary>
-    internal uint AllocateNetworkId()
+    private void Dispatch(NetPeerHandle peer, ReadOnlySpan<byte> frame)
     {
-        if (!IsServer)
-            throw new InvalidOperationException("AllocateNetworkId must be called on the server.");
-        return _nextNetworkId++;
-    }
+        if (frame.Length == 0) return;
 
-    // -------------------------------------------------------------------------
-    // Internal — packet dispatch
-    // -------------------------------------------------------------------------
+        var reader = new NetReader(frame);
+        byte id    = reader.Byte();
+        int sender = peer.Tag is int clientId ? clientId : -1;
 
-    private void EnqueueInbound(byte[] data, int senderId)
-    {
-        _inboundQueue.Enqueue(new InboundPacket(data, senderId));
-    }
-
-    private void DispatchInboundPacket(InboundPacket packet)
-    {
-        if (packet.Data.Length == 0) return;
-
-        using var ms = new System.IO.MemoryStream(packet.Data);
-        using var br = new System.IO.BinaryReader(ms);
-
-        var type = (PacketType)br.ReadByte();
-
-        switch (type)
+        switch (id)
         {
-            case PacketType.StateUpdate:
-                HandleStateUpdate(br);
-                break;
-
-            case PacketType.Rpc:
-                HandleRpc(br, packet.SenderId);
-                break;
-
-            case PacketType.SpawnObject:
-                HandleSpawnObject(br);
-                break;
-
-            case PacketType.DespawnObject:
-                HandleDespawnObject(br);
-                break;
-
-            case PacketType.ClientConnected:
-                HandleClientConnected(br);
-                break;
-
-            case PacketType.Ping:
-                HandlePingPacket(br, packet.SenderId);
-                break;
-
+            case NetMessage.Hello:    HandleHello(peer, ref reader);      break;
+            case NetMessage.Welcome:  HandleWelcome(ref reader);          break;
+            case NetMessage.Spawn:    HandleSpawn(ref reader);            break;
+            case NetMessage.Despawn:  OnDespawnObject?.Invoke(reader.UInt()); break;
+            case NetMessage.State:    HandleState(ref reader);            break;
+            case NetMessage.Rpc:      HandleRpc(ref reader, sender);      break;
+            case NetMessage.Message:  HandleMessage(peer, ref reader, sender); break;
+            case NetMessage.Ping:     HandlePing(peer, ref reader);       break;
+            case NetMessage.Pong:     HandlePong(ref reader);             break;
+            case NetMessage.PeerJoined: HandlePeerJoined(ref reader);     break;
+            case NetMessage.PeerLeft:   HandlePeerLeft(ref reader);       break;
+            case NetMessage.Kick:     _kickReason = reader.String();      break;
             default:
-                Console.Error.WriteLine($"[NetworkManager] Unknown packet type: {type}");
+                Console.Error.WriteLine($"[NetworkManager] unknown message id 0x{id:X2} from {peer}");
                 break;
         }
     }
 
-    // -- StateUpdate ----------------------------------------------------------
-
-    private void HandleStateUpdate(System.IO.BinaryReader br)
+    private void HandleHello(NetPeerHandle peer, ref NetReader reader)
     {
-        uint networkId = br.ReadUInt32();
-        int  len       = br.ReadInt32();
-        byte[] state   = len > 0 ? br.ReadBytes(len) : Array.Empty<byte>();
+        if (!IsServer) return;
+
+        var hello = NetProtocol.DecodeJson(ref reader);
+        int proto = hello?["proto"]?.GetValue<int>() ?? 0;
+
+        if (proto != NetProtocolVersion.Current)
+        {
+            // Refusing beats mis-decoding: a client one version behind would otherwise read
+            // every later frame at the wrong offsets and fail somewhere unrelated.
+            Send(peer, new NetWriter(NetMessage.Kick)
+                .String($"protocol {proto} does not match the server's {NetProtocolVersion.Current}").ToArray(),
+                NetDelivery.ReliableOrdered);
+            _transport?.Disconnect(peer, "protocol mismatch");
+            return;
+        }
+
+        if (_clients.Count >= _maxClients)
+        {
+            Send(peer, new NetWriter(NetMessage.Kick).String("server is full").ToArray(),
+                 NetDelivery.ReliableOrdered);
+            _transport?.Disconnect(peer, "full");
+            return;
+        }
+
+        int clientId = _nextClientId++;
+        string name  = Truncate(hello?["name"]?.GetValue<string>() ?? $"Player {clientId}", 32);
+
+        peer.Tag            = clientId;
+        _clients[clientId]  = peer;
+        _players[clientId]  = name;
+
+        var welcome = new JsonObject
+        {
+            ["proto"]    = NetProtocolVersion.Current,
+            ["clientId"] = clientId,
+            ["room"]     = Room,
+            ["players"]  = new JsonArray(_players
+                .Select(p => (JsonNode)new JsonObject { ["id"] = p.Key, ["name"] = p.Value })
+                .ToArray()),
+        };
+        Send(peer, NetProtocol.EncodeJson(NetMessage.Welcome, welcome), NetDelivery.ReliableOrdered);
+
+        // Everyone already in gets told; the newcomer learnt the roster from Welcome.
+        Broadcast(new NetWriter(NetMessage.PeerJoined).Int(clientId).String(name).ToArray(),
+                  NetDelivery.ReliableOrdered, exceptClientId: clientId);
+
+        OnClientConnected?.Invoke(clientId);
+        OnPlayerJoined?.Invoke(clientId, name);
+        Log($"client {clientId} '{name}' joined");
+    }
+
+    private void HandleWelcome(ref NetReader reader)
+    {
+        var welcome   = NetProtocol.DecodeJson(ref reader);
+        LocalClientId = welcome?["clientId"]?.GetValue<int>() ?? -1;
+        Room          = welcome?["room"]?.GetValue<string>() ?? Room;
+
+        _players.Clear();
+        if (welcome?["players"] is JsonArray roster)
+        {
+            foreach (var entry in roster)
+            {
+                int id = entry?["id"]?.GetValue<int>() ?? -1;
+                if (id >= 0) _players[id] = entry?["name"]?.GetValue<string>() ?? $"Player {id}";
+            }
+        }
+
+        OnConnectedToServer?.Invoke();
+        Log($"joined as client {LocalClientId}");
+    }
+
+    private void HandleSpawn(ref NetReader reader)
+    {
+        uint   networkId = reader.UInt();
+        string actorName = reader.String();
+        int    owner     = reader.Int();
+        byte[] state     = reader.Bytes();
+        OnSpawnObject?.Invoke(networkId, actorName, owner, state);
+    }
+
+    private void HandleState(ref NetReader reader)
+    {
+        uint   networkId = reader.UInt();
+        byte[] state     = reader.Bytes();
         Replication.HandleIncomingStateUpdate(networkId, state);
     }
 
-    // -- Rpc ------------------------------------------------------------------
-
-    private void HandleRpc(System.IO.BinaryReader br, int senderId)
+    private void HandleRpc(ref NetReader reader, int senderClientId)
     {
-        RpcSystem.DecodeRpcPacket(br,
-            out uint    networkId,
-            out bool    isServerRpc,
-            out int?    targetClientId,
-            out string  methodName,
-            out byte[]  argBytes);
+        uint   networkId = reader.UInt();
+        bool   toServer  = reader.Bool();
+        int    target    = reader.Int();
+        string method    = reader.String();
+        byte[] args      = reader.Bytes();
 
-        if (isServerRpc)
+        if (toServer) Rpc.HandleIncomingServerRpc(senderClientId, networkId, method, args);
+        else          Rpc.HandleIncomingClientRpc(networkId, method, args, target < 0 ? null : target);
+    }
+
+    private void HandleMessage(NetPeerHandle peer, ref NetReader reader, int senderClientId)
+    {
+        int    declared = reader.Int();
+        string type     = reader.String();
+        string json     = reader.String();
+
+        // The server stamps the sender itself. Trusting the client's own number would let any
+        // peer post as any other, which is the cheapest possible way to cheat.
+        int sender = IsServer ? senderClientId : declared;
+
+        JsonNode? payload = null;
+        if (json.Length > 0)
         {
-            // This is a client -> server RPC arriving at the server
-            Rpc.HandleIncomingServerRpc(senderId, networkId, methodName, argBytes);
+            try { payload = JsonNode.Parse(json); }
+            catch (JsonException) { payload = null; }
         }
-        else
-        {
-            // This is a server -> client RPC arriving at a client
-            Rpc.HandleIncomingClientRpc(networkId, methodName, argBytes, targetClientId);
-        }
-    }
 
-    // -- SpawnObject ----------------------------------------------------------
+        OnMessage?.Invoke(sender, type, payload);
 
-    private void HandleSpawnObject(System.IO.BinaryReader br)
-    {
-        // Client-side: the server has told us to instantiate an actor.
-        // The game layer is responsible for listening to this and creating the
-        // appropriate Actor type. Here we parse the packet and raise an event
-        // that the game can hook into.
-        uint   networkId    = br.ReadUInt32();
-        string actorName    = br.ReadString();
-        int    ownerClientId = br.ReadInt32();
-        int    stateLen     = br.ReadInt32();
-        byte[] initialState = stateLen > 0 ? br.ReadBytes(stateLen) : Array.Empty<byte>();
-
-        Console.WriteLine(
-            $"[NetworkManager] SpawnObject: networkId={networkId} name='{actorName}' owner={ownerClientId}");
-
-        // Raise event for the game layer to create the actor
-        OnSpawnObject?.Invoke(networkId, actorName, ownerClientId, initialState);
-    }
-
-    /// <summary>
-    /// Raised on clients when the server instructs them to spawn a networked actor.
-    /// The game layer should create the appropriate Actor, attach a NetworkObject,
-    /// set its NetworkId/OwnerClientId/IsOwner flags, apply the initialState via
-    /// <see cref="NetworkObject.ApplyRemoteState"/>, and register it with
-    /// <see cref="ReplicationSystem.RegisterObject"/>.
-    /// </summary>
-    public event Action<uint, string, int, byte[]>? OnSpawnObject;
-
-    // -- DespawnObject --------------------------------------------------------
-
-    private void HandleDespawnObject(System.IO.BinaryReader br)
-    {
-        uint networkId = br.ReadUInt32();
-        Console.WriteLine($"[NetworkManager] DespawnObject: networkId={networkId}");
-        OnDespawnObject?.Invoke(networkId);
-    }
-
-    /// <summary>
-    /// Raised on clients when the server instructs them to destroy a networked actor.
-    /// </summary>
-    public event Action<uint>? OnDespawnObject;
-
-    // -- ClientConnected (server -> client: "here is your client ID") ---------
-
-    private void SendClientConnectedPacket(NetPeer peer, int clientId)
-    {
-        using var ms = new System.IO.MemoryStream();
-        using var bw = new System.IO.BinaryWriter(ms);
-        bw.Write((byte)PacketType.ClientConnected);
-        bw.Write(clientId);
-        bw.Flush();
-
-        var writer = new NetDataWriter();
-        writer.Put(ms.ToArray());
-        peer.Send(writer, DeliveryMethod.ReliableOrdered);
-    }
-
-    private void HandleClientConnected(System.IO.BinaryReader br)
-    {
-        // Client-side: server is telling us our local client ID
-        int assignedId = br.ReadInt32();
-        LocalClientId = assignedId;
-        Console.WriteLine($"[NetworkManager] Assigned LocalClientId={assignedId}");
-    }
-
-    // -- Ping -----------------------------------------------------------------
-
-    private void SendPingProbe()
-    {
-        if (_serverPeer == null) return;
-        using var ms = new System.IO.MemoryStream();
-        using var bw = new System.IO.BinaryWriter(ms);
-        bw.Write((byte)PacketType.Ping);
-        bw.Write(Environment.TickCount64); // echo timestamp
-        bw.Flush();
-
-        var writer = new NetDataWriter();
-        writer.Put(ms.ToArray());
-        _serverPeer.Send(writer, DeliveryMethod.Unreliable);
-    }
-
-    private void HandlePingPacket(System.IO.BinaryReader br, int senderId)
-    {
-        long timestamp = br.ReadInt64();
-
+        // A server relays to everyone else, so a script's sendToAll reaches every peer without
+        // the game writing a relay of its own.
         if (IsServer)
         {
-            // Echo back to the client that sent it
-            NetPeer? peer;
-            lock (_peersLock) { _peers.TryGetValue(senderId, out peer); }
-            if (peer == null) return;
-
-            using var ms = new System.IO.MemoryStream();
-            using var bw = new System.IO.BinaryWriter(ms);
-            bw.Write((byte)PacketType.Ping);
-            bw.Write(timestamp);
-            bw.Flush();
-
-            var writer = new NetDataWriter();
-            writer.Put(ms.ToArray());
-            peer.Send(writer, DeliveryMethod.Unreliable);
+            Broadcast(new NetWriter(NetMessage.Message).Int(sender).String(type).String(json).ToArray(),
+                      NetDelivery.ReliableOrdered, exceptClientId: sender);
         }
-        else
+    }
+
+    private void HandlePing(NetPeerHandle peer, ref NetReader reader)
+    {
+        double clientTime = reader.Double();
+        if (!IsServer) return;
+        Send(peer, new NetWriter(NetMessage.Pong).Double(clientTime).Double(Now()).ToArray(),
+             NetDelivery.Unreliable);
+    }
+
+    private void HandlePong(ref NetReader reader)
+    {
+        double sentAt = reader.Double();
+        _ = reader.Double();                 // server clock, for a future clock sync
+        Ping = (int)Math.Max(0, Now() - sentAt);
+    }
+
+    private void HandlePeerJoined(ref NetReader reader)
+    {
+        int    id   = reader.Int();
+        string name = reader.String();
+        _players[id] = name;
+        OnPlayerJoined?.Invoke(id, name);
+    }
+
+    private void HandlePeerLeft(ref NetReader reader)
+    {
+        int id = reader.Int();
+        _players.Remove(id);
+        OnPlayerLeft?.Invoke(id);
+    }
+
+    // -------------------------------------------------------------------------
+    // Sending
+    // -------------------------------------------------------------------------
+
+    /// <summary>Sends a raw frame to the server. No-op unless this peer is a client.</summary>
+    public void SendToServer(byte[] frame, NetDelivery delivery = NetDelivery.ReliableOrdered)
+    {
+        if (_serverPeer != null) { Send(_serverPeer, frame, delivery); return; }
+
+        // The host half of a loopback session has no server peer -- it *is* the server -- so
+        // the frame goes over the loopback client's socket instead.
+        _loopbackPeer?.SendUpstream(frame, delivery);
+    }
+
+    private void SendUpstream(byte[] frame, NetDelivery delivery)
+    {
+        if (_serverPeer != null) Send(_serverPeer, frame, delivery);
+    }
+
+    /// <summary>Sends a raw frame to one client. Server only.</summary>
+    public void SendToClient(int clientId, byte[] frame, NetDelivery delivery = NetDelivery.ReliableOrdered)
+    {
+        if (_clients.TryGetValue(clientId, out var peer)) Send(peer, frame, delivery);
+    }
+
+    /// <summary>Sends a raw frame to every client. Server only.</summary>
+    public void SendToAll(byte[] frame, NetDelivery delivery = NetDelivery.ReliableOrdered,
+                          int excludeClientId = -1)
+        => Broadcast(frame, delivery, excludeClientId);
+
+    private void Broadcast(byte[] frame, NetDelivery delivery, int exceptClientId = -1)
+    {
+        foreach (var (clientId, peer) in _clients)
         {
-            // Client: compute RTT
-            long now = Environment.TickCount64;
-            Ping = (int)(now - timestamp);
+            if (clientId == exceptClientId) continue;
+            Send(peer, frame, delivery);
         }
+    }
+
+    private void Send(NetPeerHandle peer, byte[] frame, NetDelivery delivery)
+        => _transport?.Send(peer, frame, delivery);
+
+    // -------------------------------------------------------------------------
+    // The script channel
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Sends a named message to every other peer. This is what a game script's
+    /// <c>Network.sendToAll(type, data)</c> reaches.
+    /// </summary>
+    /// <remarks>
+    /// A client sends it to the server, which relays it on. The engine does not interpret the
+    /// payload; it only guarantees that the sender id the receiver sees is the one the server
+    /// assigned, not one the sender chose.
+    /// </remarks>
+    public void SendMessageToAll(string type, JsonNode? payload = null)
+    {
+        if (!IsRunning) return;
+
+        string json  = payload?.ToJsonString() ?? "";
+        int    sender = LocalClientId;
+        byte[] frame  = new NetWriter(NetMessage.Message).Int(sender).String(type).String(json).ToArray();
+
+        if (IsServer) Broadcast(frame, NetDelivery.ReliableOrdered);
+        else          SendToServer(frame);
+    }
+
+    /// <summary>Sends a named message to one peer. Server only; a client's goes via the server.</summary>
+    public void SendMessageTo(int clientId, string type, JsonNode? payload = null)
+    {
+        if (!IsRunning) return;
+        byte[] frame = new NetWriter(NetMessage.Message)
+            .Int(LocalClientId).String(type).String(payload?.ToJsonString() ?? "").ToArray();
+
+        if (IsServer) SendToClient(clientId, frame);
+        else          SendToServer(frame);
+    }
+
+    // -------------------------------------------------------------------------
+    // Spawning
+    // -------------------------------------------------------------------------
+
+    /// <summary>Tells every client to build a networked actor. Server only.</summary>
+    internal void BroadcastSpawn(uint networkId, string actorName, int ownerClientId, byte[] state)
+        => Broadcast(new NetWriter(NetMessage.Spawn)
+            .UInt(networkId).String(actorName).Int(ownerClientId).Bytes(state).ToArray(),
+            NetDelivery.ReliableOrdered);
+
+    /// <summary>Tells every client to destroy a networked actor. Server only.</summary>
+    internal void BroadcastDespawn(uint networkId)
+        => Broadcast(new NetWriter(NetMessage.Despawn).UInt(networkId).ToArray(),
+                     NetDelivery.ReliableOrdered);
+
+    /// <summary>Allocates the next network id. Server only.</summary>
+    internal uint AllocateNetworkId()
+    {
+        if (!IsServer)
+            throw new InvalidOperationException("Network ids are allocated by the server.");
+        return _nextNetworkId++;
     }
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
-    private static int GetClientId(NetPeer peer)
-        => peer.Tag is int id ? id : -1;
+    private static double Now() => (double)Environment.TickCount64;
+
+    private static string Truncate(string value, int max)
+        => value.Length <= max ? value : value[..max];
+
+    private void Log(string message)
+    {
+        if (_isLoopbackClientHalf) return;   // one line per event, not two
+        Console.WriteLine($"[NetworkManager] {message}");
+    }
 
     // -------------------------------------------------------------------------
     // IDisposable
@@ -596,20 +817,7 @@ public class NetworkManager : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        if (IsServer) StopServer();
-        if (IsClient) Disconnect();
-
-        _netManager?.Stop();
-        _netManager = null;
-
+        Teardown();
         if (Instance == this) Instance = null;
-
-        GC.SuppressFinalize(this);
     }
-
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
-    private readonly record struct InboundPacket(byte[] Data, int SenderId);
 }

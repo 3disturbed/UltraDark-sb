@@ -163,6 +163,16 @@ public static class SceneViews
             row["components"] = components;
         }
 
+        // Attachment, only when there is any -- most actors are unattached, and a "parent":
+        // null on every row would cost more tokens than the fact is worth.
+        if (actor.Parent is { } parent) row["parent"] = parent.Id;
+        if (actor.Children.Count > 0)
+        {
+            var children = new JsonArray();
+            foreach (var child in actor.Children) children.Add(child.Id);
+            row["children"] = children;
+        }
+
         var t3d = actor.GetComponent<Transform3D>();
         row["position"] = t3d != null ? ValueConverter.ToJson(t3d.Position) : ValueConverter.ToJson(actor.Transform.Position);
         return row;

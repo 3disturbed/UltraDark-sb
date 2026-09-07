@@ -44,6 +44,7 @@ public sealed class JintRuntime
         "onAwake", "onStart", "onUpdate", "onFixedUpdate", "onLateUpdate", "onDestroy",
         "onCollisionEnter", "onCollisionStay", "onCollisionExit",
         "onTriggerEnter", "onTriggerStay", "onTriggerExit",
+        "onNetworkMessage",
     };
 
     // -------------------------------------------------------------------------
@@ -236,6 +237,7 @@ public sealed class JintRuntime
         _engine.SetValue("Physics",   Bridge.PhysicsProxy);
         _engine.SetValue("Time",      Bridge.TimeProxy);
         _engine.SetValue("Network",   Bridge.NetworkProxy);
+        _engine.SetValue("DG",        Bridge.DarksGamesProxy);
         _engine.SetValue("UI",        Bridge.UiProxy);
 
         // The bundled scripts call log() with no namespace.

@@ -698,6 +698,44 @@ public class ExportPipeline
         return source;
     }
 
+    /// <summary>
+    /// The two script tags and the boot line a Darks Games build carries.
+    /// </summary>
+    /// <remarks>
+    /// Order is not cosmetic. <c>dg-overlay.v1.js</c> strips <c>?dg_party</c> and
+    /// <c>?dg_launch</c> out of the URL the moment it executes, so it has to run before any game
+    /// code reads <c>location</c> — which, with <c>defer</c>, means before the module script. The
+    /// account SDK precedes it because the overlay asks it for a token. The Node exporter emits
+    /// exactly this, and a test holds the two together.
+    /// </remarks>
+    internal static (string Head, string Boot) DarksGamesTags(string? slug, string origin = "https://darksgames.app")
+    {
+        slug = slug?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(slug)) return (string.Empty, string.Empty);
+
+        string head =
+            $"<script src=\"{origin}/sdk/dg-account.v1.js\" crossorigin=\"anonymous\" defer></script>\n"
+          + $"<script src=\"{origin}/sdk/dg-overlay.v1.js\" crossorigin=\"anonymous\" defer></script>\n";
+
+        // The join handler is the one piece a game must own, so the export wires the default:
+        // put the code in the URL and reload, which re-runs whatever deep-link path the game
+        // already has. A game that can join in place overrides `window.sbJoinRoom`.
+        string boot =
+            "\n// ---- Darks Games ----\n"
+          + "// Identity, friends, presence and Join, wired to this build. A player who is signed\n"
+          + "// out, offline or blocked from the hub sees none of it and the game is unaffected.\n"
+          + "import { DarksGames } from './engine/src/dg/index.js';\n"
+          + "\n"
+          + "const dg = new DarksGames();\n"
+          + "window.DG = dg;\n"
+          + "await dg.init({\n"
+          + $"    game: {JsonSerializer.Serialize(slug)},\n"
+          + "    onJoin: (code) => (window.sbJoinRoom ? window.sbJoinRoom(code) : false),\n"
+          + "}).catch((err) => console.warn('[DarksGames]', err.message));\n";
+
+        return (head, boot);
+    }
+
     /// <summary>Writes the page, the installable files and a note on serving, from the shared templates.</summary>
     private void WriteWebIndex(PlatformConfig config, string projectRoot, string platformOutputDir, string version, string templatesDir)
     {
@@ -715,6 +753,12 @@ public class ExportPipeline
         // today's.
         string? headSha = GitInfo.TryReadHeadSha(projectRoot);
         string buildId = $"{slug}-{version}-{(headSha != null ? headSha.Substring(0, 8) : "local")}";
+
+        // The Darks Games account and social layer. Its slug is the whole switch: a build
+        // with one carries the two SDKs and the engine's DG layer, and a build without one
+        // loads nothing from the hub.
+        var (dgHead, dgBoot) = DarksGamesTags(config.DarksGamesSlug);
+        if (dgHead.Length > 0) Log($"  Staged: Darks Games SDKs for '{config.DarksGamesSlug}'");
 
         string pwaHead = string.Empty;
         string pwaBoot = string.Empty;
@@ -756,6 +800,8 @@ public class ExportPipeline
             ["build"]      = System.Net.WebUtility.HtmlEncode(buildId),
             ["pwaHead"]    = pwaHead,
             ["pwaBoot"]    = pwaBoot,
+            ["dgHead"]     = dgHead,
+            ["dgBoot"]     = dgBoot,
         }), Utf8NoBom);
         Log($"  Written: {indexPath}");
 

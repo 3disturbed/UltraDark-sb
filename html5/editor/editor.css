@@ -246,6 +246,15 @@ html, body {
 .sb-actor-row.is-selected { background: rgba(91, 141, 217, 0.26); }
 .sb-actor-row.is-inactive { opacity: 0.45; }
 
+/* Attachment: the branch glyph reads the indentation for anyone who cannot see it,
+   and the drop target has to be obvious before the pointer is released. */
+.sb-actor-branch { color: var(--dim); margin-right: 2px; }
+.sb-actor-row.is-drop-target {
+    background: rgba(91, 141, 217, 0.4);
+    outline: 1px dashed var(--accent);
+    outline-offset: -1px;
+}
+
 .sb-actor-icon { width: 14px; text-align: center; color: var(--dim); }
 .sb-actor-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
