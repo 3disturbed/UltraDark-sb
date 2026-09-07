@@ -164,6 +164,41 @@ test('a handler that throws does not stop the others or the frame', () => {
     } finally { manager.dispose(); }
 });
 
+test('a refused handshake is reported once, however the socket spells it', () => {
+    // The room server answers 404 for a room that has ended, so the socket never opens.
+    // Node raises `error` and then no `close` at all — the socket sits in CONNECTING for
+    // good — while a browser raises both, in either order. A player who followed a dead
+    // link has to be told in all three cases, and told exactly once: a second disconnect
+    // arrives after they are already back in the menu, and tears down whatever they
+    // started there.
+    NetworkManager.instance?.dispose();
+
+    for (const spelling of ['error alone', 'error then close', 'close then error']) {
+        const sockets = [];
+        const manager = NetworkManager._detached();
+        const reasons = [];
+        manager.on('disconnected', (reason) => reasons.push(reason));
+
+        manager.connectToUrl('ws://127.0.0.1:1/ws?room=ZZZZZZ', {
+            socketFactory: (url) => {
+                const socket = { url, readyState: 0, close() { this.readyState = 3; } };
+                sockets.push(socket);
+                return socket;
+            },
+        });
+
+        const raise = {
+            error: () => sockets[0].onerror?.({ type: 'error' }),
+            close: () => sockets[0].onclose?.({ code: 1006, wasClean: false }),
+        };
+        for (const event of spelling.split(' then ')) raise[event.replace(' alone', '')]();
+
+        manager.tick(1 / 60);
+        assert.deepEqual(reasons, ['transportError'], spelling);
+        manager.dispose();
+    }
+});
+
 // ---- Replication ------------------------------------------------------------
 
 class Health extends Component {
