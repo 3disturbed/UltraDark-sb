@@ -169,11 +169,9 @@ function layoutPips(slot, x, y) {
     var row = pips[slot];
     var count2 = pipCounts[slot];
     for (var p = 0; p < row.length; p++) {
+        if (p >= count2) { row[p].active = false; continue; }
+        row[p].active = true;
         var s = row[p].getComponent("SpriteRenderer");
-        if (p >= count2) {
-            if (s) { s.tint = { R: 0, G: 0, B: 0, A: 0 }; }
-            continue;
-        }
         var col = p % pipRow;
         var line = Math.floor(p / pipRow);
         var wide = Math.min(count2, pipRow);
@@ -227,18 +225,21 @@ function hideAll() {
     for (var i = 0; i < maxCards; i++) { setVisible(i, 0); }
 }
 
+// Shown and hidden by `active`, not by a transparent tint.
+//
+// Alpha 0 hides a sprite in the browser and does NOT reliably hide one in the
+// native renderer, so a board built at start and "hidden" this way left a white
+// card sitting at the world origin, on top of the pilot, for the whole run. It
+// is invisible in every test and in the web build, and it is the first thing you
+// see in a native one. `active` means the same thing to both engines.
 function setVisible(i, on) {
     if (i >= cards.length) { return; }
-    var a = on ? 255 : 0;
-    if (cardSprites[i])   { var t = cardSprites[i].tint;   cardSprites[i].tint   = { R: t.r !== undefined ? t.r : 120, G: t.g !== undefined ? t.g : 120, B: t.b !== undefined ? t.b : 140, A: a }; }
-    if (borderSprites[i]) { borderSprites[i].tint = { R: 235, G: 235, B: 245, A: a }; }
-    if (!on) {
-        var row = pips[i];
-        if (row) {
-            for (var p = 0; p < row.length; p++) {
-                var s = row[p].getComponent("SpriteRenderer");
-                if (s) { s.tint = { R: 0, G: 0, B: 0, A: 0 }; }
-            }
-        }
-    }
+    var live = on ? true : false;
+
+    if (cards[i])   { cards[i].active = live; }
+    if (borders[i]) { borders[i].active = live; }
+
+    var row = pips[i];
+    if (!row) { return; }
+    for (var p = 0; p < row.length; p++) { row[p].active = live; }
 }
