@@ -67,13 +67,28 @@ export class WebSocketTransport {
             this._events.push(() => this.onFrame?.(this._peer, frame));
         };
         socket.onclose = (event) => {
-            this._socket = null;
-            const reason = event?.wasClean === false ? 'transportError' : 'closedByPeer';
-            this._events.push(() => this.onPeerDisconnected?.(this._peer, reason));
+            this._reportGone(socket, event?.wasClean === false ? 'transportError' : 'closedByPeer');
         };
-        // `onerror` is always followed by `onclose`, so there is nothing to raise here
-        // that close will not raise more accurately.
-        socket.onerror = () => {};
+        // `onerror` is NOT always followed by `onclose`. A connection that never
+        // opened raises error alone -- `close` is only fired once the handshake has
+        // succeeded -- so a refused upgrade reported nothing at all and the caller
+        // waited for ever. That is the ordinary case, not an exotic one: joining a
+        // room that has ended is a 404 on the upgrade, and "nothing happens" is the
+        // worst way to say "that room is gone".
+        socket.onerror = () => this._reportGone(socket, 'transportError');
+    }
+
+    /**
+     * Reports a socket as gone, once.
+     *
+     * An established connection that errors DOES then close, so without the identity
+     * check the same disconnect would be raised twice -- and a socket replaced by a
+     * reconnect must not be able to report a disconnect for the one that replaced it.
+     */
+    _reportGone(socket, reason) {
+        if (this._socket !== socket) return;
+        this._socket = null;
+        this._events.push(() => this.onPeerDisconnected?.(this._peer, reason));
     }
 
     stop() {
