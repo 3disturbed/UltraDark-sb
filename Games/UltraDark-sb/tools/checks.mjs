@@ -185,6 +185,12 @@ test('an enemy standing on the pilot can still be shot', async () => {
             g.pilot().invoke('setPilot', p);
             g.swarm().invoke('clearAll');
 
+            // The shots the LAST pilot left in the air. Releasing the mouse
+            // stops new ones; it does not recall the ones already flying, and
+            // they are travelling rightwards along y = 0, which is exactly
+            // where the next target is about to be put.
+            g.bullets().invoke('clearAll');
+
             const ship = g.find('Player');
             ship.transform.x = 0;
             ship.transform.y = 0;
@@ -742,7 +748,27 @@ test('every one of the eight pilots flies and fires', async () => {
             g.director().invoke('forceWave', 1);
             g.director().invoke('forceBudget', 0);
             g.pilot().invoke('setPilot', p);
+
+            // Clear, let the field settle, then clear again.
+            //
+            // A kill is not over when the enemy is. The shots the last pilot
+            // fired are still flying rightwards along y = 0 -- exactly where the
+            // next target is about to be put -- and the mods granted each
+            // intermission add shockwaves, shrapnel and burns that go off in the
+            // frames after a kill. Both were landing on the next pilot's target
+            // before it had been shot at once, which is what made this test fail
+            // about one run in four. It moved around because which mods a run is
+            // holding by the eighth pilot is random.
             g.swarm().invoke('clearAll');
+            g.bullets().invoke('clearAll');
+            await g.step(6);
+            g.swarm().invoke('clearAll');
+            g.bullets().invoke('clearAll');
+
+            // The settling frames may have ended the wave and opened the draft,
+            // and a pilot in the draft is frozen. Put it back in a wave.
+            g.director().invoke('forceWave', 1);
+            g.director().invoke('forceBudget', 0);
 
             // Park the pilot: it drifts between iterations, and a target that
             // lands outside auto-aim range makes this test fail on whichever
@@ -751,11 +777,18 @@ test('every one of the eight pilots flies and fires', async () => {
             ship.transform.x = 0;
             ship.transform.y = 0;
 
-            g.swarm().invoke('spawnKind', 0, 130, 0, 2, 0.001);   // a Drone, held still
+            const spawned = g.swarm().invoke('spawnKind', 0, 130, 0, 2, 0.001);  // a Drone, held still
             await g.step(2);
 
             const before = g.swarm().invoke('alive');
-            assert.equal(before, 1, 'the test target did not spawn');
+            assert.equal(before, 1,
+                `the test target did not survive spawning: alive=${before} `
+                + `spawnKind=${spawned} phase=${g.director().invoke('getPhase')} `
+                + `wave=${g.director().invoke('getWave')} pilot=${p} `
+                + `enemyActors=${g.byTag('Enemy').length} `
+                + `shots=${g.byTag('Shot').length}/${g.byTag('ShotEnemy').length} `
+                + `pilotAlive=${g.pilot().invoke('isAlive')} `
+                + `| ${g.logs.slice(-4).join(' // ')}`);
 
             g.mouse(0, true);
             let killed = false;
