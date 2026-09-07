@@ -78,28 +78,7 @@ export function createScriptGlobals(actor, services = {}) {
     };
 
     // ---- transform3d — null until the actor has a Transform3D -----------------
-    let cachedTransform3D = null;
-    let cachedTransform3DProxy = null;
-    function transform3DProxy() {
-        const t = actor.transform3D;
-        if (!t) return null;
-        if (t !== cachedTransform3D) {
-            cachedTransform3D = t;
-            cachedTransform3DProxy = {
-                get x() { return t.position.x; }, set x(v) { t.x = Number(v); },
-                get y() { return t.position.y; }, set y(v) { t.y = Number(v); },
-                get z() { return t.position.z; }, set z(v) { t.z = Number(v); },
-                get rotX() { return t.eulerAngles.x; },
-                set rotX(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(Number(v), e.y, e.z); },
-                get rotY() { return t.eulerAngles.y; },
-                set rotY(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(e.x, Number(v), e.z); },
-                get rotZ() { return t.eulerAngles.z; },
-                set rotZ(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(e.x, e.y, Number(v)); },
-                lookAt(x, y, z) { t.lookAt(new Vec3Class(Number(x), Number(y), Number(z))); },
-            };
-        }
-        return cachedTransform3DProxy;
-    }
+    const transform3DProxy = makeTransform3DAccessor(() => actor.transform3D);
 
     // ---- Input ---------------------------------------------------------------
     const inputProxy = {
@@ -419,6 +398,59 @@ function toCss(value) {
 /** The width of the widest line, which is what a caller laying out a panel needs. */
 function measureText(text, scale) { return widestLine(text, scale); }
 
+/**
+ * Builds the `transform3d` accessor a script sees: x/y/z, euler rotation, scale
+ * and `lookAt`, or null until the actor has a Transform3D.
+ *
+ * One factory rather than two copies, because the script's own actor and an
+ * actor it created must expose exactly the same thing -- they did not, and the
+ * difference was invisible until a script tried to build a world.
+ *
+ * @param {() => object|null} read Fetches the live Transform3D each time.
+ */
+function makeTransform3DAccessor(read) {
+    let cached = null;
+    let proxy = null;
+
+    return function transform3d() {
+        const t = read();
+        if (!t) return null;
+        if (t !== cached) {
+            cached = t;
+            proxy = {
+                get x() { return t.position.x; }, set x(v) { t.x = Number(v); },
+                get y() { return t.position.y; }, set y(v) { t.y = Number(v); },
+                get z() { return t.position.z; }, set z(v) { t.z = Number(v); },
+                get rotX() { return t.eulerAngles.x; },
+                set rotX(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(Number(v), e.y, e.z); },
+                get rotY() { return t.eulerAngles.y; },
+                set rotY(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(e.x, Number(v), e.z); },
+                get rotZ() { return t.eulerAngles.z; },
+                set rotZ(v) { const e = t.eulerAngles; t.eulerAngles = new Vec3Class(e.x, e.y, Number(v)); },
+
+                // Scale, which the 2D transform has always had and this one did
+                // not. Every mesh in the contract is a UNIT primitive, so without
+                // this a script could place a cube but never make a wall of one.
+                get scaleX() { return t.localScale.x; },
+                set scaleX(v) { const c = t.localScale; t.localScale = new Vec3Class(Number(v), c.y, c.z); },
+                get scaleY() { return t.localScale.y; },
+                set scaleY(v) { const c = t.localScale; t.localScale = new Vec3Class(c.x, Number(v), c.z); },
+                get scaleZ() { return t.localScale.z; },
+                set scaleZ(v) { const c = t.localScale; t.localScale = new Vec3Class(c.x, c.y, Number(v)); },
+
+                lookAt(x, y, z) { t.lookAt(new Vec3Class(Number(x), Number(y), Number(z))); },
+
+                /** Position and scale at once — one matrix rebuild, not six. */
+                set(x, y, z, sx = 1, sy = 1, sz = 1) {
+                    t.position = new Vec3Class(Number(x), Number(y), Number(z));
+                    t.localScale = new Vec3Class(Number(sx), Number(sy), Number(sz));
+                },
+            };
+        }
+        return proxy;
+    };
+}
+
 export function wrapActor(target) {
     if (!target || target.isDestroyed) return null;
 
@@ -438,9 +470,11 @@ export function wrapActor(target) {
             get rotation() { return target.transform.rotation; },
             set rotation(value) { target.transform.rotation = Number(value); },
         },
+        get transform3d() { return read3D(); },
         getComponent(name) { return wrapComponent(target.getComponent(name)); },
         destroy() { target.destroy(); },
     };
+    const read3D = makeTransform3DAccessor(() => target.transform3D);
     proxyToActor.set(proxy, target);
     return proxy;
 }

@@ -13,6 +13,7 @@
 // -----------------------------------------------------------------------------
 
 import './core/MissingComponent.js';
+import './core/Transform3D.js';
 
 import './rendering/Camera2D.js';
 import './rendering/Camera3D.js';
