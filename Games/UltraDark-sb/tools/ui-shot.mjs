@@ -11,7 +11,7 @@
 // not built at.
 //
 //   node tools/ui-shot.mjs [state] [width] [height]
-//   state: hangar | wave | draft | dead
+//   state: hangar | wave | boss | draft | dead
 import fs from 'node:fs';
 import { boot } from './harness.mjs';
 
@@ -28,6 +28,14 @@ try {
     } else if (state === 'wave') {
         g.director().invoke('forceLaunch');
         await g.step(60);
+    } else if (state === 'boss') {
+        // The marquee bar is the widest thing the HUD ever draws and the only
+        // one sized from the viewport rather than fixed, so it is the one most
+        // able to hang off the edge of a window it was not built in.
+        g.director().invoke('forceLaunch');
+        await g.step(10);
+        g.director().invoke('forceWave', 5);
+        await g.step(90);
     } else if (state === 'dead') {
         g.director().invoke('forceLaunch');
         await g.step(20);

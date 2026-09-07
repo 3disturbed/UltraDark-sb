@@ -1,6 +1,6 @@
 # HUD Kit
 
-A stat panel, a message line and a pause overlay — in screen space, with real text.
+A stat panel, boss bars, a message line and a pause overlay — in screen space, with real text.
 
 ## Why this exists
 
@@ -58,6 +58,50 @@ nobody can compare to their last one at a glance.
 A stat whose script is not in the scene yet is retried each frame rather than dropped, so a
 manager spawned at runtime still lands.
 
+## Bars for things that come and go
+
+A boss, a captured point, a building on fire. `trackers` is a wide bar across the top of the
+screen that **appears when the thing does and is gone when it is**:
+
+```js
+var trackers = [
+    { tag: "Boss", source: "getHealth01", name: "getName", colourSource: "getBarColour",
+      colour: "#ff4d4d", flag: "isInvuln", flagText: "-- SHIELDED" },
+];
+```
+
+Each tracker names a **tag**, not a script, and that is the whole of it: the bar's lifetime *is*
+the actor's lifetime. Nothing on the other side has to remember to show it, hide it, or tell the
+HUD that the fight is over — a boss that dies in a way nobody anticipated still takes its bar with
+it, and so does one killed by a wipe, a scene change or a bug.
+
+- `source` — a 0..1 getter, like a bar's.
+- `name` — the heading. A getter name if the actor knows what it is called, a plain string if you
+  do. Empty hides the heading.
+- `colour` / `colourSource` — a fixed hex string, or a getter returning one, for a bar the colour
+  of the thing it is measuring. That is how a player knows without being told that this is a
+  different boss from the last one, or that the same boss has changed.
+- `flag` / `flagText` — a getter returning 1 while the target **cannot be hurt**, and the word to
+  say about it.
+
+That last pair is the one worth wiring. A shielded boss and an unshielded one look identical, and
+one of them ignores every shot you land; a player who cannot tell them apart concludes their gun
+is broken. It is said twice on purpose — the fill goes grey, which is the half read without
+looking, and the heading says the word, which is the half that explains it.
+
+The word goes on the **heading** and not on the bar because a bar draws its text in the same
+colour as its fill: text on a bar is legible over the empty part and invisible over the full part,
+which is to say invisible exactly while the boss is shielded and healthy.
+
+The actor is looked up by tag **every frame and never cached**. A cached proxy to a destroyed
+actor is a bar that keeps reporting the health of something that is not there — a full red bar
+over an empty arena. A tag lookup is a scan of the scene, so this is for a handful of things, not
+a hundred.
+
+`trackerWidth` (0.42 of the viewport), `trackerMax` (620), `trackerMin` (220) and `trackerHeight`
+size it; it is re-measured every frame against `UI.width`, so it is correct on a phone and correct
+when the window changes under it.
+
 ## The rest of it
 
 ```js
@@ -103,5 +147,7 @@ are rounded, because a bitmap font at 1.5× is mush.
 - **No layout engine.** Rows stack at a fixed height. Two columns, or a bar that grows with its
   label, is a copy of this file with different arithmetic, not a flag.
 - **One player.** Split-screen wants one of these per viewport, and the contract has one viewport.
+- **Trackers stack, they do not compete.** Two bosses at once give two bars down the top of the
+  screen, in the order listed. There is no "most important one" logic, and there should not be.
 - It calls `UI.clear()` in `onDestroy`, which drops **this script's** elements only — so a scene
   change cannot leave the last scene's HUD on screen, and cannot take another script's with it.

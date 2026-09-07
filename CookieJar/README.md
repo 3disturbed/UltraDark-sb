@@ -8,7 +8,7 @@ Install one from the editor's Cookie Jar panel, or ask the assistant — `search
 
 ## What is in the jar
 
-Thirteen cookies. **The `engines` field is the first thing to check** — a `csharp` cookie is no use
+Fifteen cookies. **The `engines` field is the first thing to check** — a `csharp` cookie is no use
 in a phase 1 HTML5 prototype, which is where every game starts, and a `js` cookie is not drawn in
 a native build.
 
@@ -27,6 +27,8 @@ unchanged in the browser and under Jint. Nothing to compile.
 | **`entity-ledger`** | Forty enemies in one script instead of forty script engines — a row per entity, actors that carry only a sprite and a collider, and the four rules that make a ledger safe: removal swaps, iterate backwards, a cascade must not recurse, and colliders exist so projectiles can find what they hit. |
 | **`stacking-upgrades`** | A bag of upgrades that stack, recomputed from scratch every time and never deduplicated, so two copies are exactly two applications. Effects are a data table rather than a switch, so the cards can read what the maths reads. |
 | **`pickup-drops`** | Coins and hearts on the floor: pooled, timed, blinking before they expire, and magnetised by an upgrade the collector holds. Collecting one is a single `onPickup(kind, value)`. |
+| **`hud-kit`** | The HUD in screen space, with real text: a panel of labelled bars and formatted stats that read themselves off your scripts, a message line, a pause/game-over overlay, and boss bars that appear and vanish with the actor they are measuring. What used to be five coloured rectangles floating over the player's head. |
+| **`screen-effects`** | Shake, flash, fade and hit-stop — the four cheapest things that change how a hit feels. Runs in `onLateUpdate` so it offsets the camera-follow instead of fighting it, and takes back last frame's offset before adding this one's, which is the difference between a shake and a slow drift away from the thing you are following. |
 | **`draft-picker`** | Stop the round and ask a question: one of N cards, chosen by number key or by walking into one. In world space because there is no viewport, and said in colour and pips because there is no font. The board knows nothing about what is on the cards. |
 
 ### C# — for the native engine

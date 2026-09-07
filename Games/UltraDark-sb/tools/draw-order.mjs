@@ -47,6 +47,8 @@ const EXPECT = [
     { match: /^NightOverlay$/,     band: 'dark',  order: 14, what: 'THE DARK' },
 
     { match: /^Fx$/,               band: 'light', order: 15, what: 'muzzle flash and explosions' },
+    { match: /^BossBar$/,          band: 'light', order: 16, what: "the boss bar's track" },
+    { match: /^BossBarFill$/,      band: 'light', order: 17, what: "the boss bar's fill" },
 ];
 
 // The HUD and the draft board are not in this ladder any more, and that is the

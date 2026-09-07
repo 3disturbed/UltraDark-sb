@@ -46,6 +46,20 @@ var BRUTE_PRIME_SPLIT = 6;
 var depthBoss = 0.45;
 var depthZone = 0.35;      // under the enemies standing in it, over the floor
 
+// The bar over its head, in world space. The HUD carries the same number at the
+// top of the screen, and both are worth having: the marquee is what you read
+// between attacks, this is what you read WHILE dodging, because it is already
+// where your eyes are.
+//
+// Above the dark on purpose. THE ULTRADARK turns the overlay up to 0.98, and a
+// health bar under that is a health bar nobody can see during the one fight
+// that most needs one.
+var barWidth     = 0;      // from the radius, at configure()
+var barHeight    = 7;
+var barLift      = 30;     // above the top of the body
+var depthBarBack = 0.86;
+var depthBarFill = 0.87;
+
 var contactDamage   = 1;    // everything does one; the pilot has three
 var contactCooldown = 0.85;
 
@@ -73,6 +87,9 @@ var vx = 0, vy = 0;
 
 var sprite = null;
 var player = null, pilot = null, director = null, bullets = null, swarm = null;
+
+var barBack = null, barBackSprite = null;
+var barFill = null, barFillSprite = null;
 
 var zones = [];         // NULL SHEPHERD's dark patches: actor, x, y, r, life
 
@@ -118,6 +135,79 @@ function dress() {
 
     var col = actor.getComponent("BoxCollider2D");
     if (col) { col.size = { x: BOSS_RAD[kind] * 2, y: BOSS_RAD[kind] * 2 * 0.85 }; }
+
+    makeBar();
+}
+
+// Two sprites: a track that never changes size and a fill that does. Built once
+// -- dress() runs again if configure() and onStart() arrive in the other order,
+// and a second pair of actors would be a bar that never moves sitting behind
+// the one that does.
+function makeBar() {
+    if (barBack) { return; }
+    barWidth = BOSS_RAD[kind] * 2.4;
+
+    barBack = Scene.createActor("BossBar", actor.transform.x, actor.transform.y);
+    if (barBack) {
+        barBack.tag = "Fx";
+        Scene.addComponent(barBack, "SpriteRenderer", {
+            Tint: { R: 12, G: 10, B: 16, A: 200 },
+            Size: [barWidth + 4, barHeight + 4],
+            LayerDepth: depthBarBack
+        });
+        barBackSprite = barBack.getComponent("SpriteRenderer");
+    }
+
+    barFill = Scene.createActor("BossBarFill", actor.transform.x, actor.transform.y);
+    if (barFill) {
+        barFill.tag = "Fx";
+        Scene.addComponent(barFill, "SpriteRenderer", {
+            Tint: { R: BOSS_R[kind], G: BOSS_G[kind], B: BOSS_B[kind], A: 255 },
+            Size: [barWidth, barHeight],
+            LayerDepth: depthBarFill
+        });
+        barFillSprite = barFill.getComponent("SpriteRenderer");
+    }
+}
+
+// Followed in paint(), which already runs after everything has moved.
+function moveBar() {
+    if (!barBack && !barFill) { return; }
+
+    var x = actor.transform.x;
+    var y = actor.transform.y - BOSS_RAD[kind] * 0.85 - barLift;
+
+    if (barBack) { barBack.transform.x = x; barBack.transform.y = y; }
+    if (!barFill || !barFillSprite) { return; }
+
+    var v = hpMax > 0 ? hp / hpMax : 0;
+    if (!(v >= 0)) { v = 0; }
+    if (v > 1) { v = 1; }
+
+    // Sprites draw from their centre, so a bar that empties from the right has
+    // to walk left as it shrinks. Never quite zero: a zero-width sprite is a
+    // divide waiting to happen in whichever renderer meets it first.
+    var w = barWidth * v;
+    if (w < 0.5) { w = 0.5; }
+
+    barFill.transform.x = x - barWidth / 2 + w / 2;
+    barFill.transform.y = y;
+    barFillSprite.size = { x: w, y: barHeight };
+    barFillSprite.tint = barTint();
+}
+
+// Grey while the doors are shut, red once it is enraged, its own colour
+// otherwise -- the same three states the marquee bar shows, so the two never
+// disagree about what is happening.
+function barTint() {
+    if (invuln > 0 || doorShut) { return { R: 120, G: 120, B: 128, A: 255 }; }
+    if (phase === 1)            { return { R: 255, G: 77,  B: 77,  A: 255 }; }
+    return { R: BOSS_R[kind], G: BOSS_G[kind], B: BOSS_B[kind], A: 255 };
+}
+
+function killBar() {
+    if (barBack) { barBack.destroy(); barBack = null; barBackSprite = null; }
+    if (barFill) { barFill.destroy(); barFill = null; barFillSprite = null; }
 }
 
 function onUpdate(dt) {
@@ -155,6 +245,7 @@ function onUpdate(dt) {
     clampIn();
     touch(dist);
     paint();
+    moveBar();
 }
 
 // ===========================================================================
@@ -437,6 +528,7 @@ function die() {
 }
 
 function onDestroy() {
+    killBar();
     for (var i = 0; i < zones.length; i++) { if (zones[i].a) { zones[i].a.destroy(); } }
     zones = [];
     // Never leave the arena black because the boss left the scene some other way.
@@ -448,6 +540,26 @@ function onDestroy() {
 // ===========================================================================
 
 function getHealth01() { return hpMax > 0 ? hp / hpMax : 0; }
+
+/**
+ * The colour the HUD's boss bar should be.
+ *
+ * Red once enraged, whoever it is, so the second phase reads as one thing
+ * across all five fights rather than as five different colour changes. A hex
+ * string, because a string crosses the script boundary and a colour object
+ * does not.
+ */
+function getBarColour() {
+    if (phase === 1) { return "#ff4d4d"; }
+    return "#" + hex2(BOSS_R[kind]) + hex2(BOSS_G[kind]) + hex2(BOSS_B[kind]);
+}
+
+function hex2(n) {
+    var v = Math.max(0, Math.min(255, Number(n) | 0));
+    var s = v.toString(16);
+    return s.length < 2 ? "0" + s : s;
+}
+
 function getName()     { return BOSS_NAME[kind]; }
 function getKind()     { return kind; }
 function isDead()      { return dead; }

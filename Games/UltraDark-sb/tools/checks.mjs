@@ -769,3 +769,114 @@ test('being hit costs the multiplier, and kills build it back', async () => {
         assert.ok(d.invoke('getMult') < built, 'being hit did not cost the multiplier');
     } finally { g.restore(); }
 });
+
+// ---------------------------------------------------------------------------
+// The boss bar
+// ---------------------------------------------------------------------------
+//
+// Two readouts of one number: a marquee across the top of the screen, and a bar
+// riding over the boss's head. Both can fail silently -- a bar that never
+// appears, one that appears and never moves, one that stays on screen over an
+// empty arena because it cached a proxy to a destroyed actor. None of that
+// stops the game, and none of it shows up in a log.
+
+/** The tracked bar and its heading, as the UI layer actually holds them. */
+function marquee(g) {
+    const visible = g.ui.elements.filter((e) => e.visible);
+    return {
+        bar:   visible.find((e) => e.kind === 'bar' && e.anchor === 'top') ?? null,
+        title: visible.find((e) => e.kind === 'label' && e.anchor === 'top') ?? null,
+    };
+}
+
+test('the boss bar arrives with the boss and leaves with it', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(10);
+
+        assert.equal(marquee(g).bar, null, 'a boss bar is up before there is a boss');
+        assert.equal(g.find('BossBarFill'), undefined, 'a floating bar exists with no boss under it');
+
+        g.director().invoke('forceWave', 5);
+        await g.step(90);
+
+        const up = marquee(g);
+        assert.ok(up.bar, 'the boss is up and the marquee bar is not');
+        assert.ok(up.title && up.title.text.indexOf('BRUTE PRIME') === 0,
+            `the marquee names "${up.title ? up.title.text : ''}" rather than the boss`);
+        assert.ok(up.bar.value > 0.99, 'the boss bar did not start full');
+        assert.ok(g.find('BossBar') && g.find('BossBarFill'), 'no floating bar over the boss');
+
+        // Half its health, and both readouts should say so.
+        const boss = g.find('Boss');
+        const script = boss.getComponents((await import('./harness.mjs')).ScriptComponent)[0];
+        // Down to half, a point at a time -- the boss's health is a wave-scaled
+        // number this test has no business knowing.
+        for (let i = 0; i < 500 && script.invoke('getHealth01') > 0.5; i++) {
+            script.invoke('takeDamage', 1, 0);
+        }
+        assert.ok(script.invoke('getHealth01') <= 0.5, 'could not get the boss to half health');
+        await g.step(2);
+
+        const half = marquee(g);
+        assert.ok(half.bar.value < 0.75 && half.bar.value > 0.25,
+            `the marquee reads ${half.bar.value} after roughly half the boss's health`);
+
+        const fill = g.find('BossBarFill');
+        const track = g.find('BossBar');
+        const fillW = fill.getAllComponents().find((c) => c.constructor.name === 'SpriteRenderer').size.x;
+        const trackW = track.getAllComponents().find((c) => c.constructor.name === 'SpriteRenderer').size.x;
+        assert.ok(fillW < trackW * 0.75, 'the floating bar did not shrink with the boss');
+
+        // It empties from the RIGHT, so the fill's left edge stays put. Without
+        // this a sprite drawn from its centre shrinks towards the middle and the
+        // bar reads as full-but-narrow rather than half gone.
+        assert.ok(Math.abs((fill.transform.x - fillW / 2) - (track.transform.x - trackW / 2)) < 4,
+            'the floating bar shrank towards its centre instead of emptying from the right');
+
+        // And it goes when the boss goes -- including the sprites, which are
+        // separate actors and are nobody else's to clean up.
+        script.invoke('takeDamage', 999999, 0);
+        await g.step(10);
+
+        assert.equal(g.find('BossBarFill'), undefined, "the boss died and its bar stayed in the arena");
+        assert.equal(g.find('BossBar'), undefined, "the boss died and its bar's track stayed in the arena");
+        assert.equal(marquee(g).bar, null, 'the boss died and the marquee stayed up');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+test("FOUNDRY's shut doors say so on the bar", async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(10);
+        g.director().invoke('forceWave', 15);          // FOUNDRY is the third boss
+        await g.step(90);
+
+        const boss = g.find('Boss');
+        assert.ok(boss, 'no boss on wave 15');
+        const script = boss.getComponents((await import('./harness.mjs')).ScriptComponent)[0];
+        assert.equal(script.invoke('getName'), 'FOUNDRY', 'wave 15 is not the FOUNDRY fight');
+
+        // It starts with the doors shut, which is the whole reason the word has
+        // to be on screen: an unshielded boss and a shielded one look identical
+        // and one of them ignores every shot you land.
+        assert.equal(script.invoke('isInvuln'), 1, 'FOUNDRY did not start shielded');
+        await g.step(2);
+
+        const shut = marquee(g);
+        assert.ok(shut.title.text.indexOf('SHIELDED') > 0,
+            `the bar says "${shut.title.text}" while the doors are shut`);
+
+        // Wait the doors open, and the word goes.
+        for (let i = 0; i < 700 && script.invoke('isInvuln') === 1; i++) { await g.step(1); }
+        assert.equal(script.invoke('isInvuln'), 0, 'the doors never opened');
+        await g.step(2);
+
+        assert.ok(marquee(g).title.text.indexOf('SHIELDED') < 0,
+            'the doors opened and the bar still says SHIELDED');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
