@@ -2,6 +2,15 @@
 
 Health, stamina, hunger, a cooldown — as small bars riding above an actor's head, in world space.
 
+> **Since `hud-kit` exists, this is no longer the only option — and usually not the right one.**
+> These bars were built because the scripting contract had no viewport, so nothing could be put in
+> a screen corner and a HUD had to follow the player through the world. The `UI` globals fixed
+> that. For a player's own HUD, reach for `hud-kit`: it anchors to a corner, it has text, and it
+> does not clutter the middle of the screen.
+>
+> This cookie is still the right answer for bars **over other things** — an enemy's health, a
+> building's progress, a nameplate — which genuinely do belong in the world.
+
 ## Why they float instead of sitting in a corner
 
 Because a script cannot put them in a corner. The shared scripting contract exposes `transform`,

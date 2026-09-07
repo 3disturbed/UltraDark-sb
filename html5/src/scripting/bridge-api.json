@@ -371,6 +371,44 @@
         "kind": "fn",
         "shared": true
       }
+    },
+    "UI": {
+      "width": {
+        "kind": "prop",
+        "shared": true
+      },
+      "height": {
+        "kind": "prop",
+        "shared": true
+      },
+      "panel": {
+        "kind": "fn",
+        "shared": true
+      },
+      "label": {
+        "kind": "fn",
+        "shared": true
+      },
+      "bar": {
+        "kind": "fn",
+        "shared": true
+      },
+      "button": {
+        "kind": "fn",
+        "shared": true
+      },
+      "image": {
+        "kind": "fn",
+        "shared": true
+      },
+      "clear": {
+        "kind": "fn",
+        "shared": true
+      },
+      "measure": {
+        "kind": "fn",
+        "shared": true
+      }
     }
   },
   "bare": {
@@ -496,6 +534,76 @@
       "shared": true
     },
     "onTriggerExit": {
+      "shared": true
+    }
+  },
+  "uiElement": {
+    "x": {
+      "kind": "prop",
+      "shared": true
+    },
+    "y": {
+      "kind": "prop",
+      "shared": true
+    },
+    "width": {
+      "kind": "prop",
+      "shared": true
+    },
+    "height": {
+      "kind": "prop",
+      "shared": true
+    },
+    "text": {
+      "kind": "prop",
+      "shared": true
+    },
+    "value": {
+      "kind": "prop",
+      "shared": true
+    },
+    "visible": {
+      "kind": "prop",
+      "shared": true
+    },
+    "tint": {
+      "kind": "prop",
+      "shared": true
+    },
+    "background": {
+      "kind": "prop",
+      "shared": true
+    },
+    "scale": {
+      "kind": "prop",
+      "shared": true
+    },
+    "anchor": {
+      "kind": "prop",
+      "shared": true
+    },
+    "align": {
+      "kind": "prop",
+      "shared": true
+    },
+    "padding": {
+      "kind": "prop",
+      "shared": true
+    },
+    "texturePath": {
+      "kind": "prop",
+      "shared": true
+    },
+    "hovered": {
+      "kind": "prop",
+      "shared": true
+    },
+    "clicked": {
+      "kind": "prop",
+      "shared": true
+    },
+    "destroy": {
+      "kind": "fn",
       "shared": true
     }
   }

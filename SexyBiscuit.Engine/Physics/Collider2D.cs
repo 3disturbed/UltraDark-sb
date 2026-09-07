@@ -86,6 +86,17 @@ public abstract class Collider2D : Component
         {
             // AddComponent calls Awake on the new component, which calls CreateBody.
             rb = Actor.AddComponent<Rigidbody2D>();
+
+            // …and a fresh Rigidbody2D is Dynamic, so until this line "static"
+            // was only the comment's opinion: a bare collider fell. The browser
+            // engine never integrates a collider that has no body of its own, so
+            // the same scene stayed put there and drifted here — walls, cars and
+            // crates sliding off the bottom of a native build while the player
+            // and the enemies, whose scripts set a velocity every frame, looked
+            // fine. GravityScale is no help: Aether has no per-body gravity, and
+            // the property is stored for game logic only.
+            rb.IsKinematic  = true;
+            rb.GravityScale = 0f;
         }
 
         var body = rb.Body;

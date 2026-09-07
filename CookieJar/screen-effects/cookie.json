@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "screen-effects",
+  "name": "Screen Effects",
+  "version": "1.0.0",
+  "summary": "Shake, flash, fade and hit-stop — the four that make a hit feel like a hit.",
+  "description": "One director other scripts call: shake(strength) kicks the camera and decays, flash(colour) blinks a full-screen tint, fadeTo/fadeFrom cover the screen for a scene change, and hitStop(seconds) freezes time for a moment on a heavy blow. All four go through the shared contract, so they behave the same in the browser and natively, and the flash and fade use the screen-space UI rather than a world-space quad that a moving camera would drag around.",
+  "tags": ["effects", "juice", "camera", "shake", "feedback"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["Effects.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put Effects.js on an empty actor and tag it Effects.",
+    "Call shake(12) when something lands and flash('#ffffff') when the player is hit.",
+    "If a camera script writes the camera position every frame, let it run first — this offsets in onLateUpdate."
+  ]
+}

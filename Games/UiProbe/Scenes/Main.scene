@@ -1,0 +1,7 @@
+{ "name": "Main", "layers": [ { "name": "Default", "actors": [
+  { "name": "Main Camera", "tag": "MainCamera",
+    "components": [ { "type": "Camera2D", "properties": { "Zoom": 1.0 } } ],
+    "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 } },
+  { "name": "Hud", "tag": "Hud",
+    "components": [ { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/Hud.js" } } ],
+    "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 } } ] } ] }

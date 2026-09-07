@@ -15,6 +15,7 @@ import { Actor } from '../core/Actor.js';
 import { schemaOf } from '../core/TypeRegistry.js';
 import { coerce } from '../core/PropertyTypes.js';
 import { applyProperties } from '../scene/SceneSerializer.js';
+import { widestLine } from '../ui/UiCanvas.js';
 
 /** Proxies handed to scripts, mapped back to the actor each stands for. */
 const proxyToActor = new WeakMap();
@@ -290,8 +291,82 @@ export function createScriptGlobals(actor, services = {}) {
         broadcast() {},
     };
 
+    // ---- UI — screen space, which the world-space globals above cannot reach ---
+    //
+    // Every element the script makes is owned by the host's canvas, and every
+    // element it makes is remembered here so `UI.clear()` and a scene change can
+    // take them away again. A script that leaks a label into the next scene is
+    // the failure this avoids.
+    const owned = new Set();
+
+    const wrapElement = (element) => {
+        if (!element) return null;
+        owned.add(element);
+
+        const proxy = {
+            get x() { return element.x; },                 set x(v) { element.x = Number(v); },
+            get y() { return element.y; },                 set y(v) { element.y = Number(v); },
+            get width() { return element.width; },         set width(v) { element.width = Number(v); },
+            get height() { return element.height; },       set height(v) { element.height = Number(v); },
+            get text() { return element.text; },           set text(v) { element.text = String(v ?? ''); },
+            get value() { return element.value; },         set value(v) { element.value = Number(v); },
+            get visible() { return element.visible; },     set visible(v) { element.visible = Boolean(v); },
+            get tint() { return element.tint; },           set tint(v) { element.tint = toCss(v); },
+            get background() { return element.background; }, set background(v) { element.background = v == null ? null : toCss(v); },
+            get scale() { return element.scale; },         set scale(v) { element.scale = Number(v); },
+            get anchor() { return element.anchor; },       set anchor(v) { element.anchor = String(v); },
+            get align() { return element.align; },         set align(v) { element.align = String(v); },
+            get padding() { return element.padding; },     set padding(v) { element.padding = Number(v); },
+            get texturePath() { return element.texturePath; }, set texturePath(v) { element.texturePath = String(v ?? ''); },
+            get hovered() { return element.hovered; },
+            get clicked() { return element.clicked; },
+            destroy() { owned.delete(element); canvas()?.remove(element); },
+        };
+        return proxy;
+    };
+
+    const canvas = () => engine()?.ui ?? null;
+
+    const make = (kind, options) => {
+        const target = canvas();
+        if (!target) { log('warn', `UI.${kind}: there is no UI canvas in this host.`); return null; }
+        return wrapElement(target.add(kind, options));
+    };
+
+    const uiProxy = {
+        get width() { return canvas()?.width ?? 0; },
+        get height() { return canvas()?.height ?? 0; },
+
+        panel(x, y, width, height, options) {
+            return make('panel', { ...options, x: Number(x), y: Number(y), width: Number(width), height: Number(height) });
+        },
+        label(x, y, text, options) {
+            return make('label', { ...options, x: Number(x), y: Number(y), text: String(text ?? ''), width: 0, height: 0 });
+        },
+        bar(x, y, width, height, value, options) {
+            return make('bar', { ...options, x: Number(x), y: Number(y), width: Number(width), height: Number(height), value: Number(value) });
+        },
+        button(x, y, width, height, text, options) {
+            return make('button', { ...options, x: Number(x), y: Number(y), width: Number(width), height: Number(height), text: String(text ?? '') });
+        },
+        image(x, y, width, height, path, options) {
+            return make('image', { ...options, x: Number(x), y: Number(y), width: Number(width), height: Number(height), texturePath: String(path ?? '') });
+        },
+
+        /** Only this script's elements, so one script cannot wipe another's HUD. */
+        clear() {
+            const target = canvas();
+            for (const element of owned) target?.remove(element);
+            owned.clear();
+        },
+
+        /** The width one line of text will occupy, for laying a panel out around it. */
+        measure(text, scale) { return measureText(String(text ?? ''), Number(scale) || 1); },
+    };
+
     return {
         actor: actorProxy,
+        UI: uiProxy,
         transform: transformProxy,
         get transform3d() { return transform3DProxy(); },
         Input: inputProxy,
@@ -314,6 +389,36 @@ export function createScriptGlobals(actor, services = {}) {
  * The proxy shape a script gets for a *found* actor: from `Scene.find`, from a
  * collision, from `Scene.createActor`. Returns null for a missing or destroyed actor.
  */
+/**
+ * A colour a script wrote, as CSS.
+ *
+ * Scene files and component properties already accept `"#ff8040"`, `[r, g, b]`
+ * and `{R, G, B, A}`, so UI takes the same forms rather than inventing a
+ * twelfth spelling of the colour red.
+ */
+function toCss(value) {
+    if (value == null) return null;
+    if (typeof value === 'string') return value;
+
+    const channel = (v) => Math.max(0, Math.min(255, Math.round(Number(v) || 0)));
+    if (Array.isArray(value)) {
+        const [r, g, b, a] = value;
+        return a == null ? `rgb(${channel(r)},${channel(g)},${channel(b)})`
+                         : `rgba(${channel(r)},${channel(g)},${channel(b)},${Number(a) > 1 ? Number(a) / 255 : Number(a)})`;
+    }
+    if (typeof value === 'object') {
+        const r = value.R ?? value.r, g = value.G ?? value.g, b = value.B ?? value.b;
+        const a = value.A ?? value.a;
+        if (r === undefined) return String(value);
+        return a === undefined ? `rgb(${channel(r)},${channel(g)},${channel(b)})`
+                               : `rgba(${channel(r)},${channel(g)},${channel(b)},${Number(a) > 1 ? Number(a) / 255 : Number(a)})`;
+    }
+    return String(value);
+}
+
+/** The width of the widest line, which is what a caller laying out a panel needs. */
+function measureText(text, scale) { return widestLine(text, scale); }
+
 export function wrapActor(target) {
     if (!target || target.isDestroyed) return null;
 

@@ -24,6 +24,7 @@ import { AudioManager } from './audio/AudioManager.js';
 import { SpriteBatch } from './rendering/SpriteBatch.js';
 import { RenderSystem3D } from './rendering/RenderSystem3D.js';
 import { Camera2D } from './rendering/Camera2D.js';
+import { UiCanvas } from './ui/UiCanvas.js';
 import { PhysicsSystem2D } from './physics/PhysicsSystem2D.js';
 import { PhysicsSystem3D } from './physics/PhysicsSystem3D.js';
 import { GameInstance } from './gameplay/GameInstance.js';
@@ -223,6 +224,10 @@ export class EngineHost {
         this.ctx = this.canvas2D.getContext('2d');
         this.spriteBatch = new SpriteBatch(this.ctx);
 
+        // Screen-space UI, drawn after the world and outside the camera
+        // transform. Scripts reach it through the `UI` global.
+        this.ui = new UiCanvas({ width: this.canvas2D.width, height: this.canvas2D.height });
+
         // Input listens on the top canvas: it is the one the pointer actually hits.
         this.input.attach(this.canvas2D);
         if (!this.config.showCursor) this.input.hideCursor();
@@ -402,6 +407,16 @@ export class EngineHost {
         this.spriteBatch.begin({ transform: camera?.getViewMatrix() ?? null });
         this.sceneManager.draw(this.spriteBatch);
         this.spriteBatch.end();
+
+        // UI last and untransformed: it is screen space, so a camera that has
+        // panned, zoomed or shaken must not take the HUD with it.
+        if (this.ui) {
+            const mouse = this.input?.mousePosition;
+            this.ui.setPointer(mouse?.x ?? -1, mouse?.y ?? -1,
+                this.input?.isMouseButtonDown?.() ?? false);
+            this.ui.update();
+            this.ui.draw(this.ctx);
+        }
     }
 
     // -------------------------------------------------------------------------
