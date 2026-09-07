@@ -103,11 +103,18 @@ public sealed class ScriptComponent : Component
         }
 
         ReplayPendingInvokes();
+        SubscribeToNetwork();
         TryCall("onStart");
     }
 
     public override void Update(float dt)
-        => TryCall("onUpdate", dt);
+    {
+        // A session may start after this component did -- a lobby script calls
+        // Network.startServer from onUpdate -- so the subscription is retried until it
+        // takes. It costs one null check per frame on a script that has no such hook.
+        if (!_networkSubscribed) SubscribeToNetwork();
+        TryCall("onUpdate", dt);
+    }
 
     public override void FixedUpdate(float dt)
         => TryCall("onFixedUpdate", dt);
@@ -115,8 +122,44 @@ public sealed class ScriptComponent : Component
     public override void LateUpdate(float dt)
         => TryCall("onLateUpdate", dt);
 
+    /// <summary>
+    /// Subscribes to the message channel, but only for a script that declares the hook.
+    /// </summary>
+    /// <remarks>
+    /// Subscribing unconditionally would put every scripted actor in the scene on a handler
+    /// that does nothing, and a message-heavy game has hundreds. Called from Start, which is
+    /// after the script has loaded and its functions are known.
+    /// </remarks>
+    private void SubscribeToNetwork()
+    {
+        if (_networkSubscribed || Runtime == null || !Runtime.HasFunction("onNetworkMessage")) return;
+
+        var manager = Networking.NetworkManager.Instance;
+        if (manager == null) return;
+
+        _onNetworkMessage = (sender, type, payload) =>
+        {
+            if (Runtime == null) return;
+            Runtime.CallFunctionWithJsArgs("onNetworkMessage",
+                new Jint.Native.JsString(type),
+                Runtime.Bridge.JsonToScript(payload),
+                new Jint.Native.JsNumber(sender));
+        };
+
+        manager.OnMessage += _onNetworkMessage;
+        _networkSubscribed = true;
+    }
+
+    private bool _networkSubscribed;
+    private Action<int, string, System.Text.Json.Nodes.JsonNode?>? _onNetworkMessage;
+
     public override void OnDestroy()
     {
+        if (_onNetworkMessage != null && Networking.NetworkManager.Instance is { } manager)
+            manager.OnMessage -= _onNetworkMessage;
+        _onNetworkMessage = null;
+        _networkSubscribed = false;
+
         TryCall("onDestroy");
 
         // The script's own network handlers go with it. Without this a destroyed actor's

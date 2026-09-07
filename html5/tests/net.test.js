@@ -274,6 +274,52 @@ test('a room socket url upgrades the scheme rather than assuming one', () => {
         'ws://localhost:8080/ws?room=ABC234');
 });
 
+// ---- The script hook --------------------------------------------------------
+
+test('a script’s onNetworkMessage hook receives the message', async () => {
+    // The templates were written against a hook that did not exist. It does now, and it
+    // has to fire for a script that joins a session after the script started — a lobby
+    // calls Network.startServer from onUpdate, which is after every onStart has run.
+    const { Scene, Actor, ScriptComponent } = await import('../src/index.js');
+
+    NetworkManager.instance?.dispose();
+    const scene = new Scene('hook');
+    const manager = new NetworkManager();
+    try {
+        const actor = scene.addActor(new Actor('Listener'));
+        const script = actor.addComponent(ScriptComponent);
+        scene.flushPendingActors();
+
+        // `invoke` reaches any top-level function, which is how a test reads a flat
+        // script's state — the same door another script uses.
+        script.setSource(`
+            var seen = "", from = -1;
+            function onNetworkMessage(type, data, sender) {
+                seen = type + ":" + (data ? data.hp : "-");
+                from = sender;
+            }
+            function readSeen() { return seen; }
+            function readFrom() { return from; }
+        `);
+        scene.update(1 / 60);
+
+        manager.startSolo();
+        for (let i = 0; i < 4; i++) manager.tick(1 / 60);
+
+        // One frame so the component notices the session that started after it did.
+        scene.update(1 / 60);
+
+        manager.sendMessageToAll('hit', { hp: 7 });
+        for (let i = 0; i < 4; i++) manager.tick(1 / 60);
+
+        assert.equal(script.invoke('readSeen'), 'hit:7');
+        assert.equal(script.invoke('readFrom'), 0);
+    } finally {
+        manager.dispose();
+        scene.destroy();
+    }
+});
+
 // ---- Parity with the native engine ------------------------------------------
 
 test('the native engine declares the same message ids and protocol version', () => {

@@ -56,6 +56,11 @@ var hasShot = false;
 // processing entirely.
 var isLocal = true;
 
+// How often a move frame goes out. Twenty a second is smooth and a third of the
+// bandwidth of one a tick.
+var MOVE_INTERVAL = 1 / 20;
+var moveTimer = 0;
+
 // Display name used in kill feed messages.
 var playerName = "Player";
 
@@ -95,11 +100,12 @@ var spawnPoints = [
 // =============================================================================
 
 function onStart() {
-    // Determine whether this is the local player or a remote replica.
-    // If networking is not active, default to local control.
-    if (Network.isLocalPlayer) {
-        isLocal = Network.isLocalPlayer(actor);
-    }
+    // Whether this is the local player or a remote replica. ArenaManager names each
+    // actor "Player_<clientId>", so the id is in the name -- an actor carries no
+    // ownership of its own, and asking the network about the actor would be asking
+    // the wrong question.
+    var ownerId = Number(String(actor.name).split("_")[1]);
+    isLocal = !Number.isFinite(ownerId) || Network.isLocalPlayer(ownerId);
 
     // Derive the player name from the actor name assigned by ArenaManager.
     playerName = actor.name || "Player";
@@ -185,8 +191,12 @@ function onUpdate(dt) {
     if (actor.transform.y > arenaBottom) actor.transform.y = arenaBottom;
 
     // -- Network replication --------------------------------------------------
-    // Broadcast position and rotation to other players so they can see us move.
-    if (Network.sendToAll) {
+    // Twenty times a second, not sixty: a move frame every tick is three times the
+    // bandwidth for movement no player can see the difference in, and it is the first
+    // thing that makes a lobby feel worse than a local game.
+    moveTimer += dt;
+    if (Network.isConnected && moveTimer >= MOVE_INTERVAL) {
+        moveTimer = 0;
         Network.sendToAll("playerMove", {
             name: playerName,
             x: actor.transform.x,
@@ -194,6 +204,20 @@ function onUpdate(dt) {
             rotation: actor.transform.rotation
         });
     }
+}
+
+// Receives the other players' movement. `sender` is the client id the server
+// assigned -- never the one in the payload, which a peer chooses for itself.
+function onNetworkMessage(type, data, sender) {
+    if (type !== "playerMove" || !data) return;
+    if (data.name === playerName) return;            // our own, relayed back
+
+    var other = Scene.find(data.name);
+    if (!other) return;
+
+    other.transform.x = data.x;
+    other.transform.y = data.y;
+    other.transform.rotation = data.rotation;
 }
 
 // =============================================================================
@@ -267,8 +291,9 @@ function die(killerName) {
             manager.onPlayerKill(killerName, playerName);
         }
         if (manager.onPlayerDeath) {
-            var clientId = Network.localId || "local";
-            manager.onPlayerDeath(clientId);
+            // Not `Network.localId || "local"`: the host's id is 0, and `0 || x` is x,
+            // so the host's own deaths were being filed under a player that never existed.
+            manager.onPlayerDeath(Network.localId);
         }
     }
 

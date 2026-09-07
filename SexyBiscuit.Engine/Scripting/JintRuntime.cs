@@ -44,6 +44,7 @@ public sealed class JintRuntime
         "onAwake", "onStart", "onUpdate", "onFixedUpdate", "onLateUpdate", "onDestroy",
         "onCollisionEnter", "onCollisionStay", "onCollisionExit",
         "onTriggerEnter", "onTriggerStay", "onTriggerExit",
+        "onNetworkMessage",
     };
 
     // -------------------------------------------------------------------------

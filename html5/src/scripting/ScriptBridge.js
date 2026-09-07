@@ -278,21 +278,20 @@ export function createScriptGlobals(actor, services = {}) {
     // ---- Network -------------------------------------------------------------
     //
     // Member for member the same proxy the Jint bridge installs, over the same
-    // wire. A multiplayer script running with no session is the single-player
-    // case, not an error: `ensureNet()` starts a loopback session rather than
-    // warning and doing nothing, so the same script drives the same code path
-    // alone as it does in a lobby.
+    // wire. A multiplayer script with no session running is the single-player
+    // case rather than an error: every read answers, and every send is a no-op.
+    // `startSolo()` is how a script asks for the full loopback session, which
+    // drives the same encode, dispatch and replication path a lobby does.
 
     const net = () => NetworkManagerClass.instance;
 
-    const ensureNet = () => {
-        const running = NetworkManagerClass.instance;
-        if (running?.isRunning) return running;
-
-        const manager = running ?? new NetworkManagerClass();
-        if (!manager.isRunning) manager.startSolo();
-        return manager;
-    };
+    // Only the three explicit calls — startServer, startSolo, connect — create a
+    // manager. A send with no session is a no-op instead: an earlier version started a
+    // loopback session on any send, which meant a script broadcasting a position every
+    // frame silently hosted a game nobody had asked for, and left it running. "Runs
+    // alone" is already covered without that, because isLocalPlayer(0) is true before a
+    // server has said otherwise.
+    const startableNet = () => NetworkManagerClass.instance ?? new NetworkManagerClass();
 
     /** Handlers this script registered, so they go away with the script. */
     const networkUnsubscribes = [];
@@ -326,7 +325,7 @@ export function createScriptGlobals(actor, services = {}) {
 
         startServer(port = 7777) {
             try {
-                const manager = NetworkManagerClass.instance ?? new NetworkManagerClass();
+                const manager = startableNet();
                 if (manager.isRunning) return true;
                 manager.startServer(port);
                 return true;
@@ -337,7 +336,11 @@ export function createScriptGlobals(actor, services = {}) {
         },
 
         startSolo() {
-            try { ensureNet(); return true; } catch (err) {
+            try {
+                const manager = startableNet();
+                if (!manager.isRunning) manager.startSolo();
+                return true;
+            } catch (err) {
                 log('warn', `Network.startSolo: ${err.message}`);
                 return false;
             }
@@ -345,7 +348,7 @@ export function createScriptGlobals(actor, services = {}) {
 
         connect(address, port) {
             try {
-                const manager = NetworkManagerClass.instance ?? new NetworkManagerClass();
+                const manager = startableNet();
                 if (manager.isRunning) manager.disconnect();
 
                 const target = String(address ?? '');
@@ -363,10 +366,10 @@ export function createScriptGlobals(actor, services = {}) {
 
         disconnect() { net()?.disconnect(); },
 
-        sendToAll(type, data) { ensureNet().sendMessageToAll(String(type), data ?? null); },
-        broadcast(type, data) { ensureNet().sendMessageToAll(String(type), data ?? null); },
+        sendToAll(type, data) { net()?.sendMessageToAll(String(type), data ?? null); },
+        broadcast(type, data) { net()?.sendMessageToAll(String(type), data ?? null); },
         sendTo(clientId, type, data) {
-            ensureNet().sendMessageTo(Number(clientId), String(type), data ?? null);
+            net()?.sendMessageTo(Number(clientId), String(type), data ?? null);
         },
 
         on(event, handler) {
@@ -380,7 +383,17 @@ export function createScriptGlobals(actor, services = {}) {
                 return () => {};
             }
 
-            const unsubscribe = ensureNet().on(name, handler);
+            // A subscription needs something to subscribe to. Nothing is started here: a
+            // script that wants events before a session exists uses the onNetworkMessage
+            // hook, which attaches itself the frame a session appears.
+            const manager = net();
+            if (!manager) {
+                log('warn', `Network.on('${name}'): no session is running. `
+                    + 'Start one first, or use the onNetworkMessage hook, which waits for one.');
+                return () => {};
+            }
+
+            const unsubscribe = manager.on(name, handler);
             networkUnsubscribes.push(unsubscribe);
             return () => {
                 unsubscribe();
@@ -781,4 +794,5 @@ export const SCRIPT_HOOKS = Object.freeze([
     'onAwake', 'onStart', 'onUpdate', 'onFixedUpdate', 'onLateUpdate', 'onDestroy',
     'onCollisionEnter', 'onCollisionStay', 'onCollisionExit',
     'onTriggerEnter', 'onTriggerStay', 'onTriggerExit',
+    'onNetworkMessage',
 ]);

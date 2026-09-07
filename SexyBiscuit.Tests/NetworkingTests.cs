@@ -280,6 +280,47 @@ public class NetworkingTests : IDisposable
     private static int MemberCount(byte[] blob) => blob.Length < 2 ? 0 : blob[0] | (blob[1] << 8);
 
     // -------------------------------------------------------------------------
+    // The script hook
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void AScriptsOnNetworkMessageHookReceivesTheMessage()
+    {
+        // The templates were written against a hook that did not exist. It does now, and it
+        // has to fire for a script that joins a session after the script started -- a lobby
+        // calls Network.startServer from onUpdate, which is after every onStart has run.
+        using var project = new ScriptProject();
+        var scene = new Engine.Core.Scene("hook");
+        try
+        {
+            var actor  = scene.AddActor(new Actor("Listener"));
+            var script = actor.AddComponent<Engine.Scripting.ScriptComponent>();
+            script.ScriptPath = project.Write("Listener.js",
+                "var seen = \"\", from = -1;\n" +
+                "function onNetworkMessage(type, data, sender) {\n" +
+                "    seen = type + \":\" + (data ? data.hp : \"-\");\n" +
+                "    from = sender;\n" +
+                "}\n");
+            scene.FlushPendingActors();
+            scene.Update(1f / 60f);
+
+            using var manager = new NetworkManager();
+            manager.StartSolo();
+            Pump(manager);
+
+            // One frame so the component notices the session that started after it did.
+            scene.Update(1f / 60f);
+
+            manager.SendMessageToAll("hit", new JsonObject { ["hp"] = 7 });
+            Pump(manager);
+
+            Assert.Equal("hit:7", script.Runtime!.Evaluate("seen")!.ToString());
+            Assert.Equal("0", script.Runtime.Evaluate("String(from)")!.ToString());
+        }
+        finally { scene.Destroy(); }
+    }
+
+    // -------------------------------------------------------------------------
     // Parity with the browser engine
     // -------------------------------------------------------------------------
 

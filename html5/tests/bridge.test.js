@@ -183,6 +183,12 @@ test('a script can create, extend and destroy actors and call into another scrip
     // hosting starts a loopback session, so the same script drives the same code path
     // alone as it does in a lobby.
     assert.equal(globals.Network.isConnected, false, 'nothing is running yet');
+
+    // A send with no session is a no-op, not an implicit host: a script broadcasting a
+    // position every frame must not silently start a game nobody asked for.
+    globals.Network.sendToAll('noop', {});
+    assert.equal(NetworkManager.instance, null, 'sending did not start a session');
+
     assert.equal(globals.Network.startServer(), true);
     assert.equal(globals.Network.isHost, true);
     assert.equal(globals.Network.isLocalPlayer(0), true);

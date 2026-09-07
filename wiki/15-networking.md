@@ -1,63 +1,95 @@
 # 15. Networking
 
-Namespace: `SexyBiscuit.Engine.Networking`
+Namespaces: `SexyBiscuit.Engine.Networking` · `html5/src/net/`
 
-Client–server over **LiteNetLib** (UDP, reliable and unreliable channels), with
-attribute-driven state replication and RPCs.
+Both engines speak **one wire**. A message id table, a set of encodings and a
+protocol version live in `NetProtocol.cs` and `html5/src/net/protocol.js`, and a
+test on each side reads the other's source — so a browser client and a native
+server can sit in the same session, and a script written against `Network.*`
+behaves the same in a tab and in a desktop build.
 
 ```
-NetworkManager        transport, connections, packet dispatch
-├── ReplicationSystem  [Replicated] fields → periodic state packets
-└── RpcSystem          [ServerRpc] / [ClientRpc] methods
-NetworkObject         per-actor identity, ownership, state collection
-LanDiscovery          UDP broadcast server browser
+NetworkManager           sessions, client ids, frame dispatch
+├── INetworkTransport     the seam; no transport type gets past it
+│   ├── WebSocket          the shared wire — the only one a browser has
+│   ├── LiteNetLib (UDP)   desktop ↔ desktop, with a real unreliable channel
+│   └── Loopback           a process wired to itself: solo play, and every test
+├── ReplicationSystem      [Replicated] members → periodic state frames
+└── RpcSystem              [ServerRpc] / [ClientRpc]
+NetworkObject            per-actor identity, ownership, state collection
 ```
 
-> **`NetworkManager.Tick(dt)` is not called by the engine.** Nothing is sent or
-> received until you pump it. See [3. The Game Loop](03-game-loop.md).
+> **`Tick(dt)` is not called by the engine.** Nothing is sent or received until
+> you pump it — a game that is not networked should pay nothing for the fact
+> that it could be.
 
 ---
 
 ## Starting a session
 
 ```csharp
-var nm = new NetworkManager();          // sets NetworkManager.Instance
+var nm = new NetworkManager { PlayerName = "Darko" };
 
-// Host
-nm.StartServer(port: 7777, maxClients: 8);
-
-// Client
-nm.ConnectToServer("192.168.1.42", 7777);
+nm.StartSolo();                                  // both ends, no socket
+nm.StartServer(port: 7777);                      // WebSocket: a browser can join
+nm.StartServer(7777, transport: NetTransportKind.Udp);   // desktop ↔ desktop
+nm.ConnectToServer("192.168.1.42", 7777);        // UDP
+nm.ConnectToUrl("wss://my-game.darksgames.app/ws?room=ABC234", room: "ABC234");
 ```
 
-```csharp
-nm.IsServer;        // bool
-nm.IsClient;        // bool
-nm.IsRunning;       // bool
-nm.LocalClientId;   // int, −1 until the server assigns one
-nm.Ping;            // int ms, client only
-nm.ConnectedClientIds;   // IEnumerable<int>, server only
+```js
+const nm = new NetworkManager();
+nm.playerName = 'Darko';
 
-nm.StopServer();
-nm.Disconnect();
-nm.KickClient(clientId, "cheating");
-nm.Dispose();
+nm.startSolo();                                  // and `startServer(port)`, which is this
+nm.connectToUrl('wss://my-game.darksgames.app/ws?room=ABC234', { room: 'ABC234' });
+nm.connect('192.168.1.42', 7777);                // composes a ws:// URL: a tab has no UDP
 ```
 
-Events:
+**Solo is a real session.** It goes through the same handshake, the same encode
+and decode, and the same replication path a lobby does. That is the point: it is
+what stops "works alone, breaks with two players".
+
+**A browser cannot listen.** `startServer` in a tab hosts over loopback; other
+players join through a room server (below), not through that tab.
+
+### State
 
 ```csharp
-nm.OnClientConnected    += id => Debug.WriteLine($"client {id} joined");
-nm.OnClientDisconnected += id => Debug.WriteLine($"client {id} left");
+nm.IsServer;            // this peer runs the server end of the transport
+nm.IsHost;              // this peer is the session's AUTHORITY (see below)
+nm.IsClient;
+nm.IsRunning;
+nm.IsConnected;         // the server has accepted us, or we are it
+nm.LocalClientId;       // 0 on the server, −1 until Welcome arrives
+nm.Ping;                // ms, clients
+nm.Room;                // the room code, when there is one
+nm.Players;             // id → name, everybody in the session
+nm.ConnectedClientIds;  // server only
+```
+
+`IsHost` means **"should I run the simulation?"**. It is the server when there
+is one; in a relayed room nobody is the server, so it is the lowest client id
+present — a rule every peer evaluates alone, with no extra message, and which
+hands the role on the moment the current host leaves.
+
+### Events
+
+```csharp
+nm.OnClientConnected    += id => …;      // server
+nm.OnClientDisconnected += id => …;      // server
 nm.OnConnectedToServer      += () => LoadGameScene();
-nm.OnDisconnectedFromServer += () => ReturnToMenu();
-nm.OnSpawnObject   += (netId, actorName, ownerId, state) => SpawnRemote(netId, actorName, ownerId, state);
+nm.OnDisconnectedFromServer += reason => ReturnToMenu(reason);
+nm.OnPlayerJoined += (id, name) => …;
+nm.OnPlayerLeft   += id => …;
+nm.OnSpawnObject   += (netId, actorName, ownerId, state) => SpawnRemote(…);
 nm.OnDespawnObject += netId => DespawnRemote(netId);
+nm.OnMessage += (sender, type, payload) => …;
 ```
 
-Both `StartServer` and `ConnectToServer` throw `InvalidOperationException` if
-the manager is already running — call `StopServer()` / `Disconnect()` first.
-Connections use the connection key `"SexyBiscuit"`.
+```js
+const off = nm.on('message', (sender, type, payload) => …);   // returns an unsubscribe
+```
 
 ### Pump it
 
@@ -69,9 +101,109 @@ protected override void Update(GameTime gameTime)
 }
 ```
 
-`Tick` polls LiteNetLib events, drains the inbound queue, dispatches packets,
-runs `ReplicationSystem.Tick`, and (on clients) sends a periodic ping probe and
-refreshes `Ping`.
+---
+
+## The wire
+
+Every frame is `[id u8][payload]`, little-endian, strings as
+`[u16 byte length][UTF-8]`.
+
+| id | Name | Direction | Payload |
+|---|---|---|---|
+| `0x01` | Hello | C→S | JSON `{proto, name, room, token}` |
+| `0x02` | Welcome | S→C | JSON `{proto, clientId, room, players}` |
+| `0x03` | Spawn | S→C | `[netId u32][name str][owner i32][state bytes]` |
+| `0x04` | Despawn | S→C | `[netId u32]` |
+| `0x05` | State | both | `[netId u32][state bytes]` |
+| `0x06` | Rpc | both | `[netId u32][toServer u8][target i32][method str][args bytes]` |
+| `0x07` | Message | both | `[sender i32][type str][json str]` |
+| `0x08` / `0x09` | Ping / Pong | | `[clientTime f64]` / `+ [serverTime f64]` |
+| `0x0A` / `0x0B` | PeerJoined / PeerLeft | S→C | `[clientId i32][name str]` / `[clientId i32]` |
+| `0x0C` | Kick | S→C | `[reason str]` |
+
+Two things about this that are load-bearing:
+
+- **Not `BinaryWriter`.** Its `Write(string)` prefixes a 7-bit-encoded length —
+  a .NET detail with no JavaScript counterpart — and its endianness is whatever
+  the machine is. Either one makes a browser client that agrees with a native
+  server impossible to write correctly.
+- **A mismatched `proto` is refused at Hello.** A client one version behind
+  would otherwise read every later frame at the wrong offsets and fail somewhere
+  unrelated, which is the failure that cannot be diagnosed from a bug report.
+
+### Delivery
+
+`NetDelivery.Unreliable` for state, `ReliableOrdered` for everything that
+mutates agreed state. A transport that cannot honour a mode satisfies it with a
+stronger one: **WebSocket delivers everything reliably ordered**, because TCP has
+no other setting. A state update therefore cannot be dropped in favour of a
+fresher one the way it can over UDP. That is a real difference, and it is why
+both transports exist rather than one.
+
+---
+
+## The script channel
+
+What `Network.sendToAll(type, data)` reaches. The engine never looks inside the
+payload; it guarantees only that the sender the receiver sees is the id the
+**server** assigned, not one the sender chose — trusting the number in the frame
+lets any peer post as any other, which is the cheapest possible way to cheat.
+
+```js
+Network.sendToAll('playerMove', { x: 10, y: 20 });
+Network.sendTo(3, 'privateOffer', { card: 'ace' });
+
+function onNetworkMessage(type, data, sender) {   // a lifecycle hook, like onUpdate
+    if (type === 'playerMove') movePeer(sender, data);
+}
+```
+
+The hook is subscribed only for a script that declares it, and only once a
+session exists — a lobby that calls `Network.startServer` from `onUpdate` is
+still connected in time.
+
+```
+Network.localId  .isServer  .isHost  .isConnected  .ping  .room  .players
+        .playerName  .isLocalPlayer(id)
+        .startServer(port)  .startSolo()  .connect(address, port)  .disconnect()
+        .sendToAll(type, data)  .broadcast(…)  .sendTo(id, type, data)
+        .on(event, fn)   // message, playerJoined, playerLeft, connected, disconnected
+```
+
+---
+
+## Rooms and link-to-join
+
+A browser cannot listen, so "hosting" on the web is asking a room server for a
+code. The shape is the one every Darks Games title uses, so the social overlay's
+**Join** button works with no translation — see
+[29. Darks Games](29-darksgames.md).
+
+```
+POST /api/rooms        -> { code, mode, joinUrl }
+GET  /api/rooms/:code  -> { code, players, max, phase, joinable } | 404
+WS   /ws?room=CODE
+```
+
+```bash
+node html5/tools/roomserver.js --port 8081 --max 8
+```
+
+```js
+const room = await createRoom({ mode: 'coop' });      // { code, joinUrl }
+nm.connectToUrl(roomSocketUrl(room.code), { room: room.code });
+
+const code = roomCodeFromUrl();       // /j/CODE, ?room=, #CODE — all read
+```
+
+Codes are six characters from an alphabet with no `0`/`O` and no `1`/`I`/`L`:
+they get read aloud, typed from memory and pasted into chat.
+
+**The relay owns identity, not just bytes.** Through a relay every peer reaches
+the host down one socket, so a host cannot tell two players apart by connection.
+The room server therefore answers the handshake, assigns the client ids everyone
+sees, and rewrites the sender on a relayed message; spawn, state and RPC go out
+untouched, which is what keeps the server the same for every game.
 
 ---
 
@@ -80,57 +212,36 @@ refreshes `Ping`.
 Every replicated actor needs one.
 
 ```csharp
-var netObj = actor.AddComponent<NetworkObject>();
-```
-
-```csharp
-netObj.NetworkId;      // uint, assigned by the server on Spawn
-netObj.IsOwner;        // this peer has authority over the object
-netObj.IsServer;       // this peer is the server
-netObj.OwnerClientId;  // int, −1 for server-owned
-```
-
-### Spawning — server only
-
-```csharp
-NetworkObject.Spawn(actor);      // throws unless nm.IsServer
+NetworkObject.Spawn(actor);      // server only; allocates an id and broadcasts
 NetworkObject.Despawn(actor);
+
+netObj.NetworkId;      // uint, assigned by the server
+netObj.IsOwner;        // this peer has authority over the object
+netObj.OwnerClientId;  // −1 for server-owned
 ```
 
-`Spawn` allocates a network id, registers the object with the replication and
-RPC systems, snapshots its full state, and broadcasts a spawn packet carrying
-`networkId`, `actor.Name`, `ownerClientId` and the state blob.
-
-**Clients must construct the actor themselves** in response to
-`OnSpawnObject` — the engine sends a name, not a prefab. Wire it to a factory:
+**Clients construct the actor themselves** in response to `OnSpawnObject` — the
+engine sends a name, not a prefab:
 
 ```csharp
-private readonly Dictionary<uint, Actor> _netActors = new();
-
 nm.OnSpawnObject += (netId, actorName, ownerId, state) =>
 {
     Actor actor = actorName switch
     {
-        "Player"  => BuildPlayer(),
-        "Bullet"  => BuildBullet(),
-        _         => new Actor(actorName),
+        "Player" => BuildPlayer(),
+        "Bullet" => BuildBullet(),
+        _        => new Actor(actorName),
     };
 
     var no = actor.GetComponent<NetworkObject>() ?? actor.AddComponent<NetworkObject>();
     no.NetworkId     = netId;
     no.OwnerClientId = ownerId;
     no.IsOwner       = ownerId == nm.LocalClientId;
-    no.IsServer      = false;
 
     SceneManager.ActiveScene!.AddActor(actor);
     nm.Replication.RegisterObject(no);
     nm.Rpc.Register(actor, no);
     _netActors[netId] = actor;
-};
-
-nm.OnDespawnObject += netId =>
-{
-    if (_netActors.Remove(netId, out var a)) a.Destroy();
 };
 ```
 
@@ -141,267 +252,61 @@ will write. Keep it beside your spawn call so the two never drift.
 
 ## Replication
 
-Mark fields or properties on any `Component` with `[Replicated]`.
+C# marks a member; JavaScript says so in the component's schema. Both produce
+the same blob, so the two engines replicate to each other with no translation.
 
 ```csharp
 public sealed class PlayerState : Component
 {
-    [Replicated] public int   Health = 100;
-    [Replicated] public int   Score;
-    [Replicated(ReplicateCondition.OwnerOnly)] public float Stamina;
-    [Replicated(ReplicateCondition.Always, priority: 10)] public Vector2 Position;
+    [Replicated] public int Health = 100;
+    [Replicated(Condition = ReplicateCondition.OwnerOnly)] public Vector2 Aim;
+    [Replicated(Condition = ReplicateCondition.InitialOnly)] public string Skin = "";
 }
 ```
 
-| `ReplicateCondition` | Meaning |
-|---|---|
-| `Always` | sent to every observer within `InterestRadius` on each dirty tick |
-| `OwnerOnly` | only the owning client receives it — use for health, inventory, cooldowns |
-| `InitialOnly` | sent once in the spawn snapshot, never again — use for immutable spawn data |
-
-`priority` orders members within a packet: higher values are written first, so
-they survive when bandwidth forces the system to shed data.
-
-```csharp
-nm.Replication.SendRate      = 20f;     // state updates per second, default 20
-nm.Replication.InterestRadius = 2000f;  // world units; objects beyond are skipped
-```
-
-`ReplicationSystem.Tick` runs inside `NetworkManager.Tick`. The server collects
-changed replicated members per object at `SendRate` and sends deltas; clients
-apply them through `HandleIncomingStateUpdate`.
-
-Replication is **server-authoritative and one-directional**: the server owns the
-values, clients receive them. To let a client change state, use a `ServerRpc`.
-
-Register and unregister objects explicitly when you are not going through
-`NetworkObject.Spawn`:
-
-```csharp
-nm.Replication.RegisterObject(netObj);
-nm.Replication.UnregisterObject(netObj);
-```
-
----
-
-## Remote procedure calls
-
-Attribute methods on components attached to a networked actor.
-
-```csharp
-public sealed class Weapon : Component
-{
-    [ServerRpc]                       // requireOwnership: true by default
-    public void FireServerRpc(float dirX, float dirY)
-    {
-        // Runs on the server. Validate here — never trust the caller.
-        SpawnProjectile(new Vector2(dirX, dirY));
-        RpcSystem.CallClientRpc(GetComponent<NetworkObject>()!, nameof(PlayFireFxClientRpc),
-                                RpcTarget.All, dirX, dirY);
-    }
-
-    [ClientRpc(RpcTarget.All)]
-    public void PlayFireFxClientRpc(float dirX, float dirY)
-    {
-        // Runs on every client (and on the server locally, for RpcTarget.All).
-        SBEngine.Instance.Audio.PlayOneShot("Assets/Audio/shoot.wav");
-    }
+```js
+class PlayerState extends Component {
+    static schema = {
+        ...Component.schema,
+        health: { type: 'int', default: 100, replicated: true },
+        aim: { type: 'vector2', default: [0, 0], replicated: true, condition: 'ownerOnly' },
+    };
 }
 ```
 
-Invoke them:
+The blob is `[count u16]` then `[name str][tag u8][value]` per member. Only
+changed members are sent after the first snapshot, and **a member the receiving
+build has never heard of is stepped over rather than breaking the blob** — which
+is what lets an older client stay in a session with a newer server instead of
+dropping every update.
 
-```csharp
-var no = actor.GetComponent<NetworkObject>()!;
-
-// From a client (or the server) → runs on the server
-RpcSystem.CallServerRpc(no, nameof(Weapon.FireServerRpc), dir.X, dir.Y);
-
-// From the server only → runs on clients
-RpcSystem.CallClientRpc(no, nameof(Weapon.PlayFireFxClientRpc), RpcTarget.All, dir.X, dir.Y);
-```
-
-Semantics from the source:
-
-- `CallServerRpc` **on the server invokes the method directly**, skipping the
-  network. Same code path host and client.
-- `CallClientRpc` **from a client logs an error and does nothing**.
-- `RpcTarget` is `All` (every client, plus the server locally), `Owner` (only
-  the owning client) or `Others` (everyone except the owner).
-- `[ServerRpc(requireOwnership: false)]` allows any client to call it. Default
-  is ownership-checked.
-- If the manager is not running, both calls log to stderr and return — they do
-  not throw. In single-player, RPC-based code paths silently do nothing.
-
-Registration happens in `NetworkObject.Spawn`; do it manually otherwise:
-
-```csharp
-nm.Rpc.Register(actor, netObj);
-nm.Rpc.Unregister(actor);
-```
-
-Naming convention: suffix `ServerRpc` / `ClientRpc` so the direction is obvious
-at the call site, and use `nameof(...)` rather than string literals so renames
-do not silently break dispatch.
+`Int64` rides as a double, in a replicated member and in an RPC argument alike:
+JavaScript has no 64-bit integer in a `Number`, and a value that does not survive
+the round trip is worse than one documented to carry 53 bits.
 
 ---
 
-## Raw messaging
-
-When you want your own protocol:
+## RPC
 
 ```csharp
-nm.SendToServer(bytes, DeliveryMethod.ReliableOrdered);
-nm.SendToClient(clientId, bytes, DeliveryMethod.Unreliable);
-nm.SendToAll(bytes, DeliveryMethod.ReliableUnordered);
+[ServerRpc] public void RequestFire(Vector2 at) { … }    // client → server
+[ClientRpc] public void PlayHit(int amount) { … }        // server → clients
 ```
 
-`DeliveryMethod` is LiteNetLib's enum: `Unreliable`, `ReliableUnordered`,
-`Sequenced`, `ReliableOrdered`, `ReliableSequenced`.
-
-Rules of thumb: `Unreliable` for per-frame position streams, `ReliableOrdered`
-for chat, inventory and anything a dropped packet would corrupt.
+Arguments may be `bool`, `byte`, `int`, `uint`, `long`, `float`, `double`,
+`string`, `Vector2` and `Vector3`. Anything else is sent as null, with a warning.
 
 ---
 
 ## LAN discovery
 
-```csharp
-// Host — advertise
-LanDiscovery.StartBroadcast(port: 7778, new LanServerInfo
-{
-    ServerName  = "Ada's Game",
-    Address     = LocalIPv4(),
-    Port        = 7777,
-    PlayerCount = 1,
-    MaxPlayers  = 8,
-    GameVersion = "1.0.0",
-    CustomData  = { ["map"] = "forest" },
-});
-
-// Client — browse
-LanDiscovery.Discover(port: 7778, onFound: info =>
-{
-    Debug.WriteLine($"{info.ServerName} {info.PlayerCount}/{info.MaxPlayers} @ {info.Address}:{info.Port}");
-});
-
-LanDiscovery.StopBroadcast();
-LanDiscovery.StopDiscovery();
-```
-
-`onFound` is invoked from the discovery socket's thread. Marshal to the main
-thread before touching the scene graph or UI:
-
-```csharp
-private readonly ConcurrentQueue<LanServerInfo> _found = new();
-LanDiscovery.Discover(7778, info => _found.Enqueue(info));
-
-protected override void Update(GameTime gt)
-{
-    base.Update(gt);
-    while (_found.TryDequeue(out var info)) AddServerRow(info);
-}
-```
-
-`LanServerInfo` is serialised with a source-generated JSON context, so it stays
-allocation-light and trimming-safe.
+`LanDiscovery` broadcasts and listens on UDP so a game can offer a server browser
+without anyone typing an address. Desktop only — a browser cannot broadcast.
 
 ---
-
-## Diagnostics
-
-```csharp
-NetworkDiagnostics.Visible = true;
-NetworkDiagnostics.RecordBytesIn(n);
-NetworkDiagnostics.RecordBytesOut(n);
-
-// in your loop
-NetworkDiagnostics.Update(dt);
-NetworkDiagnostics.Draw(SpriteBatch, new Vector2(10, 320));
-```
-
-Like all the debug tooling, it is not pumped for you.
-
----
-
-## A minimal host/join flow
-
-```csharp
-public sealed class NetSession
-{
-    private NetworkManager? _nm;
-    public NetworkManager? Manager => _nm;
-
-    public void Host(int port = 7777)
-    {
-        _nm = new NetworkManager();
-        _nm.OnClientConnected += id => SpawnPlayerFor(id);
-        _nm.StartServer(port, maxClients: 8);
-
-        LanDiscovery.StartBroadcast(7778, new LanServerInfo
-        {
-            ServerName = "Ada's Game", Address = LocalIPv4(), Port = port,
-            MaxPlayers = 8, GameVersion = "1.0.0",
-        });
-
-        SpawnPlayerFor(-1);          // the host's own player
-    }
-
-    public void Join(string address, int port = 7777)
-    {
-        _nm = new NetworkManager();
-        _nm.OnSpawnObject   += SpawnRemote;
-        _nm.OnDespawnObject += DespawnRemote;
-        _nm.ConnectToServer(address, port);
-    }
-
-    public void Tick(float dt) => _nm?.Tick(dt);
-
-    public void Leave()
-    {
-        LanDiscovery.StopBroadcast();
-        LanDiscovery.StopDiscovery();
-        _nm?.Dispose();
-        _nm = null;
-    }
-
-    private void SpawnPlayerFor(int clientId)
-    {
-        var scene = SBEngine.Instance.SceneManager.ActiveScene!;
-        var actor = BuildPlayer();
-        var no = actor.AddComponent<NetworkObject>();
-        no.OwnerClientId = clientId;
-        scene.AddActor(actor);
-        NetworkObject.Spawn(actor);
-    }
-
-    // SpawnRemote / DespawnRemote: the factory table shown earlier.
-}
-```
-
----
-
-## Design guidance
-
-- **Server authority.** Clients send intent (`ServerRpc`); the server decides and
-  replicates the result. Never let a client write its own health or score.
-- **Replicate a little, predict a lot.** Send positions at 10–20 Hz and
-  interpolate on the client rather than sending every frame.
-- **`InterestRadius` is your bandwidth dial.** Most games do not need to
-  replicate the whole world to every client.
-- **Test with the host as a client.** `CallServerRpc` short-circuits on the
-  server, so host-only bugs hide easily; always run one extra client.
-- **Guard single-player.** `NetworkManager.Instance` is null until you construct
-  one; RPCs no-op. Prefer code paths that work identically offline.
-
----
-
-## Steam multiplayer
-
-For Steam lobbies and matchmaking on top of this transport, see
-[19. Steam](19-steam.md).
 
 ## Next
 
-- [16. The Editor](16-editor.md)
-- [Tutorial 16: Multiplayer](../tutorials/16-multiplayer.md)
+- [29. Darks Games](29-darksgames.md) — identity, friends, presence and Join
+- [11. Scripting](11-scripting.md) — the `Network` and `DG` globals
+- [3. The Game Loop](03-game-loop.md) — where `Tick` goes

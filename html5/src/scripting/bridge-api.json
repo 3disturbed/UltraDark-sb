@@ -665,6 +665,9 @@
     },
     "onTriggerExit": {
       "shared": true
+    },
+    "onNetworkMessage": {
+      "shared": true
     }
   },
   "uiElement": {

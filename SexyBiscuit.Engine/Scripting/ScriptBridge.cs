@@ -1071,22 +1071,16 @@ public sealed class ScriptBridge
     private static NetworkManager? Net => NetworkManager.Instance;
 
     /// <summary>
-    /// The manager, started solo if a script asked to send before anything started a session.
+    /// The manager a start call should act on, created if there is none.
     /// </summary>
     /// <remarks>
-    /// A multiplayer script running with no session is the single-player case, not an error.
-    /// Starting a loopback session rather than warning and doing nothing means the same script
-    /// drives the same code path alone as it does in a lobby -- which is what stops "works
-    /// alone, breaks with two players".
+    /// Only the three explicit calls -- startServer, startSolo, connect -- reach this. A send
+    /// with no session is a no-op instead: an earlier version started a loopback session on any
+    /// send, which meant a script broadcasting a position every frame silently hosted a game
+    /// nobody had asked for, and left it running. "Runs alone" is already covered without that,
+    /// because isLocalPlayer(0) is true before a server has said otherwise.
     /// </remarks>
-    private static NetworkManager EnsureNet()
-    {
-        if (NetworkManager.Instance is { IsRunning: true } running) return running;
-
-        var manager = NetworkManager.Instance ?? new NetworkManager();
-        if (!manager.IsRunning) manager.StartSolo();
-        return manager;
-    }
+    private static NetworkManager StartableNet() => NetworkManager.Instance ?? new NetworkManager();
 
     private ObjectInstance BuildNetworkProxy()
     {
@@ -1133,7 +1127,7 @@ public sealed class ScriptBridge
         {
             try
             {
-                var manager = NetworkManager.Instance ?? new NetworkManager();
+                var manager = StartableNet();
                 if (manager.IsRunning) return Bool(true);
                 manager.StartServer((int)Num(args.At(0), 7777f));
                 return Bool(true);
@@ -1144,7 +1138,12 @@ public sealed class ScriptBridge
         // Network.startSolo() -- host with no socket at all.
         obj.Set("startSolo", Fn("startSolo", (_, _) =>
         {
-            try { EnsureNet(); return Bool(true); }
+            try
+            {
+                var manager = StartableNet();
+                if (!manager.IsRunning) manager.StartSolo();
+                return Bool(true);
+            }
             catch (Exception ex) { Warn($"Network.startSolo: {ex.Message}"); return Bool(false); }
         }));
 
@@ -1153,7 +1152,7 @@ public sealed class ScriptBridge
         {
             try
             {
-                var manager = NetworkManager.Instance ?? new NetworkManager();
+                var manager = StartableNet();
                 if (manager.IsRunning) manager.Disconnect();
 
                 string address = args.At(0).ToString();
@@ -1181,7 +1180,7 @@ public sealed class ScriptBridge
         // for the same thing.
         JsValue SendToAll(JsValue thisObj, JsValue[] args)
         {
-            EnsureNet().SendMessageToAll(args.At(0).ToString(), ToJsonNode(args.At(1)));
+            Net?.SendMessageToAll(args.At(0).ToString(), ToJsonNode(args.At(1)));
             return JsValue.Undefined;
         }
         obj.Set("sendToAll", Fn("sendToAll", SendToAll, length: 2));
@@ -1189,7 +1188,7 @@ public sealed class ScriptBridge
 
         obj.Set("sendTo", Fn("sendTo", (_, args) =>
         {
-            EnsureNet().SendMessageTo((int)Num(args.At(0), -1f), args.At(1).ToString(), ToJsonNode(args.At(2)));
+            Net?.SendMessageTo((int)Num(args.At(0), -1f), args.At(1).ToString(), ToJsonNode(args.At(2)));
             return JsValue.Undefined;
         }, length: 3));
 
@@ -1203,7 +1202,16 @@ public sealed class ScriptBridge
                 return JsValue.Undefined;
             }
 
-            var manager = EnsureNet();
+            // A subscription needs something to subscribe to. Nothing is started here: a script
+            // that wants events before a session exists uses the onNetworkMessage hook, which
+            // attaches itself the frame a session appears.
+            if (NetworkManager.Instance is not { } manager)
+            {
+                Warn($"Network.on('{eventName}'): no session is running. "
+                   + "Start one first, or use the onNetworkMessage hook, which waits for one.");
+                return JsValue.Undefined;
+            }
+
             Action? unsubscribe = eventName switch
             {
                 "message" => Subscribe<int, string, JsonNode?>(
@@ -1237,11 +1245,7 @@ public sealed class ScriptBridge
         return obj;
     }
 
-    private static void EnsureNetName(string name)
-    {
-        var manager = NetworkManager.Instance ?? new NetworkManager();
-        manager.PlayerName = name;
-    }
+    private static void EnsureNetName(string name) => StartableNet().PlayerName = name;
 
     private static Action Subscribe(Action<Action> add, Action<Action> remove, Action handler)
     {
@@ -1275,13 +1279,20 @@ public sealed class ScriptBridge
     }
 
     /// <summary>A script value as JSON, for the message channel. Undefined and null both become null.</summary>
+    /// <remarks>
+    /// Jint's own serialiser rather than evaluating <c>JSON.stringify</c> in the script's engine.
+    /// The evaluated form looked equivalent and was not: it re-enters the engine while a frame is
+    /// being dispatched, and a script that had shadowed <c>JSON</c> would decide what the wire
+    /// carried.
+    /// </remarks>
     private JsonNode? ToJsonNode(JsValue value)
     {
         if (value.IsUndefined() || value.IsNull()) return null;
         try
         {
-            return JsonNode.Parse(_engine.Evaluate("JSON.stringify")
-                .Call(JsValue.Undefined, value).ToString());
+            var json = new Jint.Native.Json.JsonSerializer(_engine)
+                .Serialize(value, JsValue.Undefined, JsValue.Undefined);
+            return json.IsUndefined() ? null : JsonNode.Parse(json.ToString());
         }
         catch (Exception)
         {
@@ -1292,14 +1303,16 @@ public sealed class ScriptBridge
         }
     }
 
+    /// <summary>JSON back into a script value. Internal so ScriptComponent can dispatch a message.</summary>
+    internal JsValue JsonToScript(JsonNode? node) => FromJsonNode(node);
+
     /// <summary>JSON back into a script value.</summary>
     private JsValue FromJsonNode(JsonNode? node)
     {
         if (node == null) return JsValue.Null;
         try
         {
-            return _engine.Evaluate("JSON.parse")
-                .Call(JsValue.Undefined, new JsString(node.ToJsonString()));
+            return new Jint.Native.Json.JsonParser(_engine).Parse(node.ToJsonString());
         }
         catch (Exception) { return JsValue.Null; }
     }
