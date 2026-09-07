@@ -954,3 +954,128 @@ test("FOUNDRY's shut doors say so on the bar", async () => {
         assert.equal(g.errors.length, 0, g.errors.join('\n'));
     } finally { g.restore(); }
 });
+
+// ---------------------------------------------------------------------------
+// Darks Games
+// ---------------------------------------------------------------------------
+//
+// The first of these is the one that matters. Everything the hub offers is
+// optional at runtime -- no slug, no network, no account -- and the failure mode
+// of getting that wrong is a game that will not start for a player who is simply
+// not signed in. Every other test in this file already boots with no runtime at
+// all, so they are that check too; this one says so on purpose.
+
+test('the whole game runs with no Darks Games hub at all', async () => {
+    const g = boot();                       // no `dg`: signed out, nothing on the page
+    try {
+        assert.equal(g.social().invoke('isAvailable'), 0, 'a hub appeared out of nowhere');
+        assert.equal(g.social().invoke('isSignedIn'), 0);
+        assert.equal(g.social().invoke('getName'), 'Player', 'displayName must never be null');
+
+        g.director().invoke('forceLaunch');
+        await g.step(240);
+        g.director().invoke('forceWave', 5);
+        await g.step(120);
+
+        assert.ok(g.director().invoke('getWave') >= 5, 'the run did not progress');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+test('presence says which run you are in, and stops repeating itself', async () => {
+    const g = boot({ dg: true });
+    try {
+        await g.step(60);
+        const first = g.dg.presences[0];
+        assert.ok(first, 'nothing was published while sitting in the hangar');
+        assert.equal(first.state, 'hangar');
+
+        g.director().invoke('forceLaunch');
+        await g.step(120);
+        assert.ok(g.dg.presences.some((p) => p && /^wave \d+$/.test(p.state)),
+            `never published a wave: ${JSON.stringify(g.dg.presences)}`);
+
+        // The same line over and over is the thing a friends list cannot use.
+        const idle = g.dg.presences.length;
+        await g.step(60);
+        assert.equal(g.dg.presences.length, idle,
+            'an unchanged run published presence again');
+    } finally { g.restore(); }
+});
+
+test('a counting achievement sends the difference, never the running total', async () => {
+    const g = boot({ dg: true });
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(30);
+
+        // Twelve kills in two batches, with a poll in between: the hub ADDS what
+        // it is sent, so reporting the total each time counts the first batch
+        // twice and "1000 kills" arrives hundreds of kills early.
+        for (let i = 0; i < 5; i++) { g.director().invoke('onEnemyKilled', 0, 0, 0, 10, 1, 0); }
+        await g.step(60);
+        for (let i = 0; i < 7; i++) { g.director().invoke('onEnemyKilled', 0, 0, 0, 10, 1, 0); }
+        await g.step(60);
+
+        assert.equal(g.director().invoke('getKills'), 12);
+        assert.equal(g.dg.totalFor('exterminator'), 12,
+            `the hub was told ${g.dg.totalFor('exterminator')} kills for 12 actual`);
+
+        // And a one-shot is sent once however long the run goes on.
+        await g.step(300);
+        assert.equal(g.dg.countOf('first_blood'), 1,
+            'first blood was reported more than once');
+    } finally { g.restore(); }
+});
+
+test('a restored cloud save merges with this device instead of replacing it', async () => {
+    const g = boot({ dg: true });
+    try {
+        await g.step(30);
+        assert.ok(g.dg.saveRequests > 0, 'signing in did not ask for the cloud save');
+
+        // Fly one pilot here, then have the hub hand back a save from a device
+        // that flew two different ones.
+        g.director().invoke('forceLaunch');
+        g.pilot().invoke('setPilot', 0);
+        await g.step(60);
+        assert.equal(g.social().invoke('getFlownCount'), 1);
+
+        g.director().invoke('setBest', 500);
+        g.dg.emit('save', { bestScore: 9000, flownMask: (1 << 3) | (1 << 5), kills: 40, bosses: 2 });
+        await g.step(30);
+
+        assert.equal(g.social().invoke('getFlownCount'), 3,
+            'the other device\'s pilots replaced this one\'s instead of joining them');
+        assert.equal(g.director().invoke('getBest'), 9000, 'a better cloud best was not adopted');
+
+        // ...and a worse one never overwrites a better one, whichever arrives first.
+        g.dg.emit('save', { bestScore: 10, flownMask: 0 });
+        await g.step(30);
+        assert.equal(g.director().invoke('getBest'), 9000, 'a worse cloud best overwrote a better one');
+        assert.equal(g.social().invoke('getFlownCount'), 3, 'an empty mask cleared the flown pilots');
+
+        // The counters resume from the cloud, so the next report is a difference
+        // against what the hub already holds rather than against zero.
+        for (let i = 0; i < 3; i++) { g.director().invoke('onEnemyKilled', 0, 0, 0, 10, 1, 0); }
+        await g.step(60);
+        assert.equal(g.dg.totalFor('exterminator'), 0,
+            'kills already counted on the hub were sent again after a restore');
+    } finally { g.restore(); }
+});
+
+test('the run banks itself to the cloud when it ends', async () => {
+    const g = boot({ dg: true });
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(30);
+        assert.equal(g.dg.saves.length, 0, 'a live run wrote a save');
+
+        for (let i = 0; i < 30; i++) { g.pilot().invoke('hurt', 999); await g.step(40); }
+        assert.equal(g.director().invoke('getPhase'), 4, 'the pilot survived thirty lethal hits');
+        await g.step(60);
+
+        assert.equal(g.dg.saves.length, 1, `the end of a run wrote ${g.dg.saves.length} saves`);
+        assert.ok(Number.isFinite(g.dg.saves[0].data.bestScore), 'the save has no best score in it');
+    } finally { g.restore(); }
+});

@@ -123,6 +123,14 @@ var best = 0;
 var mult = 1;
 var multTimer = 0;
 
+// Lifetime tallies, not per-run: they exist for the Darks Games layer, which
+// counts across runs and across devices. Kept here rather than there because
+// this is where the two events already arrive, and a hub that is not reachable
+// must not put a call in the path of every kill.
+var kills = 0;
+var bossKills = 0;
+var ultradarkDown = 0;
+
 var waveTimer = 0;           // the draft / shop countdown, not the wave's
 var bossUp = 0;
 var bossActor = null;
@@ -544,6 +552,8 @@ function spawnBoss(index) {
 function onBossKilled(kind, x, y) {
     bossUp = 0;
     bossActor = null;
+    bossKills++;
+    if ((Number(kind) | 0) === 4) { ultradarkDown = 1; }      // THE ULTRADARK itself
 
     var reward = 40 + wave * 4;
     addCores(reward);
@@ -563,6 +573,7 @@ function onBossKilled(kind, x, y) {
 
 function onEnemyKilled(kind, x, y, points, coreValue, dropChance) {
     score += Math.floor((Number(points) || 0) * mult);
+    kills++;
 
     mult = Math.min(multMax, mult + multPerKill);
     multTimer = multGrace;
@@ -1043,6 +1054,20 @@ function getWave()       { return wave; }
 function getScore()      { return score; }
 function getCores()      { return cores; }
 function getBest()       { return best; }
+function getKills()      { return kills; }
+function getBossKills()  { return bossKills; }
+function killedUltradark(){ return ultradarkDown; }
+
+/**
+ * Adopts a best score from somewhere else -- a cloud save restored on sign-in.
+ * Never lowers it: a device with a worse local best must not overwrite a better
+ * one, and the merge has to be safe whichever save arrives first.
+ */
+function setBest(value) {
+    var v = Number(value);
+    if (v === v && v > best) { best = v; }
+    return best;
+}
 function getMult()       { return mult; }
 function getMult01()     { return (mult - 1) / (multMax - 1); }
 function getCores01()    { return Math.min(1, cores / 120); }

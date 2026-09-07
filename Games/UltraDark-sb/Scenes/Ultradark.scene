@@ -1,260 +1,279 @@
 {
-  "name": "Ultradark",
-  "layers": [
+ "name": "Ultradark",
+ "layers": [
+  {
+   "name": "Default",
+   "actors": [
     {
-      "name": "Default",
-      "actors": [
-        {
-          "name": "Main Camera",
-          "tag": "MainCamera",
-          "components": [
-            {
-              "type": "Camera2D",
-              "properties": {
-                "Zoom": 1.0
-              }
-            },
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/CameraRig.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
+     "name": "Main Camera",
+     "tag": "MainCamera",
+     "components": [
+      {
+       "type": "Camera2D",
+       "properties": {
+        "Zoom": 1.0
+       }
+      },
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/CameraRig.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Director",
+     "tag": "Director",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/Director.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Waves",
+     "tag": "Waves",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/WaveDirector.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Swarm",
+     "tag": "Swarm",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/Swarm.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Bullets",
+     "tag": "Bullets",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/ProjectilePool.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Player",
+     "tag": "Player",
+     "components": [
+      {
+       "type": "SpriteRenderer",
+       "properties": {
+        "Tint": {
+         "R": 90,
+         "G": 220,
+         "B": 255,
+         "A": 255
         },
-        {
-          "name": "Director",
-          "tag": "Director",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/Director.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Waves",
-          "tag": "Waves",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/WaveDirector.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Swarm",
-          "tag": "Swarm",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/Swarm.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Bullets",
-          "tag": "Bullets",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/ProjectilePool.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Player",
-          "tag": "Player",
-          "components": [
-            {
-              "type": "SpriteRenderer",
-              "properties": {
-                "Tint": {
-                  "R": 90,
-                  "G": 220,
-                  "B": 255,
-                  "A": 255
-                },
-                "Size": [
-                  30,
-                  20
-                ],
-                "LayerDepth": 0.5
-              }
-            },
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/Pilot.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Clock",
-          "tag": "Clock",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/DayNightCycle.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Draft",
-          "tag": "Draft",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/DraftBoard.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Hud",
-          "tag": "Hud",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/Hud.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Effects",
-          "tag": "Effects",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/Effects.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Upgrades",
-          "tag": "Upgrades",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/Upgrades.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        },
-        {
-          "name": "Pickups",
-          "tag": "Pickups",
-          "components": [
-            {
-              "type": "ScriptComponent",
-              "properties": {
-                "ScriptPath": "Scripts/PickupDrops.js"
-              }
-            }
-          ],
-          "transform": {
-            "x": 0,
-            "y": 0,
-            "rotation": 0,
-            "scaleX": 1,
-            "scaleY": 1
-          }
-        }
-      ]
+        "Size": [
+         30,
+         20
+        ],
+        "LayerDepth": 0.5
+       }
+      },
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/Pilot.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Clock",
+     "tag": "Clock",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/DayNightCycle.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Draft",
+     "tag": "Draft",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/DraftBoard.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Hud",
+     "tag": "Hud",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/Hud.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Effects",
+     "tag": "Effects",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/Effects.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Upgrades",
+     "tag": "Upgrades",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/Upgrades.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Pickups",
+     "tag": "Pickups",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/PickupDrops.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
+    },
+    {
+     "name": "Social",
+     "tag": "Social",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/Social.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
     }
-  ]
+   ]
+  }
+ ]
 }

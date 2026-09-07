@@ -5,7 +5,8 @@
 // In order, cheapest first, stopping at the first failure:
 //
 //   validate    the scripting contract     (from html5/)
-//   checks      24 tests of real situations
+//   dg          the achievement keys the game reports and the hub defines
+//   checks      tests of real situations
 //   draw-order  which side of the dark every layer is on
 //   perf        what a frame costs at the loads the game can produce
 //   ui layout   every UI state, at viewports it was not built at
@@ -23,6 +24,7 @@ const repoRoot = path.resolve(gameDir, '../..');
 
 const steps = [
     ['validate',   'node', ['tools/validate.js', '../Games/UltraDark-sb', '--strict'], path.join(repoRoot, 'html5')],
+    ['dg',         'node', ['tools/dg-achievements.mjs', '--check'], gameDir],
     ['checks',     'node', ['--test', 'tools/checks.mjs'], gameDir],
     ['draw-order', 'node', ['tools/draw-order.mjs'], gameDir],
     ['perf',       'node', ['tools/perf.mjs'], gameDir],

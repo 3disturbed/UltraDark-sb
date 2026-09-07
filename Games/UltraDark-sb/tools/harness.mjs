@@ -32,12 +32,75 @@ export const { deserialize, ScriptComponent, PhysicsSystem2D, Vector2 } = engine
 // UiCanvas is not re-exported from the engine index, so it is imported by path.
 const { UiCanvas } = await import(path.join(repoRoot, 'html5/src/ui/UiCanvas.js'));
 const { Time } = await import(path.join(repoRoot, 'html5/src/core/Time.js'));
+const { DarksGames } = await import(path.join(repoRoot, 'html5/src/dg/DarksGames.js'));
 
 export const DT = 1 / 60;
 
 export const VIEWPORT = { width: 1280, height: 720 };
 
-export function boot({ scene: sceneName = 'Scenes/Ultradark.scene' } = {}) {
+/**
+ * A recording stand-in for the Darks Games runtime.
+ *
+ * The `DG` global is installed by the bridge whether or not a hub is reachable,
+ * and reads it from `DarksGames.instance` -- so a null instance is the signed-out
+ * case a real player has, and this is the signed-in one. Without it there is no
+ * way to assert on what the game TOLD the hub, only that it did not crash, and
+ * the interesting bugs here are all in what was sent: a counter reported as a
+ * total instead of a difference, a save that replaces instead of merging.
+ */
+export function makeDgStub({ game = 'ultradark-sb', signedIn = true } = {}) {
+    const handlers = new Map();
+    const stub = {
+        game,
+        available: true,
+        get signedIn() { return stub.user.signedIn; },
+        user: {
+            id: signedIn ? 'u_test' : null,
+            name: signedIn ? 'Tester' : null,
+            handle: signedIn ? 'Tester#0001' : null,
+            get signedIn() { return this.id != null; },
+            get displayName() { return this.name ?? this.handle ?? 'Player'; },
+        },
+
+        // What was said, in order, for a test to read back.
+        presences: [],
+        achievements: [],
+        saves: [],
+        saveRequests: 0,
+
+        presence(fields) { stub.presences.push({ ...fields }); },
+        clearPresence() { stub.presences.push(null); },
+        reportAchievement(key, increment) { stub.achievements.push({ key, increment }); },
+        requestSave() { stub.saveRequests++; },
+        writeSave(data, options) { stub.saves.push({ data, options }); },
+        on(event, handler) {
+            if (!handlers.has(event)) handlers.set(event, []);
+            handlers.get(event).push(handler);
+            return () => {};
+        },
+
+        /** Delivers an event to whatever the game registered, as the runtime would. */
+        emit(event, ...args) { for (const h of handlers.get(event) ?? []) h(...args); },
+
+        /** Totals per key, which is what the hub is actually accumulating. */
+        totalFor(key) {
+            return stub.achievements
+                .filter((a) => a.key === key)
+                .reduce((sum, a) => sum + (a.increment ?? 1), 0);
+        },
+        countOf(key) { return stub.achievements.filter((a) => a.key === key).length; },
+    };
+    return stub;
+}
+
+/**
+ * @param {object} [options]
+ * @param {object|boolean} [options.dg] A Darks Games runtime to install for this
+ *   boot; `true` builds a signed-in stub. Omitted means signed out with no hub,
+ *   which is what every other test in this file runs as and what a player who
+ *   never signs in gets.
+ */
+export function boot({ scene: sceneName = 'Scenes/Ultradark.scene', dg = null } = {}) {
     const held = new Set();
     const pressed = new Set();
     const mouseHeld = new Set();
@@ -75,6 +138,11 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene' } = {}) {
     // The clock is a module singleton shared by every boot in a process, so a
     // test that left timeScale at 0 would freeze the next one.
     Time.reset();
+
+    // So is DarksGames.instance. It is restored in restore() for the same reason.
+    const priorDg = DarksGames.instance;
+    const dgRuntime = dg === true ? makeDgStub() : (dg || null);
+    DarksGames.instance = dgRuntime;
 
     const scene = deserialize(fs.readFileSync(path.join(gameDir, sceneName), 'utf8'),
                               { onWarning: () => {} });
@@ -135,6 +203,7 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene' } = {}) {
 
     function restore() {
         Time.reset();          // timeScale is a module singleton; a paused test would leak it
+        DarksGames.instance = priorDg;
         console.error = realError;
         console.warn = realWarn;
         console.log = realLog;
@@ -144,6 +213,8 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene' } = {}) {
         scene, input, errors, logs, find, byTag, scriptOn, step, restore,
         ui,
         Time,
+        dg: dgRuntime,
+        social: () => scriptOn('Social'),
         // Drive the UI pointer: `click(x, y)` presses this frame and releases
         // next, because a click is a release inside the element that also went
         // down inside it.
