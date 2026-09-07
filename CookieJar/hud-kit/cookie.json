@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "hud-kit",
+  "name": "HUD Kit",
+  "version": "1.0.0",
+  "summary": "A stat panel, a message line and a pause overlay, in screen space with real text.",
+  "description": "Builds a HUD out of the shared UI globals: a titled panel of labelled bars that read themselves from your player script, a message line that fades, and a pause/game-over overlay with buttons. Screen-anchored, so it is correct at any window size and on a phone, and it uses real text rather than the coloured rectangles a prototype used to be stuck with.",
+  "tags": ["ui", "hud", "text", "menu", "overlay"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["Hud.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put Hud.js on an empty actor and tag it Hud.",
+    "List your bars in `bars`: each needs a label, a colour and the name of a 0..1 getter on the player's script.",
+    "Call say(\"...\") on it for the message line, and setPaused(true) for the overlay."
+  ]
+}
