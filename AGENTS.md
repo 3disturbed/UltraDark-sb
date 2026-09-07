@@ -124,6 +124,10 @@ HTML5 development builds go on the server as a Game Card instead.
 
 Rules for this phase, and the reason for each:
 
+- **A game has real UI now.** `UI.panel/label/bar/button/image` are screen-space and anchored, and
+  `UI.width`/`UI.height` are the viewport the contract went years without. Text works on both
+  engines. Do not build another HUD out of world-space sprites over the player's head; reach for
+  the `hud-kit` cookie, and `screen-effects` for shake, flash, fade and hit-stop.
 - **Do not read the engine source to write a game.** Read `wiki/11-scripting.md` and the
   template's own scripts. The engine is over 50,000 lines of C#; putting it in context is the
   single most expensive thing a session can do.

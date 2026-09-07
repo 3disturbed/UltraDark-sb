@@ -134,6 +134,65 @@ Network.startServer(), Network.connect(), Network.sendToAll(), Network.broadcast
 `Network` is a stub on both engines: it lets a multiplayer template run as a one-player game
 and warns once that no transport is attached.
 
+### `UI` — screen space
+
+Everything above is world space. `UI` is the screen, and it is the only global that knows how big
+the window is.
+
+```js
+UI.width, UI.height                       // the viewport in pixels, which nothing else can ask for
+
+UI.panel(x, y, w, h, options);            // a filled box
+UI.label(x, y, "text", options);          // real text, from the shared 5x7 bitmap font
+UI.bar(x, y, w, h, value01, options);     // a track and a fill
+UI.button(x, y, w, h, "text", options);   // panel + centred text + hover + click
+UI.image(x, y, w, h, "Assets/hud.png", options);
+
+UI.clear();                               // this script's elements only
+UI.measure("text", scale);                // width in pixels, for laying a panel out around it
+```
+
+Each returns a handle:
+
+```js
+var hp = UI.bar(12, 12, 200, 10, 1, { anchor: "topleft", tint: "#c63832", background: "#2a2d34" });
+hp.value = health / maxHealth;            // the one you will write every frame
+
+hp.x; hp.y; hp.width; hp.height; hp.text; hp.scale; hp.visible;
+hp.tint; hp.background; hp.anchor; hp.align; hp.padding; hp.texturePath;
+hp.hovered; hp.clicked;                   // read-only; `clicked` is true for one frame
+hp.destroy();
+```
+
+**The anchor is the point.** It is both where on the screen the element hangs *and* which of its
+own corners hangs there, so this stays twelve pixels in from the bottom-right at any window size,
+on a phone included:
+
+```js
+UI.label(-12, -12, "v1.0.1", { anchor: "bottomright" });
+```
+
+The names are `topleft top topright left center right bottomleft bottom bottomright`.
+
+A **label with no width measures itself**, so a right- or centre-anchored one positions correctly
+without you measuring the text by hand every time it changes. Give it an explicit width when you
+are laying out a column and want the number to be yours.
+
+`clicked` is polled rather than a callback: a JS function held by the C# side is the kind of thing
+that marshals differently on the two engines, and a boolean does not.
+
+```js
+if (startButton.clicked) { Scene.load("Scenes/Level1"); }
+```
+
+Colours take the forms the rest of the engine takes — `"#ff8040"`, `"#ff8040c0"`, `[255,128,64]`,
+`{R:255,G:128,B:64}`. Prefer eight-digit hex for translucency: `rgba()` is browser-only and would
+draw nothing natively.
+
+Text is a 5x7 bitmap font defined in `html5/src/ui/font5x7.json`, which the browser imports and
+the C# engine embeds — one file, so the two cannot render different text. `scale` is a whole
+multiple of that cell and is rounded; the font has no half pixels.
+
 ### `Debug`, `log`, `warn`, `error`, `Vector2`
 
 ```js
