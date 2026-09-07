@@ -1,0 +1,11 @@
+{
+  "appName": "UltraDark",
+  "version": "1.0.0",
+  "startScene": "Scenes/Ultradark",
+  "config": "Release",
+  "upload": {
+    "appSlug": "ultradark-sb",
+    "channel": "alpha",
+    "tokenFile": "~/.dg-build-token-ultradark-sb"
+  }
+}

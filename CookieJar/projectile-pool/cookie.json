@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "id": "projectile-pool",
+  "name": "Projectile Pool",
+  "version": "1.0.0",
+  "summary": "Hundreds of bullets in one script, over a pool of reused actors, with a sweep that stops fast shots passing through things.",
+  "description": "A projectile with its own ScriptComponent is a projectile with its own script engine, and two hundred of those is a slideshow -- so a shot here is a row in parallel arrays and one onUpdate flies all of them. Actors are pooled rather than created and destroyed each shot, so the scene stops churning. And the frame's travel is walked in steps no longer than the capture window, because a projectile tested only where it lands passes straight through anything narrower than its own speed: a railgun at 1750 px/s misses every enemy it is aimed at, at every range, silently. Hits are reported by actor id to one script you name, so the marshalling cost is one call per hit rather than one per projectile per frame.",
+  "tags": ["projectiles", "bullets", "pooling", "performance", "collision", "shooter"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["ProjectilePool.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put ProjectilePool.js on one manager actor and tag it Projectiles.",
+    "Set enemySinkTag to the script that owns your enemies; it needs damageActor(actorId, dmg, code).",
+    "Give anything a projectile should hit a NON-trigger collider -- Physics.overlapCircle cannot see triggers.",
+    "Call fire(x, y, angle, speed, dmg, team, radius, life, pierce, code) from your weapon."
+  ]
+}

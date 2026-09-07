@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "id": "draft-picker",
+  "name": "Draft Picker",
+  "version": "1.0.0",
+  "summary": "Stop the round and ask a question: one of N cards, in world space, said in colour and pips because there is no font.",
+  "description": "Between rounds a roguelite asks you to choose, and the shared scripting contract makes that awkward twice over -- no viewport, so a card cannot be pinned to the screen, and no font, so a card cannot be labelled. Both are answered the same way. The row is laid out in world space in front of the actor it follows, which is correct at any resolution and on a phone; and a card says what it is in a colour and a row of pips, which is a number you can read across the arena without any text. The board knows nothing about what is on the cards: you open it, dress each slot, and poll for a pick.",
+  "tags": ["ui", "roguelite", "draft", "choice", "world-space", "upgrade"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["DraftBoard.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put DraftBoard.js on an empty manager actor and tag it Draft -- it builds its own sprites at start.",
+    "Set followTag to whatever the row should sit above, usually Player.",
+    "Call open(3), then setCard(slot, r, g, b, pips) for each, then poll getPicked() until it is not -1.",
+    "Give the player something to read the pick from -- log() the names, because the cards cannot carry them."
+  ]
+}

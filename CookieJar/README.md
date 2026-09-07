@@ -8,7 +8,7 @@ Install one from the editor's Cookie Jar panel, or ask the assistant — `search
 
 ## What is in the jar
 
-Seven cookies. **The `engines` field is the first thing to check** — a `csharp` cookie is no use
+Ten cookies. **The `engines` field is the first thing to check** — a `csharp` cookie is no use
 in a phase 1 HTML5 prototype, which is where every game starts, and a `js` cookie is not drawn in
 a native build.
 
@@ -22,6 +22,9 @@ unchanged in the browser and under Jint. Nothing to compile.
 | **`noise-and-hearing`** | Enemies that hunt by ear. A sound is broadcast as a *position and a radius*, and listeners walk to where it was — not to whoever made it. That one restraint is what makes running away, throwing something and standing still all real choices, without a "distraction system" existing. Includes a drop-in investigator AI with a sight cone you can slip behind. |
 | **`floating-status-bars`** | Health, stamina, hunger — as bars above an actor's head, fed by naming getters on that actor's script. In world space because the contract exposes no viewport, so a script cannot find the screen edge; following the actor turns that limitation into the right answer. |
 | **`day-night-cycle`** | A clock that becomes pressure. Publishes a 0–1 darkness curve and a day number for other systems to read, announces each phase once, and dims the world through an overlay pinned to the player. It deliberately decides nothing about what night *means*. |
+| **`wave-director`** | Endless escalating waves, a boss on a cadence, and the stall-breaker that stops a wave being unfinishable. A wave is a *budget*, not a headcount, so it gets harder rather than longer; the budget converts into spawns no faster than they are cleared, which is a pacing decision and a frame-cost ceiling at once. It owns the shape of a run and nothing about its content. |
+| **`projectile-pool`** | Hundreds of bullets in one script over a pool of reused actors — and a swept collision test, because a projectile checked only where it lands walks straight through anything narrower than its own speed. A railgun at 1750 px/s misses every target at every range, silently, and no test on either side of the engine says a word. |
+| **`draft-picker`** | Stop the round and ask a question: one of N cards, chosen by number key or by walking into one. In world space because there is no viewport, and said in colour and pips because there is no font. The board knows nothing about what is on the cards. |
 
 ### C# — for the native engine
 

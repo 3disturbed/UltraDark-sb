@@ -1,0 +1,419 @@
+// Boss.js -- the five bosses, one at a time.
+// Spawned by the Director on to its own actor, tagged "Boss", and configured
+// through configure(kind, hp, wave) before its first frame.
+//
+// A boss gets its own script where an enemy does not, because a boss is the
+// one thing on screen with real state: phases, a pattern that remembers where
+// it is in itself, a door cycle, an arena it is allowed to change. One Jint
+// engine for the thing the whole wave is about is a fair trade.
+//
+// Every boss telegraphs. The rule the fights are built on is that nothing that
+// can kill you arrives without a frame of warning first -- a wind-up, a ring,
+// a line, a colour change.
+
+// ===========================================================================
+// The five
+//
+// 0 BRUTE PRIME    charges, and slams a ring out on landing
+// 1 HEX PRIME      spiral fire, blinks away when you crowd it
+// 2 FOUNDRY        builds; shielded until its doors open
+// 3 NULL SHEPHERD  plants dark zones and shepherds adds into them
+// 4 THE ULTRADARK  turns the lights off and does all of it
+// ===========================================================================
+var B_BRUTE = 0, B_HEX = 1, B_FOUNDRY = 2, B_SHEPHERD = 3, B_ULTRA = 4;
+
+var BOSS_NAME = ["BRUTE PRIME", "HEX PRIME", "FOUNDRY", "NULL SHEPHERD", "THE ULTRADARK"];
+var BOSS_SIZE = [96, 84, 118, 92, 130];
+var BOSS_R    = [220, 180, 255, 120, 235];
+var BOSS_G    = [70,  90,  180, 90,  235];
+var BOSS_B    = [60,  240, 60,  200, 255];
+var BOSS_SPD  = [78,  62,  0,   70,  86];
+
+// ===========================================================================
+// Tuning
+// ===========================================================================
+var depthBoss = 0.45;
+var depthZone = 0.35;      // under the enemies standing in it, over the floor
+
+var contactDamage   = 26;
+var contactCooldown = 0.85;
+
+// ===========================================================================
+// State
+// ===========================================================================
+var kind = 0;
+var hp = 1000, hpMax = 1000;
+var wave = 5;
+var dead = 0;
+var configured = 0;
+
+var t = 0;              // primary cadence timer
+var t2 = 0;             // secondary
+var phase = 0;
+var spin = 0;
+var contactTimer = 0;
+var invuln = 0;
+
+var vx = 0, vy = 0;
+
+var sprite = null;
+var player = null, pilot = null, director = null, bullets = null, swarm = null;
+
+var zones = [];         // NULL SHEPHERD's dark patches: actor, x, y, r, life
+
+// ===========================================================================
+// Lifecycle
+// ===========================================================================
+
+function onStart() {
+    sprite = actor.getComponent("SpriteRenderer");
+    resolve();
+    if (configured) { dress(); }
+}
+
+function resolve() {
+    if (!player)   { player = Scene.findFirstByTag("Player"); if (player) { pilot = player.getComponent("ScriptComponent"); } }
+    if (!director) { var d = Scene.findFirstByTag("Director"); if (d) { director = d.getComponent("ScriptComponent"); } }
+    if (!bullets)  { var b = Scene.findFirstByTag("Bullets");  if (b) { bullets = b.getComponent("ScriptComponent"); } }
+    if (!swarm)    { var s = Scene.findFirstByTag("Swarm");    if (s) { swarm = s.getComponent("ScriptComponent"); } }
+}
+
+// Configured after the actor exists, because a script cannot be handed
+// arguments at attach time. Primitives only, as always.
+function configure(k, health, waveNumber) {
+    kind = Math.max(0, Math.min(4, Number(k) | 0));
+    hpMax = Math.max(1, Number(health) || 1000);
+    hp = hpMax;
+    wave = Number(waveNumber) || 5;
+    dead = 0;
+    phase = 0;
+    configured = 1;
+    if (sprite) { dress(); }
+    log(">>> " + BOSS_NAME[kind] + " <<<");
+    return 1;
+}
+
+function dress() {
+    if (!sprite) { return; }
+    sprite.size = { x: BOSS_SIZE[kind], y: BOSS_SIZE[kind] * 0.8 };
+    sprite.tint = { R: BOSS_R[kind], G: BOSS_G[kind], B: BOSS_B[kind], A: 255 };
+    sprite.layerDepth = depthBoss;
+
+    var col = actor.getComponent("BoxCollider2D");
+    if (col) { col.size = { x: BOSS_SIZE[kind], y: BOSS_SIZE[kind] * 0.8 }; }
+}
+
+function onUpdate(dt) {
+    if (dead || !configured) { return; }
+    resolve();
+    if (!player) { return; }
+
+    if (t > 0) { t -= dt; }
+    if (t2 > 0) { t2 -= dt; }
+    if (contactTimer > 0) { contactTimer -= dt; }
+    if (invuln > 0) { invuln -= dt; }
+    spin += dt;
+
+    // Half health opens the second phase for every boss: faster, and one more
+    // thing to watch. It is announced so the change is never a mystery.
+    if (phase === 0 && hp <= hpMax * 0.5) {
+        phase = 1;
+        log(BOSS_NAME[kind] + " -- second phase");
+        if (director) { director.call("spawnEffect", actor.transform.x, actor.transform.y, 260, 255, 255, 255, 0.3); }
+    }
+
+    var px = player.transform.x, py = player.transform.y;
+    var dx = px - actor.transform.x, dy = py - actor.transform.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    var nx = dist > 0.01 ? dx / dist : 0;
+    var ny = dist > 0.01 ? dy / dist : 0;
+
+    if      (kind === B_BRUTE)    { brute(dt, nx, ny, dist); }
+    else if (kind === B_HEX)      { hex(dt, nx, ny, dist); }
+    else if (kind === B_FOUNDRY)  { foundry(dt, nx, ny, dist); }
+    else if (kind === B_SHEPHERD) { shepherd(dt, nx, ny, dist); }
+    else                          { ultradark(dt, nx, ny, dist); }
+
+    tickZones(dt, px, py);
+    clampIn();
+    touch(dist);
+    paint();
+}
+
+// ===========================================================================
+// BRUTE PRIME -- charge, land, ring.
+// ===========================================================================
+function brute(dt, nx, ny, dist) {
+    var speed = BOSS_SPD[kind] * (phase ? 1.4 : 1);
+
+    if (phase >= 0 && t <= 0 && dist < 620) {
+        t = phase ? 2.4 : 3.4;
+        t2 = 0.55;
+        vx = nx; vy = ny;                       // committed direction, telegraphed
+        invuln = 0;
+    }
+
+    if (t2 > 0) {
+        // wind-up: hold still, and go white
+        return;
+    }
+
+    if (t > (phase ? 1.6 : 2.4)) {
+        actor.transform.x += vx * 620 * dt;
+        actor.transform.y += vy * 620 * dt;
+        if (t <= (phase ? 1.7 : 2.5)) { slam(); }
+    } else {
+        actor.transform.x += nx * speed * dt;
+        actor.transform.y += ny * speed * dt;
+    }
+}
+
+function slam() {
+    var x = actor.transform.x, y = actor.transform.y;
+    ring(x, y, 250, 220, 70, 60);
+    if (swarm) { swarm.call("knockCircle", x, y, 300, 380); }
+    if (pilot && player) {
+        var dx = player.transform.x - x, dy = player.transform.y - y;
+        if (dx * dx + dy * dy < 250 * 250) { pilot.call("hurt", 30); }
+    }
+}
+
+// ===========================================================================
+// HEX PRIME -- a spiral you walk out of, and a blink when you get close.
+// ===========================================================================
+function hex(dt, nx, ny, dist) {
+    if (dist > 380) {
+        actor.transform.x += nx * BOSS_SPD[kind] * dt;
+        actor.transform.y += ny * BOSS_SPD[kind] * dt;
+    }
+
+    if (t <= 0 && bullets) {
+        t = phase ? 0.10 : 0.16;
+        var arms = phase ? 5 : 3;
+        for (var a = 0; a < arms; a++) {
+            var ang = spin * 2.2 + (a / arms) * Math.PI * 2;
+            bullets.call("fire", actor.transform.x + Math.cos(ang) * 40,
+                         actor.transform.y + Math.sin(ang) * 40,
+                         ang, 250, 11, 1, 7, 4.0, 0, 0);
+        }
+    }
+
+    // Crowding it is punished, not rewarded: it leaves and drops a ring.
+    if (dist < 150 && t2 <= 0) {
+        t2 = 4.0;
+        ring(actor.transform.x, actor.transform.y, 190, 180, 90, 240);
+        var ang2 = Math.random() * Math.PI * 2;
+        var half = director ? director.call("getArenaHalf") - 120 : 900;
+        actor.transform.x = Math.max(-half, Math.min(half, actor.transform.x + Math.cos(ang2) * 460));
+        actor.transform.y = Math.max(-half, Math.min(half, actor.transform.y + Math.sin(ang2) * 460));
+        if (director) { director.call("spawnEffect", actor.transform.x, actor.transform.y, 120, 180, 90, 240, 0.2); }
+    }
+}
+
+// ===========================================================================
+// FOUNDRY -- rooted, shielded while the doors are shut, and always building.
+// The door cycle is the fight: damage only lands in the open window.
+// ===========================================================================
+function foundry(dt, nx, ny, dist) {
+    // The door cycle is meant to be a rhythm you shoot on, not a tax: shut for
+    // 1.6s of a 4.2s cycle leaves damage landing about 60% of the time. At 2.4s
+    // it was the other way round and the fight simply took twice as long.
+    if (t <= 0) {
+        t = phase ? 3.2 : 4.2;
+        invuln = invuln > 0 ? 0 : (phase ? 1.1 : 1.6);
+        log(invuln > 0 ? "FOUNDRY: doors shut" : "FOUNDRY: doors open");
+    }
+
+    if (t2 <= 0 && swarm) {
+        t2 = phase ? 1.5 : 2.3;
+        var a = Math.random() * Math.PI * 2;
+        var kindToBuild = phase ? (Math.random() < 0.4 ? 1 : 0) : 0;
+        swarm.call("spawnKind", kindToBuild,
+                   actor.transform.x + Math.cos(a) * 90,
+                   actor.transform.y + Math.sin(a) * 90,
+                   1 + wave * 0.05, 1);
+    }
+}
+
+// ===========================================================================
+// NULL SHEPHERD -- plants dark zones that hurt to stand in, and herds you
+// between them.
+// ===========================================================================
+function shepherd(dt, nx, ny, dist) {
+    // It circles rather than closes, which is what makes the zones matter.
+    var tangentX = -ny, tangentY = nx;
+    actor.transform.x += (tangentX * 0.8 + nx * 0.25) * BOSS_SPD[kind] * dt;
+    actor.transform.y += (tangentY * 0.8 + ny * 0.25) * BOSS_SPD[kind] * dt;
+
+    if (t <= 0 && player) {
+        t = phase ? 2.0 : 3.0;
+        plantZone(player.transform.x + (Math.random() - 0.5) * 220,
+                  player.transform.y + (Math.random() - 0.5) * 220,
+                  150, phase ? 7.0 : 5.5);
+    }
+
+    if (t2 <= 0 && swarm) {
+        t2 = phase ? 3.0 : 4.5;
+        for (var i = 0; i < (phase ? 3 : 2); i++) {
+            var a = Math.random() * Math.PI * 2;
+            swarm.call("spawnKind", 4,      // ghosts, which is the point of the dark
+                       actor.transform.x + Math.cos(a) * 110,
+                       actor.transform.y + Math.sin(a) * 110,
+                       1 + wave * 0.05, 1);
+        }
+    }
+}
+
+function plantZone(x, y, r, life) {
+    var a = Scene.createActor("Zone", x, y);
+    if (!a) { return; }
+    a.tag = "Fx";
+    Scene.addComponent(a, "SpriteRenderer", {
+        Tint: { R: 40, G: 10, B: 70, A: 150 },
+        Size: [r * 2, r * 2],
+        LayerDepth: depthZone
+    });
+    zones.push({ a: a, x: x, y: y, r: r, life: life });
+}
+
+function tickZones(dt, px, py) {
+    for (var i = zones.length - 1; i >= 0; i--) {
+        var z = zones[i];
+        z.life -= dt;
+        if (z.life <= 0) {
+            if (z.a) { z.a.destroy(); }
+            zones.splice(i, 1);
+            continue;
+        }
+        var dx = px - z.x, dy = py - z.y;
+        if (dx * dx + dy * dy < z.r * z.r && pilot && contactTimer <= 0) {
+            pilot.call("hurt", 10);
+            contactTimer = 0.5;
+        }
+    }
+}
+
+// ===========================================================================
+// THE ULTRADARK -- the lights go out, and it does a little of everything.
+// The darkness override is released in onDestroy, so a wipe or a kill both
+// give the arena back.
+// ===========================================================================
+function ultradark(dt, nx, ny, dist) {
+    if (director) { director.call("setDarkOverride", phase ? 0.98 : 0.86); }
+
+    if (dist > 260) {
+        actor.transform.x += nx * BOSS_SPD[kind] * dt;
+        actor.transform.y += ny * BOSS_SPD[kind] * dt;
+    }
+
+    if (t <= 0 && bullets) {
+        t = phase ? 0.9 : 1.4;
+        var arms = phase ? 12 : 8;
+        for (var a = 0; a < arms; a++) {
+            var ang = spin + (a / arms) * Math.PI * 2;
+            bullets.call("fire", actor.transform.x, actor.transform.y, ang,
+                         220, 13, 1, 8, 5.0, 0, 0);
+        }
+        ring(actor.transform.x, actor.transform.y, 150, 235, 235, 255);
+    }
+
+    if (t2 <= 0) {
+        t2 = phase ? 2.6 : 4.0;
+        if (swarm) {
+            for (var i = 0; i < 3; i++) {
+                var a2 = Math.random() * Math.PI * 2;
+                swarm.call("spawnKind", i === 0 ? 4 : 10,
+                           actor.transform.x + Math.cos(a2) * 140,
+                           actor.transform.y + Math.sin(a2) * 140,
+                           1 + wave * 0.06, 1);
+            }
+        }
+        if (player) { plantZone(player.transform.x, player.transform.y, 130, 4.0); }
+    }
+}
+
+// ===========================================================================
+// Shared
+// ===========================================================================
+
+// A ring is a bright expanding square above the dark: at wave 25 it is one of
+// the few things you can see, so it doubles as the light.
+function ring(x, y, r, cr, cg, cb) {
+    if (director) { director.call("spawnEffect", x, y, r * 2, cr, cg, cb, 0.28); }
+}
+
+function touch(dist) {
+    if (!pilot || contactTimer > 0) { return; }
+    if (dist > BOSS_SIZE[kind] * 0.6 + 18) { return; }
+    pilot.call("hurt", contactDamage);
+    contactTimer = contactCooldown;
+}
+
+function clampIn() {
+    if (!director) { return; }
+    var half = director.call("getArenaHalf") - BOSS_SIZE[kind] * 0.5;
+    var tr = actor.transform;
+    if (tr.x < -half) { tr.x = -half; }
+    if (tr.x >  half) { tr.x =  half; }
+    if (tr.y < -half) { tr.y = -half; }
+    if (tr.y >  half) { tr.y =  half; }
+}
+
+function paint() {
+    if (!sprite) { return; }
+    var r = BOSS_R[kind], g = BOSS_G[kind], b = BOSS_B[kind];
+
+    if (invuln > 0) { r = (r + 120) >> 1; g = (g + 120) >> 1; b = (b + 120) >> 1; }
+    if (t2 > 0 && kind === B_BRUTE) { r = 255; g = 255; b = 255; }
+    if (phase === 1) { r = Math.min(255, r + 30); }
+
+    sprite.tint = { R: r, G: g, B: b, A: 255 };
+}
+
+// ===========================================================================
+// Damage
+// ===========================================================================
+
+function takeDamage(dmg, code) {
+    if (dead) { return 0; }
+    if (invuln > 0) { return 0; }         // the door cycle, and only that
+
+    hp -= Number(dmg) || 0;
+    if (pilot) { pilot.call("onDamageDealt", Number(dmg) || 0); }
+
+    if (hp <= 0) { hp = 0; die(); return 1; }
+    return 0;
+}
+
+function die() {
+    if (dead) { return; }
+    dead = 1;
+    log(BOSS_NAME[kind] + " DOWN");
+
+    for (var i = 0; i < zones.length; i++) { if (zones[i].a) { zones[i].a.destroy(); } }
+    zones = [];
+
+    if (director) {
+        director.call("spawnEffect", actor.transform.x, actor.transform.y, 420, 255, 255, 255, 0.45);
+        director.call("setDarkOverride", -1);
+        director.call("onBossKilled", kind, actor.transform.x, actor.transform.y);
+    }
+    actor.destroy();
+}
+
+function onDestroy() {
+    for (var i = 0; i < zones.length; i++) { if (zones[i].a) { zones[i].a.destroy(); } }
+    zones = [];
+    // Never leave the arena black because the boss left the scene some other way.
+    if (director) { director.call("setDarkOverride", -1); }
+}
+
+// ===========================================================================
+// Readouts
+// ===========================================================================
+
+function getHealth01() { return hpMax > 0 ? hp / hpMax : 0; }
+function getName()     { return BOSS_NAME[kind]; }
+function getKind()     { return kind; }
+function isDead()      { return dead; }
+function isInvuln()    { return invuln > 0 ? 1 : 0; }
