@@ -1,60 +1,83 @@
 # UltraDark-sb
 
-A SexyBiscuit port of **UltraDark**, the twin-stick wave shooter that runs at
-`ultradark.darksgames.app`. The original is a networked co-op game; this is the
-same fantasy rebuilt as a single-pilot run against the shared scripting
-contract, which has no transport and no text.
+A SexyBiscuit port of **UltraDark**, the twin-stick wave shooter at
+<https://ultradark.darksgames.app>. The original is a networked co-op game;
+this is the same game for one pilot, built against the shared scripting
+contract.
+
+**Its numbers are the original's, not an impression of them.** The roster, the
+pilots, the mods, the wave budget, the arena and above all the damage scale come
+from UltraDark's own `shared/` — the first cut of this port was written from
+notes instead, and played like a different game wearing the same name.
+
+## The scale, which is the thing to understand first
+
+A pilot has **three hit points**. A bullet does **one** damage. A Drone has one,
+a Brute six, BRUTE PRIME sixty. Every contact costs a third of your health and
+buys you a full second of invulnerability.
+
+Nothing is on a hundred-point bar. That single fact decides how the whole game
+feels: you are not whittling anything down and nothing is whittling you down —
+each exchange is a discrete, survivable, expensive event.
 
 ## The fantasy
 
-You are one pilot in a grid that never stops sending things at you. You do not
-win. You get further than last time, and then the lights go out.
+You are one pilot in a 2048×1152 grid that never stops sending things at you.
+You do not win. You get further than last time, and then the lights go out.
 
 ## The core loop
 
 Fight a wave → clear it → **draft one of three mods** → fight a harder wave.
-Every fifth wave is a **boss**, and clearing one opens the **core shop** before
-the next wave starts. There is no final wave: bosses cycle, the scaling keeps
-climbing, and a wipe is the only way a run ends.
+Every fifth wave is a **boss**, and clearing one opens the **core shop**. There
+is no final wave: bosses cycle past 25, the budget keeps climbing, and a wipe is
+the only way a run ends.
 
-From **wave 16 the dark closes in** — the arena dims until only muzzle flash,
-explosions and your own hull light it. That is the title, and it is the thing
-the whole build is arranged around: draw order is a design decision here, not a
-detail.
+From **wave 16 the dark closes in** (`WAVE.DARK_START`) — the arena dims until
+muzzle flash, explosions and the boss's own rings are most of what lights it.
 
 ## What a run is made of
 
-- **8 pilots**, each with its own weapon and one ability: BINK (SMG), BLAZE
-  (shotgun), AMBER (beacon warp + heal), DAVE (melee cleave tank), SPARKS
-  (chain lightning), RIGG (turrets), KELVIN (freeze), HAWK (railgun).
-- **12 enemy kinds** — chasers, rushers, spitters, snipers that charge a beam,
-  phasing ghosts, wardens that shield their neighbours, forges that build more,
-  magnets that drag you in, leeches, bruisers, swarmlings, turrets.
-- **5 bosses** — BRUTE PRIME, HEX PRIME, FOUNDRY, NULL SHEPHERD and THE
-  ULTRADARK, which turns the lights off entirely.
-- **24 mods** drafted three at a time, all stackable. Duplicates are the point;
-  nothing is ever deduplicated.
-- **Cores** (the currency bosses drop) spent in a shop of small, cheap,
-  stackable upgrades.
-- **Consumables** — repair, overshield, frenzy, stasis, bomb — carried three at
-  a time and dropped by the chunky enemies.
-- A **kill multiplier** you build by killing and lose by being hit, and
-  **Overdrive** when it maxes.
+- **12 enemies**, arriving on the original's schedule: Drone and Mite from the
+  start, Weaver at 2, Spinner 3, Brute 4, Mortar 6, Sniper 7, Ghost 9, Leech 11,
+  Magnet 12, Warden 13, Forge 14. Each keeps its own colour, size, cost and rule
+  — a **Brute bursts into four Mites**, a **Spinner leaves a ring of bullets**
+  where it died, a **Ghost is solid only while it fires**, a **Mortar draws its
+  landing circle before it lands**, and a **Leech drains your multiplier rather
+  than your health**.
+- **5 bosses** — BRUTE PRIME, HEXAGON PRIME, FOUNDRY (vulnerable only while its
+  doors are open), NULL SHEPHERD and THE ULTRADARK — cycling for ever.
+- **8 pilots**, each with their own weapon and ability: BINK (SMG, Blink Volley),
+  BLAZE (Scattergun, Flame Zone), AMBER (Blaster, Beacon Warp), DAVE (Cleaver,
+  Gravity Well), SPARKS (Arc Gun, Tesla Pylon), RIGG (Blaster, Auto-Turret),
+  KELVIN (Chill Lance, Frost Nova), HAWK (Railgun, Triple Rail).
+- **37 mods** in four families — Ballistics, Field, Chassis, Echo — with the
+  rarity-3 **cursed** ones that cost you something. All stackable; nothing is
+  ever deduplicated.
+- **Cores**, spent in the post-boss shop. **Consumables** on the original's
+  weighted table: Repair Kit, Overshield, Frenzy Core, Stasis Charge, Bomb Cell.
+- A **multiplier** to ×10 that builds at +0.12 a kill, decays after three
+  quiet seconds, and is **halved every time you are hit**.
 
 ## What "fun" would mean in the first playtest
 
-Three things, in this order:
-
-1. **Wave 1 to wave 10 should feel different**, not the same wave with more
-   health. If a tester cannot name what changed, the roster is not doing its job.
+1. **Wave 1 to wave 10 should feel different**, not the same wave with more of
+   it. If a tester cannot name what changed, the roster is not doing its job.
 2. **The draft should be a real decision.** If one card is obviously correct
    every time, the pool is wrong.
-3. **Wave 16 should be a moment.** The dark arriving should change how the
-   tester plays — slower, closer, using the muzzle flash — not just make it
-   harder to see.
+3. **Wave 16 should be a moment.**
 
-Everything else is tuning. Every number that matters is in a labelled block at
-the top of its script.
+## What this port is not
+
+Not co-op. `Network` is a stub on both engines, so the lobby, the invite links,
+the shared multiplier, the revives and the banked-score insurance are out of
+scope, and boss health is the solo ×1.0 of the original's curve.
+
+No sound: `Audio` is in the contract but there is not one audio file in the
+engine repository.
+
+Shapes are approximated. The original draws a circle, a diamond, a gear, a
+crescent; the contract draws tinted rectangles, so silhouette is carried by size
+and aspect while the colours are exactly the original's.
 
 ## What changed once the contract grew a viewport and a font
 

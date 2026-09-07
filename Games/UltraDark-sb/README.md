@@ -1,8 +1,15 @@
 # UltraDark-sb
 
 A SexyBiscuit port of **UltraDark**, the twin-stick wave shooter at
-`ultradark.darksgames.app`. Read `BRIEF.md` first — it says what the game is
-meant to be. This says how it is built and how to check it.
+<https://ultradark.darksgames.app>. Read `BRIEF.md` first — it says what the
+game is. This says how it is built and how to check it.
+
+**The content is the original's.** Roster, pilots, mods, wave budget, arena and
+damage scale are read from UltraDark's own `shared/` rather than reconstructed:
+a pilot has three hit points, a bullet does one damage, a Brute takes six. The
+first cut of this port was written from notes and played like a different game
+with the same name; if you change a number here, change it because the original
+changed.
 
 **Playable now:** <https://ultradark-sb.darksgames.app>
 

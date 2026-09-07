@@ -26,14 +26,18 @@
 // wave gets harder without simply getting longer: at the same budget a game can
 // send forty weak things or four heavy ones, and the wave takes about as long.
 // ===========================================================================
-var baseBudget    = 26;
-var budgetPerWave = 10;
-var budgetCurve   = 1.032;   // compounding, on top of the linear climb
+// UltraDark's own: budget = (50 + wave * 35) x (0.65 + 0.35 x players), and a
+// solo run is exactly x1.0 of that. It is LINEAR -- the original does not
+// compound, and it does not need to: a wave gets harder by sending more things,
+// never by making the same things spongier.
+var baseBudget    = 50;
+var budgetPerWave = 35;
+var budgetCurve   = 1.0;     // no compounding: the original's climb is linear
 
 // ===========================================================================
 // Tuning -- pacing
 // ===========================================================================
-var trickle       = 0.36;    // seconds between spawns while a wave is filling
+var trickle       = 0.55;    // the original trickles a wave in over about 42s
 var startDelay    = 0;       // seconds before the first spawn of a wave
 
 // How many things may be alive at once. The budget is never capped -- a late
@@ -48,6 +52,11 @@ var concurrentCap = 105;
 // ===========================================================================
 var bossEvery     = 5;       // 0 for no bosses at all
 var bossKinds     = 5;       // how many distinct bosses to cycle through
+
+// A boss wave still sends an escort, at this share of the ordinary budget. Too
+// low and the arena is empty around the fight; too high and the boss is the
+// least of your problems.
+var bossBudgetShare = 0.45;
 
 // ===========================================================================
 // Tuning -- the stall-breaker
@@ -189,7 +198,7 @@ function startWave() {
 
     // A boss wave still sends a thinner escort, so the arena is never empty
     // around the fight.
-    budgetLeft = bossThisWave ? Math.floor(waveBudget(wave) * 0.35) : waveBudget(wave);
+    budgetLeft = bossThisWave ? Math.floor(waveBudget(wave) * bossBudgetShare) : waveBudget(wave);
 
     if (content) {
         content.call("onWaveStart", wave, bossThisWave);

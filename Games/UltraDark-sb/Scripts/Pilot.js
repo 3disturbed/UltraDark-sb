@@ -11,61 +11,88 @@
 // draft pool, so nothing here ever does it.
 
 // ===========================================================================
-// Tuning -- movement
+// Tuning -- movement, from UltraDark's PLAYER block
+//
+// THREE hit points. A bullet does one damage, a Brute takes six, a contact
+// costs a third of your health, and a full second of invulnerability follows.
+// That small-integer scale is the game; a hundred-point health bar is a
+// different game that happens to look similar.
 // ===========================================================================
-var baseSpeed     = 268;    // px/sec
-var accel         = 16;     // how fast we reach target velocity (1/sec)
-var baseHpMax     = 100;
+var baseSpeed     = 300;    // PLAYER.SPEED
+var accel         = 2600;   // PLAYER.ACCEL, units/s^2 -- up to speed in <80ms
+var friction      = 3400;   // PLAYER.FRICTION
+var baseHpMax     = 3;      // PLAYER.MAX_HP
 
-var dashSpeed     = 940;
-var dashTime      = 0.16;
-var dashCooldown  = 1.15;
-var dashIFrames   = 0.22;   // invulnerable for slightly longer than the dash
+var dashSpeed     = 900;    // PLAYER.DASH_SPEED
+var dashTime      = 0.16;   // PLAYER.DASH_TIME
+var dashCooldown  = 2.0;    // PLAYER.DASH_CD
+var dashIFrames   = 0.28;   // PLAYER.DASH_IFRAMES
+var hitIFrames    = 1.0;    // PLAYER.HIT_IFRAMES
 
-var hitIFrames    = 0.55;   // grace after taking a hit
+var baseFireCd    = 0.14;   // PLAYER.FIRE_CD
+var bulletSpeed   = 720;    // PLAYER.BULLET_SPEED
+var bulletLife    = 1.4;    // PLAYER.BULLET_LIFE
+var bulletDmg     = 1;      // PLAYER.BULLET_DMG
+
+var startBombs    = 1;      // PLAYER.START_BOMBS
+var maxBombs      = 3;      // PLAYER.MAX_BOMBS
 
 // ===========================================================================
 // Tuning -- aiming
 //
-// Mouse aim is exact now. `UI.width`/`UI.height` are the viewport the contract
-// went years without, so a screen pixel converts to a world position properly
-// instead of against a hardcoded 1280x720 that drifted the moment anyone
-// resized the window.
+// Mouse aim is exact now that the contract has a viewport. Auto-aim stays the
+// default because it is what makes the game playable on a pad and a phone, and
+// TAB switches. Auto also refuses to target a phased Ghost, which a mouse
+// cannot know.
+// ===========================================================================
+var aimMode       = 0;
+var aimRange      = 900;
+
+// ===========================================================================
+// Tuning -- the eight pilots, from UltraDark's PILOTS
 //
-// Auto-aim stays as the default anyway, because it is what makes the game
-// playable on a pad and on a phone, and TAB switches. Auto also refuses to
-// target a phased ghost, which a mouse cannot know.
+// name / colour / symbol / speed multiplier / bonus max hp / ability cooldown,
+// then the weapon: its own cadence owns fire rate, the baseline is only the
+// blaster's.
 // ===========================================================================
-var aimMode       = 0;      // 0 = auto (nearest), 1 = mouse
-var aimRange      = 700;    // wider than the sniper's 640, so auto can answer one
+var PILOT_NAME  = ["BINK", "BLAZE", "AMBER", "DAVE", "SPARKS", "RIGG", "KELVIN", "HAWK"];
+var PILOT_LEAN  = ["fast, skirmisher", "close range", "support, healer", "slow, tank, melee",
+                   "chain lightning", "engineer, turrets", "control, chill", "sniper, railgun"];
+var PILOT_ABIL  = ["BLINK VOLLEY", "FLAME ZONE", "BEACON WARP", "GRAVITY WELL",
+                   "TESLA PYLON", "AUTO-TURRET", "FROST NOVA", "TRIPLE RAIL"];
+var PILOT_SYM   = ["*", "^", "O", "@", "/", "T", "*", "+"];
 
-// ===========================================================================
-// Tuning -- the eight pilots
-//
-// cd      seconds between shots        dmg     per projectile
-// spd     projectile speed             pellets projectiles per shot
-// spread  radians of cone              life    seconds a projectile lives
-// rad     projectile radius            pierce  extra enemies each shot passes
-// ===========================================================================
-var PILOT_NAME    = ["BINK", "BLAZE", "AMBER", "DAVE", "SPARKS", "RIGG", "KELVIN", "HAWK"];
-var PILOT_CD      = [0.090, 0.560, 0.230, 0.400, 0.320, 0.165, 0.270, 0.880];
-var PILOT_DMG     = [6,     5,     10,    22,    9,     7,     6,     48   ];
-var PILOT_SPD     = [980,   790,   900,   0,     0,     860,   700,   1750 ];
-var PILOT_PELLETS = [1,     8,     1,     1,     1,     2,     3,     1    ];
-var PILOT_SPREAD  = [0.055, 0.400, 0.020, 0,     0,     0.075, 0.260, 0.004];
-var PILOT_LIFE    = [0.80,  0.34,  0.95,  0,     0,     0.75,  0.55,  1.20 ];
-var PILOT_RAD     = [4,     4,     5,     0,     0,     4,     6,     6    ];
-var PILOT_PIERCE  = [0,     0,     0,     0,     0,     0,     0,     99   ];
-var PILOT_HP      = [96,    112,   92,    150,   88,    104,   100,   82   ];
-var PILOT_SPEEDM  = [1.06,  0.95,  1.02,  0.88,  1.00,  0.98,  1.00,  0.94 ];
+var PILOT_R     = [57,  255, 184, 194, 255, 255, 143, 255];
+var PILOT_G     = [240, 122, 255, 107, 228, 158, 216, 91 ];
+var PILOT_B     = [255, 61,  94,  250, 91,  44,  255, 142];
 
-// Hull colour per pilot, and the symbol colour on the nose.
-var PILOT_R       = [90,  255, 255, 226, 190, 150, 120, 245];
-var PILOT_G       = [220, 150, 200, 78,  120, 230, 210, 235];
-var PILOT_B       = [255, 60,  70,  70,  255, 90,  255, 200];
+var PILOT_SPEEDM= [1.18, 1.0,  1.0,  0.78, 1.0,  0.92, 1.0,  0.95];
+var PILOT_BONUSHP=[0,    0,    0,    2,    0,    0,    0,    0   ];
+var PILOT_ACD   = [12,   12,   8,    12,   14,   16,   11,   9   ];
 
-// Ability cooldowns, in the same order.
-var PILOT_ACD     = [12,   10,    9,     11,    14,    16,    13,    12   ];
+// Weapon kinds: 0 smg, 1 shotgun, 2 blaster, 3 cleave, 4 arc, 5 lance, 6 rail
+var W_SMG = 0, W_SHOTGUN = 1, W_BLASTER = 2, W_CLEAVE = 3, W_ARC = 4, W_LANCE = 5, W_RAIL = 6;
+var PILOT_WKIND = [W_SMG, W_SHOTGUN, W_BLASTER, W_CLEAVE, W_ARC, W_BLASTER, W_LANCE, W_RAIL];
+var PILOT_WNAME = ["SMG", "SCATTERGUN", "BLASTER", "CLEAVER", "ARC GUN", "BLASTER", "CHILL LANCE", "RAILGUN"];
+
+var PILOT_CD    = [0.09, 0.65, 0.14, 0.5,  0.22, 0.16, 0.30, 0.9 ];
+var PILOT_DMG   = [0.6,  0.8,  1,    3,    0.9,  1.1,  1.3,  4   ];
+var PILOT_PELLETS=[1,    7,    1,    1,    1,    1,    1,    1   ];
+var PILOT_SPREAD= [0.07, 0.38, 0,    0,    0,    0,    0,    0   ];   // BINK's is jitter
+var PILOT_LIFE  = [1.4,  0.4,  1.4,  0,    0,    1.4,  1.4,  1.4 ];
+var PILOT_SPDMUL= [1,    1,    1,    0,    0,    1,    1,    3   ];   // HAWK's rail is x3
+var PILOT_PIERCE= [0,    0,    0,    0,    0,    0,    0,    3   ];
+
+// DAVE's cleave, SPARKS' arc, KELVIN's chill -- the numbers their kinds need.
+var CLEAVE_R = 95, CLEAVE_HALF = 1.05, CLEAVE_KNOCK = 60;
+var ARC_CHAIN = 2, ARC_CHAIN_R = 140, ARC_CHAIN_DMG = 0.5;
+var CHILL_SECONDS = 1.2;
+
+// AMBER's aura, RIGG's turret, SPARKS' pylon, the orbital blades.
+var AURA_R = 140, AURA_SELF = 10, AURA_ALLY = 5;
+var TURRET_TTL = 8, TURRET_CD = 0.25, TURRET_DMG = 0.6, TURRET_RANGE = 700;
+var PYLON_R = 200, PYLON_TTL = 8, PYLON_CD = 0.5, PYLON_DMG = 2;
+var ORBITAL_R = 60, ORBITAL_BLADE = 14, ORBITAL_ROT = 4, ORBITAL_DPS = 4;
 
 // ===========================================================================
 // Tuning -- draw order (higher is nearer on both engines)
@@ -122,6 +149,8 @@ var mouseIdle = 99;
 var lastMouseX = 0, lastMouseY = 0;
 
 var regenCarry = 0;
+var bombs = 1;
+var frenzy = 0;
 var killsForCoreTap = 0;
 
 var bullets = null, swarm = null, director = null, camera = null, fx = null;
@@ -182,6 +211,7 @@ function onUpdate(dt) {
         if (wantsFire() && shotTimer <= 0) { fire(); }
         if (Input.isKeyPressed("Space")) { useAbility(); }
         if (Input.isKeyPressed("F")) { useConsumable(); }
+        if (Input.isKeyPressed("Q")) { useBomb(); }
     } else {
         vx = vx * 0.82;
         vy = vy * 0.82;
@@ -210,6 +240,7 @@ function tickTimers(dt) {
     if (abilityTimer > 0)  { abilityTimer -= dt; }
     if (abilityActive > 0) { abilityActive -= dt; }
     if (burnTint > 0)      { burnTint -= dt; }
+    if (frenzy > 0)        { frenzy -= dt; }
     mouseIdle += dt;
 }
 
@@ -261,11 +292,18 @@ function move(dt) {
     }
 
     if (dashTimer <= 0) {
+        // PLAYER.ACCEL / PLAYER.FRICTION are units per second squared, not a
+        // lerp factor: 2600 gets you to full speed in under 80ms, and 3400
+        // stops you faster than that. The ship is meant to feel immediate.
         var target = baseSpeed * PILOT_SPEEDM[pilot] * sSpeed;
         var tx = ix * target, ty = iy * target;
-        var k = Math.min(1, accel * dt);
-        vx += (tx - vx) * k;
-        vy += (ty - vy) * k;
+        var rate = (ix === 0 && iy === 0) ? friction : accel;
+
+        var ddx = tx - vx, ddy = ty - vy;
+        var d = Math.sqrt(ddx * ddx + ddy * ddy);
+        var step = rate * dt;
+        if (d <= step || d < 0.0001) { vx = tx; vy = ty; }
+        else { vx += (ddx / d) * step; vy += (ddy / d) * step; }
     }
 
     applyVelocity(dt);
@@ -279,12 +317,12 @@ function applyVelocity(dt) {
 
 function clampToArena() {
     if (!director) { return; }
-    var half = director.call("getArenaHalf");
-    var m = 26;
-    if (actor.transform.x < -half + m) { actor.transform.x = -half + m; if (vx < 0) { vx = 0; } }
-    if (actor.transform.x >  half - m) { actor.transform.x =  half - m; if (vx > 0) { vx = 0; } }
-    if (actor.transform.y < -half + m) { actor.transform.y = -half + m; if (vy < 0) { vy = 0; } }
-    if (actor.transform.y >  half - m) { actor.transform.y =  half - m; if (vy > 0) { vy = 0; } }
+    var hw = director.call("getArenaHalfW") - 26;
+    var hh = director.call("getArenaHalfH") - 26;
+    if (actor.transform.x < -hw) { actor.transform.x = -hw; if (vx < 0) { vx = 0; } }
+    if (actor.transform.x >  hw) { actor.transform.x =  hw; if (vx > 0) { vx = 0; } }
+    if (actor.transform.y < -hh) { actor.transform.y = -hh; if (vy < 0) { vy = 0; } }
+    if (actor.transform.y >  hh) { actor.transform.y =  hh; if (vy > 0) { vy = 0; } }
 }
 
 // Called by MAGNET enemies: a steady pull toward a point.
@@ -358,47 +396,44 @@ function wantsFire() {
 
 function fire() {
     var cd = PILOT_CD[pilot] * sCd;
-    if (abilityActive > 0 && pilot === 0) { cd *= 0.5; }     // BINK overclock
+    if (frenzy > 0) { cd *= 0.5; }                           // FRENZY CORE
+    if (abilityActive > 0 && pilot === 0) { cd *= 0.5; }     // BINK's blink window
     shotTimer = cd;
     shotCount++;
 
-    // TWIN LINK: every fifth shot is free and doubled.
-    var twin = 0;
-    if (sTwinLink > 0 && shotCount % 5 === 0) { twin = 1; shotTimer = 0; }
+    var dmgMul = sDmg;
+    if (sAdrenaline > 0 && hp <= 1) { dmgMul *= 1 + 0.22 * sAdrenaline; }
 
-    var dmgMul = sDmg * (twin ? 2 : 1);
-    if (sAdrenaline > 0 && hp < hpMax * 0.4) { dmgMul *= 1 + 0.22 * sAdrenaline; }
-    if (abilityActive > 0 && pilot === 7) { dmgMul *= 2; }   // HAWK mark
-
-    if (pilot === 3) { cleave(dmgMul); return; }
-    if (pilot === 4) { chain(dmgMul); return; }
+    var kind = PILOT_WKIND[pilot];
+    if (kind === W_CLEAVE) { cleave(dmgMul); return; }
+    if (kind === W_ARC)    { arc(dmgMul); return; }
 
     var pellets = PILOT_PELLETS[pilot] + sPellets;
-    var spread  = PILOT_SPREAD[pilot] + sPellets * 0.03;
-    var speed   = PILOT_SPD[pilot] * sProjSpd;
+    var spread  = PILOT_SPREAD[pilot];
+    var speed   = bulletSpeed * PILOT_SPDMUL[pilot] * sProjSpd;
     var life    = PILOT_LIFE[pilot] * sProjSpd;
-    var pierce  = PILOT_PIERCE[pilot] + sPierce + (abilityActive > 0 && pilot === 7 ? 3 : 0);
+    var pierce  = PILOT_PIERCE[pilot] + sPierce;
     var dmg     = PILOT_DMG[pilot] * dmgMul;
 
-    // Projectiles leave from the ship's CENTRE, not from the end of the nose.
-    //
-    // A 17 px muzzle offset put the first frame of every shot past the collider
-    // of anything standing on top of the pilot, so an enemy that closed to
-    // contact could not be shot at all -- it sat on the ship, dealing contact
-    // damage, immune to the gun pointed at it. It showed up first on the pilots
-    // with a slow cadence, because the fast ones killed things before they
-    // arrived, and it reads as "sometimes I cannot kill the thing on me".
-    //
-    // The muzzle flash still draws out at the nose, so it looks the same.
+    // KELVIN's lance chills whatever it touches; that is his whole identity.
+    var code = effectCode();
+    if (kind === W_LANCE) { code = code | 1; }
+
     for (var i = 0; i < pellets; i++) {
-        var off = pellets === 1 ? 0 : (i / (pellets - 1) - 0.5) * spread * 2;
-        off += (Math.random() - 0.5) * spread * 0.35;
+        var off = 0;
+        if (pellets > 1) {
+            // A scattergun spreads its pellets across the cone; an SMG jitters
+            // each shot instead, which reads as spray rather than as a spread.
+            off = (i / (pellets - 1) - 0.5) * spread * 2;
+        }
+        if (kind === W_SMG) { off += (Math.random() - 0.5) * spread * 2; }
+        else if (pellets > 1) { off += (Math.random() - 0.5) * spread * 0.2; }
+
         if (bullets) {
-            bullets.call("fire",
-                actor.transform.x,
-                actor.transform.y,
-                aimAngle + off, speed, dmg, 0, PILOT_RAD[pilot], life, pierce,
-                effectCode());
+            // From the ship's CENTRE: a muzzle offset puts the first frame of a
+            // shot past the collider of anything standing on you.
+            bullets.call("fire", actor.transform.x, actor.transform.y,
+                         aimAngle + off, speed, dmg, 0, 5, life, pierce, code);
         }
     }
 
@@ -416,22 +451,23 @@ function effectCode() {
     return code;
 }
 
-// DAVE: a melee arc rather than a projectile.
+// DAVE's CLEAVER: an arc in front, with knockback. No projectile at all.
 function cleave(dmgMul) {
     if (!swarm) { return; }
-    var cx = actor.transform.x + Math.cos(aimAngle) * 40;
-    var cy = actor.transform.y + Math.sin(aimAngle) * 40;
-    swarm.call("damageCircle", cx, cy, 66, PILOT_DMG[pilot] * dmgMul, 1);
-    spawnEffect(cx, cy, 66, 226, 90, 70, 0.14);
+    var cx = actor.transform.x + Math.cos(aimAngle) * CLEAVE_R * 0.5;
+    var cy = actor.transform.y + Math.sin(aimAngle) * CLEAVE_R * 0.5;
+    swarm.call("damageCircle", cx, cy, CLEAVE_R, PILOT_DMG[pilot] * dmgMul, 1);
+    swarm.call("knockCircle", cx, cy, CLEAVE_R, CLEAVE_KNOCK * 4);
+    spawnEffect(cx, cy, CLEAVE_R * 1.6, 194, 107, 250, 0.12);
 }
 
-// SPARKS: a bolt to the nearest enemy, which arcs on to its neighbours.
-function chain(dmgMul) {
+// SPARKS' ARC GUN: hits the nearest, then hops. Each hop is weaker.
+function arc(dmgMul) {
     if (!swarm) { return; }
-    var links = 3 + Math.floor(sPierce);
+    var links = 1 + ARC_CHAIN + Math.floor(sPierce);
     swarm.call("chainFrom", actor.transform.x, actor.transform.y,
-               PILOT_DMG[pilot] * dmgMul, links, 300);
-    spawnEffect(actor.transform.x, actor.transform.y, 26, 190, 120, 255, 0.10);
+               PILOT_DMG[pilot] * dmgMul, links, ARC_CHAIN_R);
+    spawnEffect(actor.transform.x, actor.transform.y, 26, 255, 228, 91, 0.09);
 }
 
 function flash() {
@@ -451,45 +487,66 @@ function spawnEffect(x, y, size, r, g, b, life) {
 // Abilities
 // ===========================================================================
 
+// UltraDark's eight abilities, by their own names.
 function useAbility() {
     if (abilityTimer > 0) { return; }
     abilityTimer = PILOT_ACD[pilot] * sAbilityCdr;
 
     var x = actor.transform.x, y = actor.transform.y;
 
-    if (pilot === 0) {                       // BINK -- OVERCLOCK
-        abilityActive = 4.0;
-        log("OVERCLOCK");
-    } else if (pilot === 1) {                // BLAZE -- BACKBLAST
-        if (swarm) { swarm.call("damageCircle", x, y, 150, 34 * sDmg, 1); }
-        if (swarm) { swarm.call("knockCircle", x, y, 190, 520); }
-        spawnEffect(x, y, 150, 255, 150, 60, 0.20);
-        log("BACKBLAST");
-    } else if (pilot === 2) {                // AMBER -- BEACON WARP + HEAL
-        heal(26);
-        if (swarm) { swarm.call("slowCircle", x, y, 200, 2.2); }
-        spawnEffect(x, y, 200, 255, 200, 70, 0.22);
-        log("BEACON");
-    } else if (pilot === 3) {                // DAVE -- SLAM
-        if (swarm) { swarm.call("damageCircle", x, y, 176, 40 * sDmg, 1); }
-        if (swarm) { swarm.call("stunCircle", x, y, 176, 1.6); }
-        spawnEffect(x, y, 176, 226, 78, 70, 0.24);
-        log("SLAM");
-    } else if (pilot === 4) {                // SPARKS -- PYLON
-        if (director) { director.call("spawnPylon", x, y, 12, 10 * sDmg); }
-        log("PYLON");
-    } else if (pilot === 5) {                // RIGG -- TURRET
-        if (director) { director.call("spawnTurret", x, y, 14, 7 * sDmg); }
-        log("TURRET");
-    } else if (pilot === 6) {                // KELVIN -- CRYO BURST
+    if (pilot === 0) {
+        // BLINK VOLLEY -- jump forward and spray on arrival.
+        var bx = x + Math.cos(aimAngle) * 260;
+        var by = y + Math.sin(aimAngle) * 260;
+        spawnEffect(x, y, 60, 57, 240, 255, 0.16);
+        actor.transform.x = bx;
+        actor.transform.y = by;
+        clampToArena();
+        iFrames = Math.max(iFrames, 0.2);
+        for (var i = 0; i < 12; i++) {
+            if (bullets) {
+                bullets.call("fire", actor.transform.x, actor.transform.y,
+                             (i / 12) * Math.PI * 2, bulletSpeed, PILOT_DMG[0] * sDmg,
+                             0, 5, bulletLife, sPierce, effectCode());
+            }
+        }
+        abilityActive = 2.0;
+    } else if (pilot === 1) {
+        // FLAME ZONE -- a patch of ground that burns.
+        if (director) { director.call("spawnFlame", x, y, 150, 6, 2 * sDmg); }
+    } else if (pilot === 2) {
+        // BEACON WARP -- heal, and slow what is on you.
+        heal(1);
+        if (swarm) { swarm.call("slowCircle", x, y, AURA_R, 2.2); }
+        spawnEffect(x, y, AURA_R * 2, 184, 255, 94, 0.22);
+    } else if (pilot === 3) {
+        // GRAVITY WELL -- pull them in, then crush.
+        if (swarm) { swarm.call("knockCircle", x, y, 260, -420); }
+        if (swarm) { swarm.call("damageCircle", x, y, 200, 4 * sDmg, 1); }
+        spawnEffect(x, y, 400, 194, 107, 250, 0.26);
+    } else if (pilot === 4) {
+        // TESLA PYLON -- a placed thing that zaps.
+        if (director) { director.call("spawnPylon", x, y, PYLON_TTL, PYLON_DMG * sDmg); }
+    } else if (pilot === 5) {
+        // AUTO-TURRET -- a placed thing that shoots.
+        if (director) { director.call("spawnTurret", x, y, TURRET_TTL, TURRET_DMG * sDmg); }
+    } else if (pilot === 6) {
+        // FROST NOVA -- everything near you stops.
         if (swarm) { swarm.call("slowCircle", x, y, 250, 3.4); }
-        if (swarm) { swarm.call("damageCircle", x, y, 250, 14 * sDmg, 1); }
-        spawnEffect(x, y, 250, 120, 210, 255, 0.26);
-        log("CRYO BURST");
-    } else {                                 // HAWK -- MARK
-        abilityActive = 3.0;
-        log("MARK");
+        if (swarm) { swarm.call("damageCircle", x, y, 250, 1 * sDmg, 1); }
+        spawnEffect(x, y, 500, 143, 216, 255, 0.26);
+    } else {
+        // TRIPLE RAIL -- three piercing rails at once.
+        for (var r = -1; r <= 1; r++) {
+            if (bullets) {
+                bullets.call("fire", x, y, aimAngle + r * 0.10,
+                             bulletSpeed * PILOT_SPDMUL[7], PILOT_DMG[7] * sDmg,
+                             0, 6, bulletLife, PILOT_PIERCE[7] + sPierce, effectCode());
+            }
+        }
     }
+
+    log(PILOT_ABIL[pilot]);
 }
 
 // ===========================================================================
@@ -502,28 +559,42 @@ function giveConsumable(id) {
     return 1;
 }
 
+// The original's five. Numbers are small because everything here is.
 function useConsumable() {
     if (consumables.length === 0) { return 0; }
     var id = consumables.shift();
     var x = actor.transform.x, y = actor.transform.y;
 
-    if (id === 0) {                                  // REPAIR
-        heal(Math.floor(hpMax * 0.42));
-        log("REPAIR");
-    } else if (id === 1) {                           // OVERSHIELD
-        shield = shieldMax;
+    if (id === 0) {                                  // REPAIR KIT -- restore 1 HP
+        heal(1);
+        log("REPAIR KIT");
+    } else if (id === 1) {                           // OVERSHIELD -- 3s invulnerable
+        iFrames = Math.max(iFrames, 3.0);
         log("OVERSHIELD");
-    } else if (id === 2) {                           // FRENZY
-        abilityActive = Math.max(abilityActive, 5.0);
-        log("FRENZY");
-    } else if (id === 3) {                           // STASIS
-        if (swarm) { swarm.call("stunCircle", x, y, 900, 2.6); }
-        log("STASIS");
-    } else {                                         // BOMB
-        if (swarm) { swarm.call("damageCircle", x, y, 420, 120 * sDmg, 1); }
-        spawnEffect(x, y, 420, 255, 210, 120, 0.30);
-        log("BOMB");
+    } else if (id === 2) {                           // FRENZY CORE -- double fire rate, 6s
+        abilityActive = Math.max(abilityActive, 6.0);
+        frenzy = 6.0;
+        log("FRENZY CORE");
+    } else if (id === 3) {                           // STASIS CHARGE -- enemies slowed, 5s
+        if (swarm) { swarm.call("slowCircle", x, y, 4000, 5.0); }
+        log("STASIS CHARGE");
+    } else {                                         // BOMB CELL -- +1 smart bomb
+        bombs = Math.min(maxBombs, bombs + 1);
+        log("BOMB CELL");
     }
+    return 1;
+}
+
+// The smart bomb itself: clears the screen, and you only have three.
+function useBomb() {
+    if (bombs <= 0) { return 0; }
+    bombs--;
+    var x = actor.transform.x, y = actor.transform.y;
+    if (swarm) { swarm.call("damageCircle", x, y, 4000, 6 * sDmg, 1); }
+    if (bullets) { bullets.call("clearAll"); }
+    spawnEffect(x, y, 900, 255, 240, 190, 0.4);
+    if (fx) { fx.call("impact", 24); }
+    log("SMART BOMB");
     return 1;
 }
 
@@ -685,7 +756,8 @@ function computeStats() {
 
     // Max health is the one that has to be re-derived rather than read: gaining
     // it should also grant it, or PLATING is a bar that got longer and emptier.
-    var newMax = Math.max(20, PILOT_HP[pilot] + num(upgrades.call("stat", "maxHp"), 0));
+    // Three, plus whatever the pilot and the build add. Plating is +1, not +18.
+    var newMax = Math.max(1, baseHpMax + PILOT_BONUSHP[pilot] + num(upgrades.call("stat", "maxHp"), 0));
     if (newMax > hpMax) { hp += newMax - hpMax; }
     hpMax = newMax;
     if (hp > hpMax) { hp = hpMax; }
@@ -697,10 +769,12 @@ function computeStats() {
 
 function setPilot(index) {
     pilot = Math.max(0, Math.min(7, Number(index) | 0));
-    hpMax = PILOT_HP[pilot];
+    hpMax = baseHpMax + PILOT_BONUSHP[pilot];
     hp = hpMax;
     computeStats();
     if (hullSprite) {
+        // PLAYER.RADIUS is 14, so the hull is 28 across, oblong so its facing
+        // reads without a nose.
         hullSprite.tint = { R: PILOT_R[pilot], G: PILOT_G[pilot], B: PILOT_B[pilot], A: 255 };
         hullSprite.size = { x: 30, y: 20 };
         hullSprite.layerDepth = depthHull;
@@ -722,6 +796,8 @@ function resetRun() {
     abilityTimer = 0; abilityActive = 0;
     dashTimer = 0; dashCdTimer = 0; iFrames = 0;
     killsForCoreTap = 0;
+    bombs = startBombs;
+    frenzy = 0;
     setPilot(pilot);
     actor.transform.x = 0;
     actor.transform.y = 0;
@@ -737,6 +813,8 @@ function getShield01()    { return shieldMax > 0 ? shield / shieldMax : 0; }
 function getAbility01()   { var cd = PILOT_ACD[pilot] * sAbilityCdr; return cd > 0 ? 1 - abilityTimer / cd : 1; }
 function getDash01()      { return dashCooldown > 0 ? 1 - dashCdTimer / dashCooldown : 1; }
 function getConsumable01(){ return consumables.length / 3; }
+function getBombs01()     { return bombs / maxBombs; }
+function getBombs()       { return bombs; }
 function isAlive()        { return alive; }
 function getHp()          { return hp; }
 function getShockwave()   { return sShockwave; }

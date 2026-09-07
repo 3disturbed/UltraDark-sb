@@ -13,40 +13,52 @@
 // enemy has a Rigidbody2D and nothing here depends on the physics step.
 
 // ===========================================================================
-// The roster
+// The roster -- UltraDark's twelve, straight from the game's shared/enemies.js.
 //
-// 0 GRUNT      walks at you, hits you for touching it
-// 1 RUSHER     winds up, then throws itself along a fixed line
-// 2 SPITTER    keeps its distance and lobs bolts
-// 3 SNIPER     charges a beam down a telegraphed line, then fires it
-// 4 GHOST      goes translucent and untargetable on a cycle
-// 5 WARDEN     shields every enemy near it; slow and worth killing first
-// 6 FORGE      does not move, builds grunts
-// 7 MAGNET     drags you toward it
-// 8 LEECH      latches on and drains while it holds
-// 9 BRUISER    heavy, slow, slams
-// 10 SWARMLING tiny, fast, arrives in numbers
-// 11 TURRET    rooted, fires bursts along its facing
+// Names, colours, radii, hp, speed, score, core value and spawn cost are the
+// real ones. HP is a small integer because the whole game is built on a small
+// integer scale: the pilot has THREE hit points, a bullet does one damage, and
+// a Brute takes six. Nothing here is on a hundred-point scale.
+//
+// The shape column is what the original draws (circle, dot, diamond, hex, gear,
+// square, tri, crescent, pent, block, ghost, ring). The scripting contract draws
+// tinted rectangles, so shape is approximated by the aspect ratio in SIZE_W/H --
+// a Mite is a small square, a Weaver a wide diamond-ish sliver, a Forge a block.
 // ===========================================================================
-var K_GRUNT = 0, K_RUSHER = 1, K_SPITTER = 2, K_SNIPER = 3, K_GHOST = 4,
-    K_WARDEN = 5, K_FORGE = 6, K_MAGNET = 7, K_LEECH = 8, K_BRUISER = 9,
-    K_SWARM = 10, K_TURRET = 11;
+var K_DRONE = 0, K_MITE = 1, K_WEAVER = 2, K_BRUTE = 3, K_SPINNER = 4,
+    K_MORTAR = 5, K_SNIPER = 6, K_LEECH = 7, K_WARDEN = 8, K_FORGE = 9,
+    K_GHOST = 10, K_MAGNET = 11;
 
 var KIND_COUNT = 12;
 
-var KIND_HP     = [26,  30,  24,  30,  34,  70,  120, 44,  22,  190, 9,   60 ];
-var KIND_SPD    = [96,  150, 74,  58,  116, 52,  0,   64,  178, 46,  228, 0  ];
-var KIND_SIZE   = [24,  20,  22,  22,  24,  32,  40,  28,  14,  50,  11,  28 ];
-var KIND_TOUCH  = [11,  17,  6,   6,   10,  8,   6,   7,   4,   26,  5,   6  ];
-var KIND_SCORE  = [10,  14,  14,  18,  18,  36,  50,  22,  10,  70,  4,   26 ];
-var KIND_RANGE  = [0,   250, 380, 640, 0,   0,   0,   300, 0,   0,   0,   440];
+var KIND_NAME  = ["Drone", "Mite", "Weaver", "Brute", "Spinner", "Mortar",
+                  "Sniper", "Leech", "Warden", "Forge", "Ghost", "Magnet"];
 
-var KIND_R      = [224, 255, 150, 120, 190, 90,  255, 200, 140, 200, 250, 255];
-var KIND_G      = [64,  140, 220, 130, 190, 200, 170, 90,  240, 60,  120, 90 ];
-var KIND_B      = [64,  40,  120, 255, 220, 160, 40,  255, 120, 40,  180, 140];
+var KIND_HP    = [1,   1,   2,   6,   3,   4,   3,   2,   5,   8,   3,   4  ];
+var KIND_SPD   = [65,  150, 85,  42,  70,  20,  18,  125, 35,  0,   100, 28 ];
+var KIND_RAD   = [13,  8,   14,  26,  16,  18,  15,  12,  20,  24,  15,  18 ];
+var KIND_SCORE = [10,  5,   25,  40,  30,  35,  45,  20,  50,  60,  40,  35 ];
+var KIND_CORE  = [1,   1,   2,   3,   2,   3,   3,   2,   3,   4,   2,   3  ];
+var KIND_COST  = [3,   2,   7,   12,  9,   10,  11,  6,   13,  16,  10,  10 ];
+var KIND_DROP  = [0,   0,   0,   0.20,0.15,0.20,0.20,0,   0.30,0.35,0.15,0.20];
 
-// Chunky enemies drop consumables; everything else can drop cores.
-var KIND_CHUNKY = [0,   0,   0,   0,   0,   1,   1,   0,   0,   1,   0,   1  ];
+var KIND_R     = [255, 255, 91,  255, 255, 194, 255, 91,  143, 255, 201, 255];
+var KIND_G     = [91,  177, 208, 140, 228, 107, 61,  255, 180, 177, 216, 228];
+var KIND_B     = [110, 91,  255, 91,  91,  250, 240, 201, 255, 91,  255, 91 ];
+
+// Aspect, standing in for the original's silhouettes.
+var KIND_WIDE  = [1.0, 1.0, 1.7, 1.15, 1.0, 1.0, 1.4, 1.5, 1.1, 1.0, 1.2, 1.0];
+
+// Per-kind cadences, from the same file.
+var WEAVER_FIRE = 3.2;
+var MORTAR_FIRE = 4.0,  MORTAR_DELAY = 1.2, MORTAR_R = 90;
+var SNIPER_FIRE = 5.0,  SNIPER_AIM = 1.1;
+var LEECH_DRAIN = 1.5;                  // multiplier per second, NOT health
+var WARDEN_R    = 140;
+var FORGE_EVERY = 6;
+var GHOST_PHASE = 3.0,  GHOST_WINDOW = 1.6;
+var MAGNET_PULL_R = 420, MAGNET_PULL = 70;
+var BRUTE_SPLIT = 4;                    // Mites, on death
 
 // ===========================================================================
 // Tuning
@@ -72,6 +84,9 @@ var eActor = [], eSprite = [], eKind = [], eHp = [], eHpMax = [];
 var eSpd = [], eSize = [], eT = [], eT2 = [], eState = [];
 var eSlow = [], eStun = [], eShield = [], eBurn = [], eVx = [], eVy = [];
 var eTouch = [], eId = [], eTell = [], eTellSprite = [];
+// The wave's hp scaling, kept per enemy so a Forge's output and a Brute's Mites
+// are as tough as the wave that produced them rather than as tough as wave 1.
+var eHpMul = [];
 
 var player = null, pilot = null, director = null, bullets = null;
 
@@ -164,152 +179,39 @@ function step(i, dt, px, py, playerAlive, burnNow) {
     var ny = dist > 0.001 ? dy / dist : 0;
 
     var speed = eSpd[i] * (eSlow[i] > 0 ? 0.42 : 1);
-    if (hunt) {
-        // A rooted enemy has no speed of its own, so hunting gives it one.
-        speed = (speed > 0 ? speed * 1.45 : 60);
-    }
+    if (hunt) { speed = (speed > 0 ? speed * 1.45 : 60); }
 
-    if (kind === K_GRUNT || kind === K_SWARM) {
-        chase(i, nx, ny, speed, dt);
-    } else if (kind === K_RUSHER) {
-        stepRusher(i, dt, nx, ny, dist, speed);
-    } else if (kind === K_SPITTER) {
-        stepRanged(i, dt, ax, ay, nx, ny, dist, speed, 1.55, 300, 8, 12, 150, 220, 120);
-    } else if (kind === K_SNIPER) {
-        stepSniper(i, dt, ax, ay, nx, ny, dist, speed);
-    } else if (kind === K_GHOST) {
-        stepGhost(i, dt, nx, ny, speed);
-    } else if (kind === K_WARDEN) {
-        chase(i, nx, ny, speed * 0.8, dt);
-        stepWarden(i, dt, ax, ay);
-    } else if (kind === K_FORGE) {
-        stepForge(i, dt, ax, ay);
-        if (hunt) { creep(i, nx, ny, speed, dt); }
-    } else if (kind === K_MAGNET) {
-        stepMagnet(i, dt, nx, ny, dist, speed, playerAlive);
-    } else if (kind === K_LEECH) {
-        chase(i, nx, ny, speed, dt);
-    } else if (kind === K_BRUISER) {
-        stepBruiser(i, dt, ax, ay, nx, ny, dist, speed);
-    } else if (kind === K_TURRET) {
-        stepRanged(i, dt, ax, ay, nx, ny, dist, speed * 0, 1.15, 420, 9, 10, 255, 90, 140);
-        if (hunt) { creep(i, nx, ny, speed, dt); }
-    }
+    if      (kind === K_DRONE || kind === K_MITE) { seek(i, nx, ny, speed, dt); }
+    else if (kind === K_WEAVER)  { weave(i, dt, ax, ay, nx, ny, dist, speed); }
+    else if (kind === K_BRUTE)   { seek(i, nx, ny, speed, dt); }
+    else if (kind === K_SPINNER) { wander(i, dt, speed); }
+    else if (kind === K_MORTAR)  { mortar(i, dt, ax, ay, nx, ny, dist, speed); }
+    else if (kind === K_SNIPER)  { snipe(i, dt, ax, ay, nx, ny, dist, speed); }
+    else if (kind === K_LEECH)   { seek(i, nx, ny, speed, dt); }
+    else if (kind === K_WARDEN)  { seek(i, nx, ny, speed * 0.9, dt); warden(i, dt, ax, ay); }
+    else if (kind === K_FORGE)   { forge(i, dt, ax, ay); if (hunt) { creep(i, nx, ny, speed, dt); } }
+    else if (kind === K_GHOST)   { ghost(i, dt, ax, ay, nx, ny, speed); }
+    else if (kind === K_MAGNET)  { magnet(i, dt, nx, ny, dist, speed, playerAlive); }
 
     separate(i);
     contact(i, dist, playerAlive, dt);
     paint(i);
 }
 
-function drift(i, dt) {
-    if (eVx[i] === 0 && eVy[i] === 0) { return; }
-    eActor[i].transform.x += eVx[i] * dt;
-    eActor[i].transform.y += eVy[i] * dt;
-    eVx[i] *= 0.86;
-    eVy[i] *= 0.86;
-    clampIn(i);
-}
-
-// Straight-line movement with no facing change, for something that was never
-// meant to move and is only doing it because the wave has to end.
-function creep(i, nx, ny, speed, dt) {
-    eActor[i].transform.x += nx * speed * dt;
-    eActor[i].transform.y += ny * speed * dt;
-    clampIn(i);
-}
-
-function chase(i, nx, ny, speed, dt) {
-    eActor[i].transform.x += (nx * speed + eVx[i]) * dt;
-    eActor[i].transform.y += (ny * speed + eVy[i]) * dt;
-    eActor[i].transform.rotation = Math.atan2(ny, nx);
-    eVx[i] *= 0.88;
-    eVy[i] *= 0.88;
-    clampIn(i);
-}
-
 // ---------------------------------------------------------------------------
-// RUSHER: wind up in place, then commit to a straight line. The wind-up is the
-// whole fight -- it is readable, and sidestepping it is free.
+// Telegraphs. Everything that can hurt you draws itself first: the mortar's
+// landing circle, the sniper's sightline. That rule is what makes the roster
+// readable rather than unfair.
 // ---------------------------------------------------------------------------
-function stepRusher(i, dt, nx, ny, dist, speed) {
-    if (eState[i] === 0) {
-        chase(i, nx, ny, speed * 0.55, dt);
-        if (dist < KIND_RANGE[K_RUSHER] && eT[i] <= 0) {
-            eState[i] = 1;
-            eT[i] = 0.55;
-            eVx[i] = nx * 1.0;
-            eVy[i] = ny * 1.0;     // remembered direction, not a live target
-        }
-    } else if (eState[i] === 1) {
-        if (eT[i] <= 0) { eState[i] = 2; eT[i] = 0.62; }
-    } else {
-        eActor[i].transform.x += eVx[i] * 700 * dt;
-        eActor[i].transform.y += eVy[i] * 700 * dt;
-        clampIn(i);
-        if (eT[i] <= 0) { eState[i] = 0; eT[i] = 1.3; eVx[i] = 0; eVy[i] = 0; }
-    }
-}
 
-// ---------------------------------------------------------------------------
-// SPITTER and TURRET: hold a range band and fire on a cadence.
-// ---------------------------------------------------------------------------
-function stepRanged(i, dt, ax, ay, nx, ny, dist, speed, cadence, band, dmg, rad, r, g, b) {
-    if (speed > 0) {
-        var want = dist > band + 40 ? 1 : (dist < band - 60 ? -1 : 0);
-        eActor[i].transform.x += nx * speed * want * dt;
-        eActor[i].transform.y += ny * speed * want * dt;
-        clampIn(i);
-    }
-    eActor[i].transform.rotation = Math.atan2(ny, nx);
-
-    if (eT[i] <= 0 && dist < KIND_RANGE[eKind[i]] && bullets) {
-        eT[i] = cadence;
-        bullets.call("fire", ax + nx * 20, ay + ny * 20, Math.atan2(ny, nx),
-                     330, dmg, 1, rad, 2.6, 0, 0);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SNIPER: a telegraph you can leave, then a beam down the line it drew. The
-// line is an actor so the threat is visible, not a number in a log.
-// ---------------------------------------------------------------------------
-function stepSniper(i, dt, ax, ay, nx, ny, dist, speed) {
-    eActor[i].transform.rotation = Math.atan2(ny, nx);
-
-    if (eState[i] === 0) {
-        if (dist > 420) {
-            eActor[i].transform.x += nx * speed * dt;
-            eActor[i].transform.y += ny * speed * dt;
-            clampIn(i);
-        }
-        if (eT[i] <= 0 && dist < KIND_RANGE[K_SNIPER]) {
-            eState[i] = 1;
-            eT[i] = 1.05;
-            eVx[i] = nx; eVy[i] = ny;
-            showTell(i, ax, ay, nx, ny, 700);
-        }
-    } else {
-        if (eT[i] <= 0) {
-            eState[i] = 0;
-            eT[i] = 2.4;
-            hideTell(i);
-            if (bullets) {
-                bullets.call("fire", ax + eVx[i] * 22, ay + eVy[i] * 22,
-                             Math.atan2(eVy[i], eVx[i]), 1500, 20, 1, 5, 0.9, 9, 0);
-            }
-        }
-    }
-}
-
-function showTell(i, ax, ay, nx, ny, len) {
+function showTell(i, x, y, w, h, r, g, b, alpha) {
     if (eTell[i]) { hideTell(i); }
-    var t = Scene.createActor("Tell", ax + nx * len / 2, ay + ny * len / 2);
+    var t = Scene.createActor("Tell", x, y);
     if (!t) { return; }
     t.tag = "Fx";
-    t.transform.rotation = Math.atan2(ny, nx);
     Scene.addComponent(t, "SpriteRenderer", {
-        Tint: { R: 120, G: 160, B: 255, A: 110 },
-        Size: [len, 3],
+        Tint: { R: r, G: g, B: b, A: alpha },
+        Size: [w, h],
         LayerDepth: depthTell
     });
     eTell[i] = t;
@@ -319,69 +221,179 @@ function hideTell(i) {
     if (eTell[i]) { eTell[i].destroy(); eTell[i] = null; }
 }
 
-// ---------------------------------------------------------------------------
-// GHOST: untargetable while phased, so a bullet passes through. The collider
-// goes with the visibility -- what you can see is what you can hit.
-// ---------------------------------------------------------------------------
-function stepGhost(i, dt, nx, ny, speed) {
-    if (eT[i] <= 0) {
-        eState[i] = eState[i] === 0 ? 1 : 0;
-        eT[i] = eState[i] === 1 ? 1.6 : 2.6;
-        var col = eActor[i].getComponent("BoxCollider2D");
-        if (col) { col.isTrigger = eState[i] === 1; }   // a trigger is invisible to overlapCircle
-    }
-    chase(i, nx, ny, eState[i] === 1 ? speed * 1.45 : speed, dt);
+// Something rooted has to be reachable, or a wave cannot end.
+function creep(i, nx, ny, speed, dt) {
+    eActor[i].transform.x += nx * speed * dt;
+    eActor[i].transform.y += ny * speed * dt;
+    clampIn(i);
 }
 
 // ---------------------------------------------------------------------------
-// WARDEN: refreshes a damage shield on everything near it, itself included.
-// Kill it first or kill it slowly -- that is the whole decision.
+// The twelve behaviours. Each is UltraDark's `ai` field made literal.
 // ---------------------------------------------------------------------------
-function stepWarden(i, dt, ax, ay) {
+
+// "seek" -- Drone, Mite, Brute, Leech, Warden. Straight at you.
+function seek(i, nx, ny, speed, dt) {
+    eActor[i].transform.x += (nx * speed + eVx[i]) * dt;
+    eActor[i].transform.y += (ny * speed + eVy[i]) * dt;
+    eActor[i].transform.rotation = Math.atan2(ny, nx);
+    eVx[i] *= 0.88;
+    eVy[i] *= 0.88;
+    clampIn(i);
+}
+
+// "weave" -- closes while sliding sideways, and lobs a FAN. The weave is what
+// makes it awkward to lead, which is the whole point of the kind.
+function weave(i, dt, ax, ay, nx, ny, dist, speed) {
+    eT2[i] += dt;
+    var slide = Math.sin(eT2[i] * 2.6) * 0.85;
+    eActor[i].transform.x += (nx + -ny * slide) * speed * dt;
+    eActor[i].transform.y += (ny + nx * slide) * speed * dt;
+    eActor[i].transform.rotation = Math.atan2(ny, nx);
+    clampIn(i);
+
+    if (eT[i] <= 0 && dist < 620) {
+        eT[i] = WEAVER_FIRE;
+        fan(ax, ay, Math.atan2(ny, nx), 4, 0.5, 285);
+    }
+}
+
+// "wander" -- Spinner drifts; the threat is what it leaves behind when it dies.
+function wander(i, dt, speed) {
+    if (eT[i] <= 0) {
+        eT[i] = 1.2 + Math.random() * 1.6;
+        var a = Math.random() * Math.PI * 2;
+        eState[i] = a;
+    }
+    eActor[i].transform.x += Math.cos(eState[i]) * speed * dt;
+    eActor[i].transform.y += Math.sin(eState[i]) * speed * dt;
+    eActor[i].transform.rotation += dt * 3;
+    clampIn(i);
+}
+
+// "mortar" -- lobs a shell that lands where you WERE, after a telegraphed
+// delay. The circle is drawn before anything happens, so standing in it is a
+// decision rather than a surprise.
+function mortar(i, dt, ax, ay, nx, ny, dist, speed) {
+    if (dist > 520) {
+        eActor[i].transform.x += nx * speed * dt;
+        eActor[i].transform.y += ny * speed * dt;
+        clampIn(i);
+    }
+    eActor[i].transform.rotation = Math.atan2(ny, nx);
+
+    if (eState[i] === 0) {
+        if (eT[i] <= 0) {
+            eState[i] = 1;
+            eT[i] = MORTAR_DELAY;
+            eVx[i] = ax + nx * Math.min(dist, 520);   // the aim point, remembered
+            eVy[i] = ay + ny * Math.min(dist, 520);
+            showTell(i, eVx[i], eVy[i], MORTAR_R * 2, MORTAR_R * 2, 194, 107, 250, 90);
+        }
+    } else if (eT[i] <= 0) {
+        eState[i] = 0;
+        eT[i] = MORTAR_FIRE;
+        hideTell(i);
+        if (director) { director.call("spawnEffect", eVx[i], eVy[i], MORTAR_R * 2, 194, 107, 250, 0.22); }
+        if (pilot && player) {
+            var ddx = player.transform.x - eVx[i], ddy = player.transform.y - eVy[i];
+            if (ddx * ddx + ddy * ddy < MORTAR_R * MORTAR_R) { pilot.call("hurt", 1); }
+        }
+    }
+}
+
+// "sniper" -- draws a sightline, holds it, then fires instantly down it. You
+// leave the line or you take it.
+function snipe(i, dt, ax, ay, nx, ny, dist, speed) {
+    eActor[i].transform.rotation = Math.atan2(ny, nx);
+
+    if (eState[i] === 0) {
+        if (dist > 640) {
+            eActor[i].transform.x += nx * speed * dt;
+            eActor[i].transform.y += ny * speed * dt;
+            clampIn(i);
+        }
+        if (eT[i] <= 0 && dist < 900) {
+            eState[i] = 1;
+            eT[i] = SNIPER_AIM;
+            eVx[i] = nx; eVy[i] = ny;
+            showTell(i, ax + nx * 450, ay + ny * 450, 900, 3, 255, 61, 240, 120);
+            if (eTell[i]) { eTell[i].transform.rotation = Math.atan2(ny, nx); }
+        }
+    } else if (eT[i] <= 0) {
+        eState[i] = 0;
+        eT[i] = SNIPER_FIRE;
+        hideTell(i);
+        if (bullets) {
+            bullets.call("fire", ax + eVx[i] * 20, ay + eVy[i] * 20,
+                         Math.atan2(eVy[i], eVx[i]), 1500, 1, 1, 5, 0.9, 9, 0);
+        }
+    }
+}
+
+// "warden" -- refreshes a shield on everything near it, itself included.
+function warden(i, dt, ax, ay) {
     if (eT[i] > 0) { return; }
     eT[i] = 0.5;
     for (var j = 0; j < n; j++) {
         if (!eActor[j]) { continue; }
         var dx = eActor[j].transform.x - ax, dy = eActor[j].transform.y - ay;
-        if (dx * dx + dy * dy < 210 * 210) { eShield[j] = 0.85; }
+        if (dx * dx + dy * dy < WARDEN_R * WARDEN_R) { eShield[j] = 0.85; }
     }
 }
 
-// ---------------------------------------------------------------------------
-// FORGE: rooted, and builds grunts until it is dealt with.
-// ---------------------------------------------------------------------------
-function stepForge(i, dt, ax, ay) {
+// "forge" -- rooted, and building. The wave does not end while one lives.
+function forge(i, dt, ax, ay) {
     if (eT[i] > 0) { return; }
-    eT[i] = 3.1;
+    eT[i] = FORGE_EVERY;
     if (n >= maxEnemies) { return; }
     var a = Math.random() * Math.PI * 2;
-    spawnKind(K_GRUNT, ax + Math.cos(a) * 54, ay + Math.sin(a) * 54, eT2[i], 1);
+    spawnKind(K_DRONE, ax + Math.cos(a) * 54, ay + Math.sin(a) * 54, eHpMul[i], 1);
 }
 
-// ---------------------------------------------------------------------------
-// MAGNET: pulls, which is worse than chasing -- it takes your positioning away
-// rather than your health.
-// ---------------------------------------------------------------------------
-function stepMagnet(i, dt, nx, ny, dist, speed, playerAlive) {
-    if (dist > 260) {
+// "ghost" -- phased and untouchable most of the time, solid only in the window
+// where it fires. You do not out-shoot it; you wait for it.
+function ghost(i, dt, ax, ay, nx, ny, speed) {
+    if (eT[i] <= 0) {
+        eState[i] = eState[i] === 1 ? 0 : 1;          // 1 = firing window
+        eT[i] = eState[i] === 1 ? GHOST_WINDOW : GHOST_PHASE;
+
+        var col = eActor[i].getComponent("BoxCollider2D");
+        if (col) { col.isTrigger = eState[i] !== 1; }  // a trigger is invisible to overlapCircle
+
+        if (eState[i] === 1) { fan(ax, ay, Math.atan2(ny, nx), 4, 0.5, 285); }
+    }
+    seek(i, nx, ny, eState[i] === 1 ? speed * 0.4 : speed, dt);
+}
+
+// "magnet" -- drags you, which takes your positioning rather than your health.
+function magnet(i, dt, nx, ny, dist, speed, playerAlive) {
+    if (dist > 300) {
         eActor[i].transform.x += nx * speed * dt;
         eActor[i].transform.y += ny * speed * dt;
         clampIn(i);
     }
-    if (playerAlive && dist < KIND_RANGE[K_MAGNET] && pilot) {
-        pilot.call("pullToward", eActor[i].transform.x, eActor[i].transform.y, 260 * dt);
+    if (playerAlive && dist < MAGNET_PULL_R && pilot) {
+        pilot.call("pullToward", eActor[i].transform.x, eActor[i].transform.y, MAGNET_PULL * dt);
     }
 }
 
-// ---------------------------------------------------------------------------
-// BRUISER: slow, huge, and a slam that reaches further than its body.
-// ---------------------------------------------------------------------------
-function stepBruiser(i, dt, ax, ay, nx, ny, dist, speed) {
-    chase(i, nx, ny, speed, dt);
-    if (dist < 130 && eT[i] <= 0) {
-        eT[i] = 2.7;
-        if (director) { director.call("spawnEffect", ax, ay, 190, 200, 60, 40, 0.22); }
-        if (pilot && dist < 190) { pilot.call("hurt", 22); }
+// The FAN pattern the Weaver and the Ghost both fire.
+function fan(x, y, angle, count, spread, speed) {
+    if (!bullets) { return; }
+    for (var i = 0; i < count; i++) {
+        var a = angle - spread / 2 + (count === 1 ? 0 : (i / (count - 1)) * spread);
+        bullets.call("fire", x, y, a, speed, 1, 1, 5, 3.0, 0, 0);
+    }
+}
+
+// The RING the Spinner leaves behind. Position before you kill it.
+function ring(x, y) {
+    if (!bullets) { return; }
+    var count = 18;
+    var off = Math.random() * Math.PI * 2;
+    for (var i = 0; i < count; i++) {
+        bullets.call("fire", x, y, off + (i / count) * Math.PI * 2, 160, 1, 1, 5, 3.4, 0, 0);
     }
 }
 
@@ -415,51 +427,55 @@ function separate(i) {
 
 function contact(i, dist, playerAlive, dt) {
     if (!playerAlive || !pilot) { return; }
-    if (dist > eSize[i] * 0.5 + 16) { return; }
-    if (eT2[i] > 0 && eKind[i] !== K_FORGE) { return; }
+    if (dist > eSize[i] * 0.5 + 14) { return; }
 
+    // The Leech is the one that does not hurt you. It drains the MULTIPLIER,
+    // which is the run's score, so breaking away from it is worth more than
+    // tanking it -- and a player who does not know that will let it ride.
     if (eKind[i] === K_LEECH) {
-        // A leech drains continuously rather than hitting, which is why it is
-        // worth breaking away from rather than tanking.
-        pilot.call("hurt", 9);
-        eT2[i] = contactCooldown * 0.6;
+        if (director) { director.call("drainMultiplier", LEECH_DRAIN * dt); }
         return;
     }
 
-    pilot.call("hurt", eTouch[i]);
+    if (eT2[i] > 0) { return; }
+    // Everything else does exactly one damage. The pilot has three hit points
+    // and a full second of invulnerability after a hit; that is the whole
+    // damage model, and it is why nothing here carries a damage number.
+    pilot.call("hurt", 1);
     eT2[i] = contactCooldown;
 }
 
 function clampIn(i) {
     if (!director) { return; }
-    var half = director.call("getArenaHalf");
+    var hw = director.call("getArenaHalfW");
+    var hh = director.call("getArenaHalfH");
     var t = eActor[i].transform;
-    if (t.x < -half) { t.x = -half; }
-    if (t.x >  half) { t.x =  half; }
-    if (t.y < -half) { t.y = -half; }
-    if (t.y >  half) { t.y =  half; }
+    if (t.x < -hw) { t.x = -hw; }
+    if (t.x >  hw) { t.x =  hw; }
+    if (t.y < -hh) { t.y = -hh; }
+    if (t.y >  hh) { t.y =  hh; }
 }
 
-// Colour carries state: shielded is paler, phased is faint, burning is hot.
+// Colour carries state, and the colours themselves are UltraDark's.
 function paint(i) {
     var s = eSprite[i];
     if (!s) { return; }
 
-    var r = KIND_R[eKind[i]], g = KIND_G[eKind[i]], b = KIND_B[eKind[i]];
+    var k = eKind[i];
+    var r = KIND_R[k], g = KIND_G[k], b = KIND_B[k];
     var a = 255;
 
-    if (eKind[i] === K_GHOST && eState[i] === 1) { a = 70; }
+    // A phased Ghost is faint AND untouchable; the two say the same thing, so
+    // a player never has to guess which frame it can be shot in.
+    if (k === K_GHOST && eState[i] !== 1) { a = 60; }
+
     if (eShield[i] > 0) { r = (r + 255) >> 1; g = (g + 255) >> 1; b = (b + 255) >> 1; }
     if (eSlow[i] > 0)   { b = Math.min(255, b + 70); r = Math.floor(r * 0.7); }
     if (eBurn[i] > 0)   { r = Math.min(255, r + 60); g = Math.floor(g * 0.8); }
-    if (eState[i] === 1 && eKind[i] === K_RUSHER) { r = 255; g = 255; b = 255; }
+    if (eStun[i] > 0)   { r = (r + 200) >> 1; g = (g + 200) >> 1; b = (b + 200) >> 1; }
 
     s.tint = { R: r, G: g, B: b, A: a };
 }
-
-// ===========================================================================
-// Spawning
-// ===========================================================================
 
 function spawnKind(kind, x, y, hpMul, spdMul) {
     var k = Math.max(0, Math.min(KIND_COUNT - 1, Number(kind) | 0));
@@ -469,10 +485,12 @@ function spawnKind(kind, x, y, hpMul, spdMul) {
     if (!a) { return -1; }
     a.tag = "Enemy";
 
-    var size = KIND_SIZE[k];
+    // Radius in the original, so the drawn box is a diameter. The aspect is
+    // what stands in for the silhouette the original draws.
+    var size = KIND_RAD[k] * 2;
     Scene.addComponent(a, "SpriteRenderer", {
         Tint: { R: KIND_R[k], G: KIND_G[k], B: KIND_B[k], A: 255 },
-        Size: [size + 6, size],
+        Size: [size * KIND_WIDE[k], size],
         LayerDepth: depthEnemy
     });
     Scene.addComponent(a, "BoxCollider2D", { Size: [size, size] });
@@ -487,9 +505,10 @@ function spawnKind(kind, x, y, hpMul, spdMul) {
     eHp[n]     = eHpMax[n];
     eSpd[n]    = KIND_SPD[k] * sm;
     eSize[n]   = size;
-    eTouch[n]  = KIND_TOUCH[k];
+    eTouch[n]  = 1;                   // everything does one damage
     eT[n]      = Math.random() * 1.2;
-    eT2[n]     = hm;                  // forges reuse this as the hp multiplier they pass on
+    eT2[n]     = 0;
+    eHpMul[n]  = hm;
     eState[n]  = 0;
     eSlow[n]   = 0;
     eStun[n]   = 0;
@@ -516,6 +535,7 @@ function removeAt(i) {
         eState[i] = eState[last]; eSlow[i] = eSlow[last]; eStun[i] = eStun[last];
         eShield[i] = eShield[last]; eBurn[i] = eBurn[last]; eVx[i] = eVx[last];
         eVy[i] = eVy[last]; eTouch[i] = eTouch[last]; eId[i] = eId[last];
+        eHpMul[i] = eHpMul[last];
         eTell[i] = eTell[last];
     }
     n--;
@@ -557,22 +577,40 @@ function applyDamage(i, dmg, code) {
 function kill(i) {
     var x = eActor[i].transform.x, y = eActor[i].transform.y;
     var kind = eKind[i];
+    var hpMul = eHpMul[i];
 
     if (director) {
-        director.call("onEnemyKilled", kind, x, y, KIND_SCORE[kind], KIND_CHUNKY[kind]);
-        director.call("spawnEffect", x, y, eSize[i] + 10, KIND_R[kind], KIND_G[kind], KIND_B[kind], 0.16);
+        director.call("onEnemyKilled", kind, x, y, KIND_SCORE[kind], KIND_CORE[kind], KIND_DROP[kind]);
+        director.call("spawnEffect", x, y, KIND_RAD[kind] * 2 + 10,
+                      KIND_R[kind], KIND_G[kind], KIND_B[kind], 0.16);
     }
     if (pilot) {
         pilot.call("onKill");
         var shock = pilot.call("getShockwave");
         if (shock > 0) {
-            queueBlast(x, y, 90 + 18 * shock, 18 * shock);
+            queueBlast(x, y, 90 + 18 * shock, shock);
             if (director) { director.call("spawnEffect", x, y, 90 + 18 * shock, 255, 190, 90, 0.14); }
         }
     }
 
     eActor[i].destroy();
     removeAt(i);
+
+    // Two kinds are not finished when they die, and both are a positioning
+    // problem rather than a damage one.
+    //
+    // A Brute bursts into four Mites, so killing one in your face is worse than
+    // killing it at range. A Spinner throws a ring of bullets outward, so where
+    // it is standing when it dies is the decision -- the original's note on the
+    // kind is "position before you kill".
+    if (kind === K_BRUTE) {
+        for (var m = 0; m < BRUTE_SPLIT; m++) {
+            var a2 = (m / BRUTE_SPLIT) * Math.PI * 2;
+            spawnKind(K_MITE, x + Math.cos(a2) * 26, y + Math.sin(a2) * 26, hpMul, 1);
+        }
+    } else if (kind === K_SPINNER) {
+        ring(x, y);
+    }
 }
 
 function queueBlast(x, y, r, d) {
@@ -617,7 +655,10 @@ function damageCircle(x, y, r, dmg, announce) {
     var rr = r * r;
     for (var i = n - 1; i >= 0; i--) {
         if (!eActor[i]) { continue; }
-        if (eKind[i] === K_GHOST && eState[i] === 1) { continue; }
+        // A Ghost is solid ONLY in its firing window (eState 1); phased it is
+        // untouchable, and skipping it here is what makes that true for area
+        // damage and for auto-aim as well as for a bullet.
+        if (eKind[i] === K_GHOST && eState[i] !== 1) { continue; }
         var dx = eActor[i].transform.x - x, dy = eActor[i].transform.y - y;
         if (dx * dx + dy * dy > rr) { continue; }
         applyDamage(i, dmg, 0);
@@ -675,7 +716,10 @@ function chainFrom(x, y, dmg, links, range) {
         var best = -1, bestD = range * range;
         for (var i = 0; i < n; i++) {
             if (!eActor[i] || used[eId[i]]) { continue; }
-            if (eKind[i] === K_GHOST && eState[i] === 1) { continue; }
+            // A Ghost is solid ONLY in its firing window (eState 1); phased it is
+        // untouchable, and skipping it here is what makes that true for area
+        // damage and for auto-aim as well as for a bullet.
+        if (eKind[i] === K_GHOST && eState[i] !== 1) { continue; }
             var dx = eActor[i].transform.x - cx, dy = eActor[i].transform.y - cy;
             var d2 = dx * dx + dy * dy;
             if (d2 < bestD) { bestD = d2; best = i; }
@@ -717,7 +761,10 @@ function nearestX(x, y, range) {
     var bestD = range * range;
     for (var i = 0; i < n; i++) {
         if (!eActor[i]) { continue; }
-        if (eKind[i] === K_GHOST && eState[i] === 1) { continue; }
+        // A Ghost is solid ONLY in its firing window (eState 1); phased it is
+        // untouchable, and skipping it here is what makes that true for area
+        // damage and for auto-aim as well as for a bullet.
+        if (eKind[i] === K_GHOST && eState[i] !== 1) { continue; }
         var dx = eActor[i].transform.x - x, dy = eActor[i].transform.y - y;
         var d2 = dx * dx + dy * dy;
         if (d2 < bestD) { bestD = d2; nearestIndex = i; }

@@ -141,7 +141,10 @@ for (frame = 0; frame < totalFrames; frame++) {
     if (frame % 200 === 0) press('F');
     if (frame % 140 === 0) press('LeftShift');
 
-    if (assist && frame % 180 === 0) { pilotScript.invoke('heal', 9999); }
+    // Every half second, not every three. The pilot has THREE hit points and a
+    // one-second grace after each; on the old hundred-point scale a three-second
+    // cadence was generous, and on this one it is a death sentence.
+    if (assist && frame % 30 === 0) { pilotScript.invoke('heal', 9); }
 
     await g.step(1);
 

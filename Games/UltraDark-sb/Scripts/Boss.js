@@ -22,12 +22,23 @@
 // ===========================================================================
 var B_BRUTE = 0, B_HEX = 1, B_FOUNDRY = 2, B_SHEPHERD = 3, B_ULTRA = 4;
 
-var BOSS_NAME = ["BRUTE PRIME", "HEX PRIME", "FOUNDRY", "NULL SHEPHERD", "THE ULTRADARK"];
-var BOSS_SIZE = [96, 84, 118, 92, 130];
-var BOSS_R    = [220, 180, 255, 120, 235];
-var BOSS_G    = [70,  90,  180, 90,  235];
-var BOSS_B    = [60,  240, 60,  200, 255];
-var BOSS_SPD  = [78,  62,  0,   70,  86];
+// The five, from UltraDark's own roster: names, radii, colours and speeds.
+var BOSS_NAME = ["BRUTE PRIME", "HEXAGON PRIME", "FOUNDRY", "NULL SHEPHERD", "THE ULTRADARK"];
+var BOSS_RAD  = [52,  56,  60,  54,  68 ];
+var BOSS_R    = [255, 57,  255, 194, 122];
+var BOSS_G    = [77,  240, 140, 107, 92 ];
+var BOSS_B    = [77,  255, 91,  250, 255];
+var BOSS_SPD  = [30,  14,  6,   26,  34 ];
+
+// Their own cadences.
+var BRUTE_FIRE = 4.0;
+var HEX_FIRE   = 0.55;                   // rotating spokes
+var FOUNDRY_CLOSED = 8, FOUNDRY_OPEN = 3, FOUNDRY_SPAWN = 4;
+var SHEPHERD_FIRE = 3.0, SHEPHERD_DARK = 5.0;
+var ULTRA_FIRE = 0.8;
+
+// On death BRUTE PRIME bursts, like its lesser kind.
+var BRUTE_PRIME_SPLIT = 6;
 
 // ===========================================================================
 // Tuning
@@ -35,7 +46,7 @@ var BOSS_SPD  = [78,  62,  0,   70,  86];
 var depthBoss = 0.45;
 var depthZone = 0.35;      // under the enemies standing in it, over the floor
 
-var contactDamage   = 26;
+var contactDamage   = 1;    // everything does one; the pilot has three
 var contactCooldown = 0.85;
 
 // ===========================================================================
@@ -53,6 +64,10 @@ var phase = 0;
 var spin = 0;
 var contactTimer = 0;
 var invuln = 0;
+// FOUNDRY's doors are a STATE, not a countdown. Driving them from `invuln`
+// meant the timer that opened them was also the timer that closed them, so the
+// vulnerable window never actually happened and the boss could not be killed.
+var doorShut = 0;
 
 var vx = 0, vy = 0;
 
@@ -87,6 +102,8 @@ function configure(k, health, waveNumber) {
     wave = Number(waveNumber) || 5;
     dead = 0;
     phase = 0;
+    doorShut = (kind === B_FOUNDRY) ? 1 : 0;
+    t = doorShut ? FOUNDRY_CLOSED : 0;
     configured = 1;
     if (sprite) { dress(); }
     log(">>> " + BOSS_NAME[kind] + " <<<");
@@ -95,12 +112,12 @@ function configure(k, health, waveNumber) {
 
 function dress() {
     if (!sprite) { return; }
-    sprite.size = { x: BOSS_SIZE[kind], y: BOSS_SIZE[kind] * 0.8 };
+    sprite.size = { x: BOSS_RAD[kind] * 2, y: BOSS_RAD[kind] * 2 * 0.85 };
     sprite.tint = { R: BOSS_R[kind], G: BOSS_G[kind], B: BOSS_B[kind], A: 255 };
     sprite.layerDepth = depthBoss;
 
     var col = actor.getComponent("BoxCollider2D");
-    if (col) { col.size = { x: BOSS_SIZE[kind], y: BOSS_SIZE[kind] * 0.8 }; }
+    if (col) { col.size = { x: BOSS_RAD[kind] * 2, y: BOSS_RAD[kind] * 2 * 0.85 }; }
 }
 
 function onUpdate(dt) {
@@ -174,7 +191,10 @@ function slam() {
     if (swarm) { swarm.call("knockCircle", x, y, 300, 380); }
     if (pilot && player) {
         var dx = player.transform.x - x, dy = player.transform.y - y;
-        if (dx * dx + dy * dy < 250 * 250) { pilot.call("hurt", 30); }
+        // One, like everything else. A slam that took 30 was written against a
+        // hundred-point health bar; against three hit points it is an instant
+        // kill no amount of healing survives.
+        if (dx * dx + dy * dy < 250 * 250) { pilot.call("hurt", 1); }
     }
 }
 
@@ -215,23 +235,22 @@ function hex(dt, nx, ny, dist) {
 // The door cycle is the fight: damage only lands in the open window.
 // ===========================================================================
 function foundry(dt, nx, ny, dist) {
-    // The door cycle is meant to be a rhythm you shoot on, not a tax: shut for
-    // 1.6s of a 4.2s cycle leaves damage landing about 60% of the time. At 2.4s
-    // it was the other way round and the fight simply took twice as long.
     if (t <= 0) {
-        t = phase ? 3.2 : 4.2;
-        invuln = invuln > 0 ? 0 : (phase ? 1.1 : 1.6);
-        log(invuln > 0 ? "FOUNDRY: doors shut" : "FOUNDRY: doors open");
+        doorShut = doorShut ? 0 : 1;
+        t = doorShut ? FOUNDRY_CLOSED : FOUNDRY_OPEN;
+        log(doorShut ? "FOUNDRY: doors shut" : "FOUNDRY: doors open");
     }
 
     if (t2 <= 0 && swarm) {
-        t2 = phase ? 1.5 : 2.3;
+        t2 = phase ? 1.6 : 2.4;
+        // It builds Drones, and Mites once it is hurt. The wave cannot end
+        // while it lives, so the adds are pressure rather than padding.
         var a = Math.random() * Math.PI * 2;
         var kindToBuild = phase ? (Math.random() < 0.4 ? 1 : 0) : 0;
         swarm.call("spawnKind", kindToBuild,
                    actor.transform.x + Math.cos(a) * 90,
                    actor.transform.y + Math.sin(a) * 90,
-                   1 + wave * 0.05, 1);
+                   1 + wave * 0.04, 1);
     }
 }
 
@@ -291,7 +310,7 @@ function tickZones(dt, px, py) {
         }
         var dx = px - z.x, dy = py - z.y;
         if (dx * dx + dy * dy < z.r * z.r && pilot && contactTimer <= 0) {
-            pilot.call("hurt", 10);
+            pilot.call("hurt", 1);
             contactTimer = 0.5;
         }
     }
@@ -348,26 +367,27 @@ function ring(x, y, r, cr, cg, cb) {
 
 function touch(dist) {
     if (!pilot || contactTimer > 0) { return; }
-    if (dist > BOSS_SIZE[kind] * 0.6 + 18) { return; }
-    pilot.call("hurt", contactDamage);
+    if (dist > BOSS_RAD[kind] + 18) { return; }
+    pilot.call("hurt", 1);
     contactTimer = contactCooldown;
 }
 
 function clampIn() {
     if (!director) { return; }
-    var half = director.call("getArenaHalf") - BOSS_SIZE[kind] * 0.5;
+    var hw = director.call("getArenaHalfW") - BOSS_RAD[kind];
+    var hh = director.call("getArenaHalfH") - BOSS_RAD[kind];
     var tr = actor.transform;
-    if (tr.x < -half) { tr.x = -half; }
-    if (tr.x >  half) { tr.x =  half; }
-    if (tr.y < -half) { tr.y = -half; }
-    if (tr.y >  half) { tr.y =  half; }
+    if (tr.x < -hw) { tr.x = -hw; }
+    if (tr.x >  hw) { tr.x =  hw; }
+    if (tr.y < -hh) { tr.y = -hh; }
+    if (tr.y >  hh) { tr.y =  hh; }
 }
 
 function paint() {
     if (!sprite) { return; }
     var r = BOSS_R[kind], g = BOSS_G[kind], b = BOSS_B[kind];
 
-    if (invuln > 0) { r = (r + 120) >> 1; g = (g + 120) >> 1; b = (b + 120) >> 1; }
+    if (invuln > 0 || doorShut) { r = (r + 120) >> 1; g = (g + 120) >> 1; b = (b + 120) >> 1; }
     if (t2 > 0 && kind === B_BRUTE) { r = 255; g = 255; b = 255; }
     if (phase === 1) { r = Math.min(255, r + 30); }
 
@@ -380,7 +400,8 @@ function paint() {
 
 function takeDamage(dmg, code) {
     if (dead) { return 0; }
-    if (invuln > 0) { return 0; }         // the door cycle, and only that
+    // The door cycle, and only that.
+    if (invuln > 0 || doorShut) { return 0; }
 
     hp -= Number(dmg) || 0;
     if (pilot) { pilot.call("onDamageDealt", Number(dmg) || 0); }
@@ -396,6 +417,16 @@ function die() {
 
     for (var i = 0; i < zones.length; i++) { if (zones[i].a) { zones[i].a.destroy(); } }
     zones = [];
+
+    // BRUTE PRIME bursts into six Mites, the way its lesser kind bursts into
+    // four -- killing it in your face is worse than killing it at range.
+    if (kind === B_BRUTE && swarm) {
+        for (var m = 0; m < BRUTE_PRIME_SPLIT; m++) {
+            var ang = (m / BRUTE_PRIME_SPLIT) * Math.PI * 2;
+            swarm.call("spawnKind", 1, actor.transform.x + Math.cos(ang) * 40,
+                       actor.transform.y + Math.sin(ang) * 40, 1 + wave * 0.04, 1);
+        }
+    }
 
     if (director) {
         director.call("spawnEffect", actor.transform.x, actor.transform.y, 420, 255, 255, 255, 0.45);
@@ -420,4 +451,4 @@ function getHealth01() { return hpMax > 0 ? hp / hpMax : 0; }
 function getName()     { return BOSS_NAME[kind]; }
 function getKind()     { return kind; }
 function isDead()      { return dead; }
-function isInvuln()    { return invuln > 0 ? 1 : 0; }
+function isInvuln()    { return (invuln > 0 || doorShut) ? 1 : 0; }

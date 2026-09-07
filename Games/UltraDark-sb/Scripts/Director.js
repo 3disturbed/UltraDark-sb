@@ -15,49 +15,48 @@
 // after.
 
 // ===========================================================================
-// Tuning -- the arena
-// ===========================================================================
-// Two screens across at 1280x720. Bigger than this and an early wave reads as
-// an empty grid with one enemy on it -- the arena was 2600 wide to begin with
-// and a frame of wave 3 had a single grunt in view.
-var arenaHalf   = 780;       // a square, half-width in px
-var tileStep    = 165;       // grid spacing of the floor marks
-
-// ===========================================================================
-// Tuning -- the waves
+// Tuning -- the arena, and the numbers UltraDark actually runs on
 //
-// budget is spend, not headcount: a bruiser eats twelve of it and a swarmling
-// one, so a wave gets harder without simply getting longer.
+// These are the live game's, from its shared/constants.js. The one that changes
+// everything is the damage scale: a pilot has THREE hit points, a bullet does
+// one damage, and a Brute takes six. Nothing is on a hundred-point scale, so a
+// single contact is a third of your health and the second of invulnerability
+// afterwards is most of what keeps a wave survivable.
 // ===========================================================================
-// The shape of a run -- how much a wave is worth, when to spend it, when it is
-// over, when a boss is due, and the stall-breaker -- belongs to the
-// `wave-director` cookie on the Waves actor. Everything below is CONTENT: what
-// this game puts in a wave, and what its numbers mean.
-var intermission  = 4.5;     // seconds after a wave clears, before the draft
+var arenaW = 2048, arenaH = 1152;        // ARENA_W / ARENA_H
+var arenaHalfW = arenaW / 2, arenaHalfH = arenaH / 2;
+var wallPad = 24;                        // WALL_PAD
+var tileStep = 192;
 
-// One drafted mod a wave is not enough. A wave's total health grows with the
-// budget curve AND with per-wave scaling, which compounds twice; a pilot picking
-// one card a wave grows once. Left alone, wave 14 took three minutes -- not
-// harder, just longer, which is the failure mode of every wave spawner.
-//
-// So every intermission also GRANTS a mod, free, on top of the draft. It is what
-// the original UltraDark does with its class-mod grant, and it is the cheapest
-// place to put the pilot's half of the curve.
+// MULT
+var multMax       = 10;                  // MULT.MAX
+var multPerKill   = 0.12;                // MULT.PER_KILL
+var multDecay     = 0.35;                // MULT.DECAY_PER_S, after the grace
+var multGrace     = 3;                   // MULT.DECAY_GRACE
+var multHitFactor = 0.5;                 // MULT.HIT_FACTOR -- halved on any hit
+
+// WAVE
+var intermission  = 20;                  // WAVE.INTERMISSION_S
+
+// The original grants a CLASS mod every intermission on top of the draft, so
+// the pilot grows as fast as the wave does. This is that grant.
 var grantPerIntermission = 1;
-var shopSeconds   = 40;      // how long the core shop stays open
+var spawnMinDist  = 320;                 // WAVE.SPAWN_MIN_DIST
+var warpInSeconds = 0.5;                 // WAVE.WARP_IN_S -- the spawn telegraph
+var shopSeconds   = 40;
 
-var hpPerWave     = 0.065;   // enemy hp multiplier growth
-var spdPerWave    = 0.014;   // ...and speed, much slower
+// Enemy scaling. The original does not make enemies spongier as waves climb --
+// it sends MORE of them, through the budget. Health scales only gently.
+var hpPerWave     = 0.04;
+var spdPerWave    = 0.012;
 
 // ===========================================================================
 // Tuning -- bosses
+//
+// Boss HP is the original's: the kind's own hp, plus ~6 a wave past 25 so a
+// cycled boss never goes soft. Solo is x1.0 of that, which is what this port is.
 // ===========================================================================
-var bossBaseHp    = 900;
-// A boss should be a wall, not a wait. At +210 a wave-15 boss was 4050 health
-// against a door cycle that only lets damage in half the time, which is a
-// two-minute fight nobody chose. The pilot now takes two mods a wave; this is
-// the boss curve that keeps up with that rather than outrunning it.
-var bossHpPerWave = 115;
+var bossHpPerWavePast25 = 6;
 
 // ===========================================================================
 // Tuning -- the dark
@@ -65,7 +64,7 @@ var bossHpPerWave = 115;
 // The title arrives on wave 16. Fourteen and fifteen are the warning.
 // ===========================================================================
 var darkFirstWarn = 14;
-var darkFullWave  = 16;
+var darkFullWave  = 16;                  // WAVE.DARK_START
 var darkPerWave   = 0.030;   // creeps in further every wave after that
 var darkMax       = 1.0;
 
@@ -76,16 +75,12 @@ var COOKIE_DUSK  = 0.58;
 var COOKIE_NIGHT = 0.70;
 
 // ===========================================================================
-// Tuning -- score, multiplier, cores
+// Tuning -- drops
+//
+// Only the chunkier kinds drop consumables, and each carries its own chance
+// from the roster (Warden 0.30, Forge 0.35, Brute 0.20 ...). Cores come off
+// every kill at the kind's own core value.
 // ===========================================================================
-var multMax       = 8;
-var multPerKill   = 0.09;
-var multDecay     = 0.32;    // per second, once the decay grace has run out
-var multGrace     = 2.2;     // seconds after a kill before decay resumes
-var multLossOnHit = 0.45;    // fraction of the multiplier lost when hit
-
-var coreDropChance = 0.09;
-var consumableChance = 0.34; // from chunky enemies only
 
 // ===========================================================================
 // Tuning -- draw order
@@ -105,43 +100,11 @@ var depthDeploy  = 0.44;
 var depthEffect  = 0.85;     // ABOVE the dark: effects are the light source
 
 // ===========================================================================
-// The mods -- 24, in six families of four.
-//
-// A card carries its own name and what it does. The family colour is still
-// there, but as a grouping rather than as the identity -- before the UI globals
-// landed a card was a colour and a row of pips, and "orange, three pips" was the
-// closest thing to a name the contract could draw.
+// The mods live in the Upgrades script now -- UltraDark's own pool, four
+// families with three rarities and the cursed rarity-3 trade-offs. This script
+// only asks it for a name, a description and a colour to put on a card.
 // ===========================================================================
-var MOD_NAME = [
-    "RAPID FEED", "HEAVY SLUG", "THRUSTERS", "PLATING",
-    "SPLIT SHOT", "LONG BARREL", "PIERCER", "VAMPIRE",
-    "ORBITAL BLADE", "KINETIC PLATING", "SCAVENGER", "MAGNETIC",
-    "ADRENALINE", "OVERDRIVE CELL", "SHOCKWAVE", "COLD ROUNDS",
-    "INCENDIARY", "REACTIVE ARMOUR", "REGENERATOR", "GLASS CANNON",
-    "SWIFT RELOAD", "TWIN LINK", "DEAD MAN'S TRIGGER", "CORE TAP"
-];
-
-// What each one actually does, in the fewest words that are still true. The
-// cards have room for one line of this and the player has about a second.
-var MOD_DESC = [
-    "-8% weapon cooldown",     "+12% damage",             "+9% move speed",
-    "+18 max hull",            "+1 projectile, wider",    "+18% shot speed, range",
-    "+1 pierce",               "2% of damage as hull",    "+1 orbiting blade",
-    "dash deals damage",       "+25% core drops",         "pickups fly to you",
-    "+22% damage under 40%",   "+5% core drops",          "kills explode",
-    "shots slow on hit",       "shots burn on hit",       "being hit grants shield",
-    "+0.6 hull per second",    "+30% damage, -12 hull",   "-12% ability cooldown",
-    "every 5th shot free, x2", "shots explode at range",  "+1 core per 12 kills"
-];
-
-// family: 0 offence 1 rate 2 defence 3 mobility 4 elemental 5 economy
-var MOD_FAMILY = [1, 0, 3, 2, 1, 1, 5, 2, 3, 3, 5, 3, 0, 5, 4, 4, 4, 2, 2, 0, 1, 0, 4, 5];
-var MOD_COST   = [26, 28, 22, 24, 34, 26, 34, 30, 40, 26, 24, 22, 28, 22, 32, 26, 28, 28, 26, 36, 26, 38, 34, 26];
-
-var FAM_HEX  = ["#e24646", "#ffa03c", "#6ed278", "#5adcff", "#be6ef5", "#ffcd50"];
-var FAM_NAME = ["OFFENCE", "FIRE RATE", "DEFENCE", "MOBILITY", "ELEMENTAL", "ECONOMY"];
-
-var MOD_COUNT = 24;
+var MOD_COUNT = 37;
 
 // ===========================================================================
 // Phases
@@ -172,6 +135,7 @@ var shopTimer = 0;
 
 var swarm = null, bullets = null, pilot = null, player = null;
 var clock = null, board = null, waves = null, hud = null, fx = null, pickups = null;
+var upgrades = null;
 
 // effect pool
 var fxActor = [], fxSprite = [], fxLife = [], fxMax = [], fxSize = [];
@@ -179,7 +143,7 @@ var fxN = 0;
 var fxPool = [];
 
 // deployables: 0 = pylon, 1 = turret
-var dpActor = [], dpKind = [], dpLife = [], dpTimer = [], dpDmg = [];
+var dpActor = [], dpKind = [], dpLife = [], dpTimer = [], dpDmg = [], dpRad = [];
 var dpN = 0;
 
 var hangarShips = [];
@@ -214,6 +178,7 @@ function resolve() {
     if (!hud)     { var h = Scene.findFirstByTag("Hud");     if (h) { hud = h.getComponent("ScriptComponent"); } }
     if (!fx)      { var e = Scene.findFirstByTag("Effects"); if (e) { fx = e.getComponent("ScriptComponent"); } }
     if (!pickups) { var pk = Scene.findFirstByTag("Pickups"); if (pk) { pickups = pk.getComponent("ScriptComponent"); } }
+    if (!upgrades) { var up = Scene.findFirstByTag("Upgrades"); if (up) { upgrades = up.getComponent("ScriptComponent"); } }
     if (!player)  { player = Scene.findFirstByTag("Player"); if (player) { pilot = player.getComponent("ScriptComponent"); } }
 }
 
@@ -272,25 +237,25 @@ function buildArena() {
         floor.tag = "Fx";
         Scene.addComponent(floor, "SpriteRenderer", {
             Tint: { R: 32, G: 36, B: 50, A: 255 },
-            Size: [arenaHalf * 2, arenaHalf * 2],
+            Size: [arenaW, arenaH],
             LayerDepth: depthFloor
         });
     }
 
     // A sparse grid, so movement reads as movement even in an empty arena.
-    for (var x = -arenaHalf + tileStep; x < arenaHalf; x += tileStep) {
-        line(x, 0, 2, arenaHalf * 2, 56, 60, 82);
+    for (var x = -arenaHalfW + tileStep; x < arenaHalfW; x += tileStep) {
+        line(x, 0, 2, arenaH, 56, 60, 82);
     }
-    for (var y = -arenaHalf + tileStep; y < arenaHalf; y += tileStep) {
-        line(0, y, arenaHalf * 2, 2, 56, 60, 82);
+    for (var y = -arenaHalfH + tileStep; y < arenaHalfH; y += tileStep) {
+        line(0, y, arenaW, 2, 56, 60, 82);
     }
 
     // The boundary. Movement is clamped in script, so these are a picture of
     // the edge rather than a collider anything relies on.
-    line(0, -arenaHalf, arenaHalf * 2, 14, 112, 120, 160);
-    line(0,  arenaHalf, arenaHalf * 2, 14, 112, 120, 160);
-    line(-arenaHalf, 0, 14, arenaHalf * 2, 112, 120, 160);
-    line( arenaHalf, 0, 14, arenaHalf * 2, 112, 120, 160);
+    line(0, -arenaHalfH, arenaW, 14, 112, 120, 160);
+    line(0,  arenaHalfH, arenaW, 14, 112, 120, 160);
+    line(-arenaHalfW, 0, 14, arenaH, 112, 120, 160);
+    line( arenaHalfW, 0, 14, arenaH, 112, 120, 160);
 }
 
 // The grid and the boundary are two layers, so they are two names. One name at
@@ -387,17 +352,22 @@ function spawnOne(w, budget) {
     var kind = pickKind(w, budget);
     if (kind < 0) { return 0; }
 
-    // A rooted enemy dropped on the far wall of the arena is not a threat, it is
-    // an errand: it never comes to you, so the wave cannot end until you have
-    // walked across the map to it. FORGE and TURRET are area denial, so they go
-    // into the area -- near enough to matter, far enough to be a decision.
+    // Only the Forge is rooted, and dropping one on the far wall is an errand
+    // rather than a threat -- it never comes to you, so the wave cannot end
+    // until you have walked across the map to it. It goes into the fight.
     var pos = isRooted(kind) ? nearSpawn() : edgeSpawn();
 
-    if (swarm) {
-        swarm.call("spawnKind", kind, pos.x, pos.y,
-                   1 + w * hpPerWave, 1 + w * spdPerWave);
+    // Groups, so a Mite is never alone and a Warden always is.
+    var group = kindGroup(kind);
+    for (var i = 0; i < group; i++) {
+        var jx = group > 1 ? (Math.random() - 0.5) * 70 : 0;
+        var jy = group > 1 ? (Math.random() - 0.5) * 70 : 0;
+        if (swarm) {
+            swarm.call("spawnKind", kind, pos.x + jx, pos.y + jy,
+                       1 + w * hpPerWave, 1 + w * spdPerWave);
+        }
     }
-    return kindCost(kind);
+    return kindCost(kind) * group;
 }
 
 function aliveCount() { return swarm ? swarm.call("alive") : 0; }
@@ -443,7 +413,7 @@ function runWave(dt) {
     if (bossActor && bossActor.active !== true) { bossActor = null; }
 }
 
-function isRooted(kind) { return (kind === 6 || kind === 11) ? 1 : 0; }
+function isRooted(kind) { return kind === 9 ? 1 : 0; }   // the Forge, and only it
 
 // A ring around the pilot: close enough to be part of the fight, never on top
 // of them.
@@ -452,50 +422,71 @@ function nearSpawn() {
     var py = player ? player.transform.y : 0;
     var a = Math.random() * Math.PI * 2;
     var r = 360 + Math.random() * 200;
-    var m = arenaHalf - 60;
+    var mw = arenaHalfW - 60, mh = arenaHalfH - 60;
     return {
-        x: Math.max(-m, Math.min(m, px + Math.cos(a) * r)),
-        y: Math.max(-m, Math.min(m, py + Math.sin(a) * r))
+        x: Math.max(-mw, Math.min(mw, px + Math.cos(a) * r)),
+        y: Math.max(-mh, Math.min(mh, py + Math.sin(a) * r))
     };
 }
 
+// The boss's own hp from the roster, plus the original's ~6 a wave past 25 so
+// a cycled boss never goes soft. Solo is x1.0 of that, which is what this is.
+var BOSS_HP = [60, 90, 120, 140, 180];   // BRUTE PRIME, HEX PRIME, FOUNDRY, SHEPHERD, ULTRADARK
+
 function bossHp(w) {
-    return Math.floor(bossBaseHp + bossHpPerWave * w);
+    var index = bossIndexFor(w);
+    var past = w > 25 ? (w - 25) * bossHpPerWavePast25 : 0;
+    return Math.round(BOSS_HP[index] + past);
 }
 
-// Unlock schedule. Every kind arrives on its own wave, so a player can learn
-// one thing at a time and name what changed.
+function bossIndexFor(w) {
+    var i = Math.floor(w / 5) - 1;
+    if (i < 0) { i = 0; }
+    return i % 5;
+}
+
+// The roster deepens on the original's schedule. Drones and Mites from the
+// start; a Forge not until wave 14.
 function kindUnlocked(kind, w) {
-    if (kind === 0)  { return 1; }              // GRUNT
-    if (kind === 10) { return 1; }              // SWARMLING
-    if (kind === 1)  { return w >= 2 ? 1 : 0; } // RUSHER
-    if (kind === 2)  { return w >= 3 ? 1 : 0; } // SPITTER
-    if (kind === 8)  { return w >= 4 ? 1 : 0; } // LEECH
-    if (kind === 4)  { return w >= 6 ? 1 : 0; } // GHOST
-    if (kind === 11) { return w >= 7 ? 1 : 0; } // TURRET
-    if (kind === 7)  { return w >= 8 ? 1 : 0; } // MAGNET
-    if (kind === 3)  { return w >= 9 ? 1 : 0; } // SNIPER
-    if (kind === 5)  { return w >= 11 ? 1 : 0; }// WARDEN
-    if (kind === 9)  { return w >= 12 ? 1 : 0; }// BRUISER
-    if (kind === 6)  { return w >= 13 ? 1 : 0; }// FORGE
+    if (kind === 0 || kind === 1) { return 1; }        // DRONE, MITE
+    if (kind === 2)  { return w >= 2  ? 1 : 0; }       // WEAVER
+    if (kind === 4)  { return w >= 3  ? 1 : 0; }       // SPINNER
+    if (kind === 3)  { return w >= 4  ? 1 : 0; }       // BRUTE
+    if (kind === 5)  { return w >= 6  ? 1 : 0; }       // MORTAR
+    if (kind === 6)  { return w >= 7  ? 1 : 0; }       // SNIPER
+    if (kind === 10) { return w >= 9  ? 1 : 0; }       // GHOST
+    if (kind === 7)  { return w >= 11 ? 1 : 0; }       // LEECH
+    if (kind === 11) { return w >= 12 ? 1 : 0; }       // MAGNET
+    if (kind === 8)  { return w >= 13 ? 1 : 0; }       // WARDEN
+    if (kind === 9)  { return w >= 14 ? 1 : 0; }       // FORGE
     return 0;
 }
 
+// Spawn cost, from the roster.
 function kindCost(kind) {
-    var COST = [3, 4, 5, 7, 6, 12, 16, 6, 3, 14, 1, 8];
+    var COST = [3, 2, 7, 12, 9, 10, 11, 6, 13, 16, 10, 10];
     return COST[kind];
+}
+
+// Group size: Mites arrive six at a time, Drones three, and the heavy kinds
+// alone. A wave is mostly small things, which is what makes the big ones read.
+function kindGroup(kind) {
+    if (kind === 1) { return 6; }                                  // MITE
+    if (kind === 0) { return 3; }                                  // DRONE
+    if (kind === 3 || kind === 9 || kind === 8) { return 1; }      // BRUTE, FORGE, WARDEN
+    return 2;
 }
 
 function pickKind(w, budget) {
     var choices = [];
     for (var k = 0; k < 12; k++) {
         if (!kindUnlocked(k, w)) { continue; }
-        if (kindCost(k) > budget) { continue; }
+        if (kindCost(k) * kindGroup(k) > budget) { continue; }
         choices.push(k);
-        // Weight the cheap infantry up so a wave is mostly things to shoot.
-        if (k === 0 || k === 10) { choices.push(k); choices.push(k); }
     }
     if (choices.length === 0) { return -1; }
+    // The original picks uniformly from what is unlocked; the group sizes are
+    // what weight a wave towards infantry, not the draw.
     return choices[Math.floor(Math.random() * choices.length)];
 }
 
@@ -505,17 +496,20 @@ function edgeSpawn() {
     var px = player ? player.transform.x : 0;
     var py = player ? player.transform.y : 0;
 
-    for (var tries = 0; tries < 6; tries++) {
+    for (var tries = 0; tries < 8; tries++) {
         var edge = Math.floor(Math.random() * 4);
-        var m = arenaHalf - 40;
+        var mw = arenaHalfW - wallPad, mh = arenaHalfH - wallPad;
         var x = 0, y = 0;
-        if (edge === 0)      { x = rand(-m, m); y = -m; }
-        else if (edge === 1) { x = rand(-m, m); y =  m; }
-        else if (edge === 2) { x = -m;          y = rand(-m, m); }
-        else                 { x =  m;          y = rand(-m, m); }
+        if (edge === 0)      { x = rand(-mw, mw); y = -mh; }
+        else if (edge === 1) { x = rand(-mw, mw); y =  mh; }
+        else if (edge === 2) { x = -mw;           y = rand(-mh, mh); }
+        else                 { x =  mw;           y = rand(-mh, mh); }
 
+        // WAVE.SPAWN_MIN_DIST: nothing arrives on top of you. An enemy that
+        // appears where you are standing is not difficulty, it is a hit you
+        // could not have avoided.
         var dx = x - px, dy = y - py;
-        if (dx * dx + dy * dy > 420 * 420) { return { x: x, y: y }; }
+        if (dx * dx + dy * dy > spawnMinDist * spawnMinDist) { return { x: x, y: y }; }
     }
     return { x: -px, y: -py };
 }
@@ -528,7 +522,7 @@ function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
 
 function spawnBoss(index) {
     var kind = Math.max(0, Math.min(4, Number(index) | 0));
-    var a = Scene.createActor("Boss", 0, -arenaHalf * 0.55);
+    var a = Scene.createActor("Boss", 0, -arenaHalfH * 0.55);
     if (!a) { return; }
     a.tag = "Boss";
 
@@ -567,25 +561,52 @@ function onBossKilled(kind, x, y) {
 // Kills, score, cores
 // ===========================================================================
 
-function onEnemyKilled(kind, x, y, points, chunky) {
+function onEnemyKilled(kind, x, y, points, coreValue, dropChance) {
     score += Math.floor((Number(points) || 0) * mult);
 
     mult = Math.min(multMax, mult + multPerKill);
     multTimer = multGrace;
 
+    // Every kill is worth cores at the kind's own value; only the chunkier
+    // kinds drop a consumable, each at its own chance from the roster.
     var bonus = pilot ? pilot.call("getCoreBonus") : 1;
+    addCores(Math.round((Number(coreValue) || 1) * bonus));
 
-    if (Math.random() < coreDropChance * bonus) {
-        dropPickup(0, x, y, 1 + Math.floor(wave / 6));
-    }
-    if (chunky && Math.random() < consumableChance) {
-        dropPickup(1, x, y, Math.floor(Math.random() * 5));
+    if (Math.random() < (Number(dropChance) || 0)) {
+        dropPickup(1, x, y, rollConsumable());
     }
     return 1;
 }
 
+// The weighted table from the original: repairs common, bombs precious.
+var CONSUMABLE_NAME = ["REPAIR KIT", "OVERSHIELD", "FRENZY CORE", "STASIS CHARGE", "BOMB CELL"];
+var CONSUMABLE_WEIGHT = [3, 2, 2, 2, 1];
+
+function rollConsumable() {
+    var total = 0;
+    for (var i = 0; i < CONSUMABLE_WEIGHT.length; i++) { total += CONSUMABLE_WEIGHT[i]; }
+    var r = Math.random() * total;
+    for (var k = 0; k < CONSUMABLE_WEIGHT.length; k++) {
+        r -= CONSUMABLE_WEIGHT[k];
+        if (r < 0) { return k; }
+    }
+    return 0;
+}
+
+function consumableName(id) { return CONSUMABLE_NAME[Math.max(0, Math.min(4, id | 0))]; }
+
+// The Leech does not damage you, it eats the run. Called every frame it is on
+// you, so the cost is a rate rather than a hit.
+function drainMultiplier(amount) {
+    mult = Math.max(1, mult - (Number(amount) || 0));
+    multTimer = 0;
+    return mult;
+}
+
 function onPlayerHit() {
-    mult = Math.max(1, mult * (1 - multLossOnHit));
+    // MULT.HIT_FACTOR: halved, not scratched. With three hit points a hit is
+    // already serious; this is what makes it cost the run as well.
+    mult = Math.max(1, mult * multHitFactor);
     multTimer = 0;
     return 1;
 }
@@ -624,23 +645,32 @@ function onPickup(kind, value) {
 // Deployables -- SPARKS' pylon and RIGG's turret
 // ===========================================================================
 
+// BLAZE's FLAME ZONE: ground that burns whatever stands in it.
+function spawnFlame(x, y, r, life, dps) { return deploy(2, x, y, life, dps, r); }
+
 function spawnPylon(x, y, life, dmg) { return deploy(0, x, y, life, dmg); }
 function spawnTurret(x, y, life, dmg) { return deploy(1, x, y, life, dmg); }
 
-function deploy(kind, x, y, life, dmg) {
-    var a = Scene.createActor(kind === 0 ? "Pylon" : "Turret", x, y);
+var DEPLOY_NAME = ["Pylon", "Turret", "Flame"];
+
+function deploy(kind, x, y, life, dmg, radius) {
+    var a = Scene.createActor(DEPLOY_NAME[kind], x, y);
     if (!a) { return 0; }
     a.tag = "Fx";
+    var r = Number(radius) || 20;
     Scene.addComponent(a, "SpriteRenderer", {
-        Tint: kind === 0 ? { R: 190, G: 130, B: 255, A: 255 } : { R: 150, G: 230, B: 90, A: 255 },
-        Size: [20, 20],
-        LayerDepth: depthDeploy
+        Tint: kind === 0 ? { R: 255, G: 228, B: 91, A: 255 }
+            : kind === 1 ? { R: 255, G: 158, B: 44, A: 255 }
+            : { R: 255, G: 122, B: 61, A: 110 },
+        Size: kind === 2 ? [r * 2, r * 2] : [20, 20],
+        LayerDepth: kind === 2 ? depthPickup : depthDeploy
     });
     dpActor[dpN] = a;
     dpKind[dpN] = kind;
     dpLife[dpN] = Number(life) || 10;
     dpTimer[dpN] = 0;
     dpDmg[dpN] = Number(dmg) || 8;
+    dpRad[dpN] = r;
     dpN++;
     return 1;
 }
@@ -656,9 +686,12 @@ function tickDeployables(dt) {
         dpTimer[i] -= dt;
         if (dpTimer[i] > 0) { continue; }
 
-        if (dpKind[i] === 0) {
-            dpTimer[i] = 0.55;
-            if (swarm) { swarm.call("chainFrom", a.transform.x, a.transform.y, dpDmg[i], 3, 260); }
+        if (dpKind[i] === 2) {
+            dpTimer[i] = 0.5;
+            if (swarm) { swarm.call("damageCircle", a.transform.x, a.transform.y, dpRad[i], dpDmg[i] * 0.5, 0); }
+        } else if (dpKind[i] === 0) {
+            dpTimer[i] = 0.5;
+            if (swarm) { swarm.call("chainFrom", a.transform.x, a.transform.y, dpDmg[i], 3, 200); }
         } else {
             dpTimer[i] = 0.32;
             if (swarm && bullets) {
@@ -679,6 +712,7 @@ function removeDeploy(i) {
     if (i !== last) {
         dpActor[i] = dpActor[last]; dpKind[i] = dpKind[last];
         dpLife[i] = dpLife[last]; dpTimer[i] = dpTimer[last]; dpDmg[i] = dpDmg[last];
+        dpRad[i] = dpRad[last];
     }
     dpN--;
     dpActor[dpN] = null;
@@ -796,8 +830,9 @@ function openDraft() {
         board.call("open", 3);
         for (var i = 0; i < 3; i++) {
             var id = draftIds[i];
-            var f = MOD_FAMILY[id];
-            board.call("setCard", i, MOD_NAME[id], MOD_DESC[id], FAM_NAME[f], FAM_HEX[f]);
+            board.call("setCard", i, upgradeName(id), upgradeDesc(id),
+                       upgradeFamily(id) + (upgradeCursed(id) ? "  -  CURSED" : ""),
+                       upgradeHex(id));
             board.call("setFooter", i, ownedLabel(id));
             board.call("setEnabled", i, 1);
         }
@@ -807,7 +842,7 @@ function openDraft() {
 
     if (hud) { hud.call("say", "DRAFT  --  pick one"); }
     log("--- DRAFT --- 1/2/3, or click one");
-    for (var j = 0; j < 3; j++) { log("   " + (j + 1) + ": " + MOD_NAME[draftIds[j]]); }
+    for (var j = 0; j < 3; j++) { log("   " + (j + 1) + ": " + upgradeName(draftIds[j])); }
 }
 
 // Free, unchosen, and announced. The draft is the decision; this is the pilot
@@ -815,8 +850,8 @@ function openDraft() {
 function grantMod() {
     var id = randomMod(-1, -1);
     if (pilot) { pilot.call("addMod", id); }
-    log("SALVAGE: " + MOD_NAME[id]);
-    if (hud) { hud.call("say", "SALVAGE  " + MOD_NAME[id]); }
+    log("SALVAGE: " + upgradeName(id));
+    if (hud) { hud.call("say", "SALVAGE  " + upgradeName(id)); }
     return id;
 }
 
@@ -825,6 +860,21 @@ function ownedLabel(id) {
     if (!pilot) { return ""; }
     var owned = pilot.call("countMod", id);
     return owned > 0 ? ("owned x" + owned) : "";
+}
+
+// Everything a card says comes from the Upgrades script, so the pool and the
+// card can never drift apart.
+function upgradeName(id)   { return upgrades ? upgrades.call("nameOf", id) : ""; }
+function upgradeDesc(id)   { return upgrades ? upgrades.call("descOf", id) : ""; }
+function upgradeFamily(id) { return upgrades ? upgrades.call("familyName", id) : ""; }
+function upgradeHex(id)    { return upgrades ? upgrades.call("familyHex", id) : "#888888"; }
+function upgradeCursed(id) { return upgrades ? upgrades.call("isCursed", id) : 0; }
+
+// Rarer costs more; a cursed one is cheap, because it is not a favour.
+function modCost(id) {
+    var r = upgrades ? upgrades.call("rarityOf", id) : 1;
+    if (upgradeCursed(id)) { return 30; }
+    return r === 1 ? 25 : r === 2 ? 40 : 60;
 }
 
 function randomMod(notA, notB) {
@@ -841,8 +891,8 @@ function runDraft(dt) {
     if (picked >= 0 && picked < 3) {
         var id = draftIds[picked];
         if (pilot) { pilot.call("addMod", id); }
-        log("TAKEN: " + MOD_NAME[id]);
-        if (hud) { hud.call("say", MOD_NAME[id]); }
+        log("TAKEN: " + upgradeName(id));
+        if (hud) { hud.call("say", upgradeName(id)); }
         if (board) { board.call("close"); }
         nextWave();
         return;
@@ -853,7 +903,7 @@ function runDraft(dt) {
     waveTimer -= dt;
     if (waveTimer <= 0) {
         if (pilot) { pilot.call("addMod", draftIds[0]); }
-        log("TAKEN (default): " + MOD_NAME[draftIds[0]]);
+        log("TAKEN (default): " + upgradeName(draftIds[0]));
         if (board) { board.call("close"); }
         nextWave();
     }
@@ -881,15 +931,16 @@ function rollShop() {
         board.call("open", 4);
         for (var j = 0; j < 4; j++) {
             var id = shopIds[j];
-            var f = MOD_FAMILY[id];
-            var affordable = cores >= MOD_COST[id] ? 1 : 0;
-            board.call("setCard", j, MOD_NAME[id], MOD_DESC[id], FAM_NAME[f], FAM_HEX[f]);
-            board.call("setFooter", j, MOD_COST[id] + " cores   " + ownedLabel(id));
+            var affordable = cores >= modCost(id) ? 1 : 0;
+            board.call("setCard", j, upgradeName(id), upgradeDesc(id),
+                       upgradeFamily(id) + (upgradeCursed(id) ? "  -  CURSED" : ""),
+                       upgradeHex(id));
+            board.call("setFooter", j, modCost(id) + " cores   " + ownedLabel(id));
             board.call("setEnabled", j, affordable);
         }
     }
     for (var k = 0; k < 4; k++) {
-        log("   " + (k + 1) + ": " + MOD_NAME[shopIds[k]] + "  " + MOD_COST[shopIds[k]] + " cores");
+        log("   " + (k + 1) + ": " + upgradeName(shopIds[k]) + "  " + modCost(shopIds[k]) + " cores");
     }
 }
 
@@ -910,16 +961,16 @@ function runShop(dt) {
 
 function buy(slot) {
     var id = shopIds[slot];
-    if (cores < MOD_COST[id]) {
-        log("Not enough cores for " + MOD_NAME[id] + " (" + MOD_COST[id] + ")");
+    if (cores < modCost(id)) {
+        log("Not enough cores for " + upgradeName(id) + " (" + modCost(id) + ")");
         if (hud) { hud.call("say", "NOT ENOUGH CORES"); }
         rollShop();
         return;
     }
-    cores -= MOD_COST[id];
+    cores -= modCost(id);
     if (pilot) { pilot.call("addMod", id); }
-    log("BOUGHT: " + MOD_NAME[id] + "  --  " + cores + " cores left");
-    if (hud) { hud.call("say", "BOUGHT " + MOD_NAME[id]); }
+    log("BOUGHT: " + upgradeName(id) + "  --  " + cores + " cores left");
+    if (hud) { hud.call("say", "BOUGHT " + upgradeName(id)); }
     rollShop();
 }
 
@@ -981,7 +1032,12 @@ function runDead(dt) {
 // Readouts
 // ===========================================================================
 
-function getArenaHalf()  { return arenaHalf; }
+// The projectile cookie takes a single half-extent, so it gets the larger one
+// and a stray shot flies a little further before it is recycled. Everything
+// that has to stay inside the arena asks for the axis it cares about.
+function getArenaHalf()  { return arenaHalfW; }
+function getArenaHalfW() { return arenaHalfW; }
+function getArenaHalfH() { return arenaHalfH; }
 function getPhase()      { return phase; }
 function getWave()       { return wave; }
 function getScore()      { return score; }

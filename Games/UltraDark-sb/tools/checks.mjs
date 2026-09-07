@@ -41,7 +41,7 @@ test('clearing a wave opens the draft, and the draft always resolves', async () 
         // Nothing is pressed: the intermission has to time out into a pick, or a
         // run can stall for ever on a card nobody chose.
         assert.equal(g.director().invoke('getPhase'), 2, 'an empty wave did not open the draft');
-        await g.step(60 * 8);
+        await g.step(60 * 26);      // the intermission is 20s, from WAVE.INTERMISSION_S
         assert.ok(g.director().invoke('getWave') > 1, 'the draft never resolved on its own');
         assert.ok(g.pilot().invoke('modCount') > 0, 'resolving the draft granted no mod');
     } finally { g.restore(); }
@@ -147,7 +147,7 @@ test('an enemy standing on the pilot can still be shot', async () => {
             const ship = g.find('Player');
             ship.transform.x = 0;
             ship.transform.y = 0;
-            g.swarm().invoke('spawnKind', 0, 2, 0, 1, 0);       // right on top
+            g.swarm().invoke('spawnKind', 0, 2, 0, 1, 0.001);   // a Drone, right on top
             await g.step(2);
 
             g.mouse(0, true);
@@ -301,11 +301,14 @@ test('a draft card says what it is, in words', async () => {
 
         // Every card carries a real mod name and a real description. Before the
         // UI globals this was a colour and a row of pips.
-        const names = ['RAPID FEED', 'HEAVY SLUG', 'THRUSTERS', 'PLATING', 'SPLIT SHOT',
-            'LONG BARREL', 'PIERCER', 'VAMPIRE', 'ORBITAL BLADE', 'KINETIC PLATING',
-            'SCAVENGER', 'MAGNETIC', 'ADRENALINE', 'OVERDRIVE CELL', 'SHOCKWAVE',
-            'COLD ROUNDS', 'INCENDIARY', 'REACTIVE ARMOUR', 'REGENERATOR',
-            'GLASS CANNON', 'SWIFT RELOAD', 'TWIN LINK', "DEAD MAN'S TRIGGER", 'CORE TAP'];
+        const names = ['Piercer', 'Ricochet', 'Splitter', 'Heavy Rounds', 'Overclock',
+            'Railshot', 'Long Barrel', 'Railgun Coils', 'Gunslinger', 'Heavyweight',
+            'Orbital', 'Twin Orbital', 'Dash Nova', 'Nova Core', 'Static Coil',
+            'Thorn Plating', 'Yield Boost', 'Thrusters', 'Twin Dash', 'Featherframe',
+            'Plating', 'Overshield', 'Sprinter', 'Bounty Chip', 'Volatile', 'Shrapnel',
+            'Bloodrush', 'Momentum', 'Kill Streak', 'Grudge Core', 'Adrenal Loop',
+            'Scavenger', 'Glass Cannon', 'Berserker', 'Scattergun', 'Turtle Shell',
+            "Gambler's Coil"];
         const shown = texts.filter((t) => names.includes(t));
         assert.equal(shown.length, 3, `expected three named cards, saw ${shown.length}: ${texts.join(' | ')}`);
     } finally { g.restore(); }
@@ -400,14 +403,14 @@ test('mods stack: the same mod taken twice counts twice', async () => {
         await g.step(5);
 
         const before = g.pilot().invoke('getDamageMul');
-        g.pilot().invoke('addMod', 1);          // HEAVY SLUG, x1.12
+        g.pilot().invoke('addMod', 3);          // Heavy Rounds, x1.6 damage
         const once = g.pilot().invoke('getDamageMul');
-        g.pilot().invoke('addMod', 1);
+        g.pilot().invoke('addMod', 3);
         const twice = g.pilot().invoke('getDamageMul');
 
-        assert.ok(once > before, 'one HEAVY SLUG changed nothing');
-        assert.ok(twice > once, 'a second HEAVY SLUG was deduplicated away');
-        assert.ok(Math.abs(twice - before * 1.12 * 1.12) < 1e-9,
+        assert.ok(once > before, 'one Heavy Rounds changed nothing');
+        assert.ok(twice > once, 'a second Heavy Rounds was deduplicated away');
+        assert.ok(Math.abs(twice - before * 1.6 * 1.6) < 1e-9,
             'stacking is not multiplicative as computeStats declares');
         assert.equal(g.pilot().invoke('modCount'), 2);
     } finally { g.restore(); }
@@ -437,10 +440,12 @@ test('taking a mod that raises max health also grants the health', async () => {
     try {
         g.director().invoke('forceLaunch');
         await g.step(5);
+        // Plating is +1 max HP, because the pilot has three. Everything in
+        // UltraDark is on a small integer scale.
         const before = g.pilot().invoke('getHp');
-        g.pilot().invoke('addMod', 3);          // PLATING, +18 max
-        assert.equal(g.pilot().invoke('getHp'), before + 18);
-        assert.ok(g.pilot().invoke('getHealth01') > 0.99, 'PLATING left the pilot on a partial bar');
+        g.pilot().invoke('addMod', 20);         // Plating, +1 max
+        assert.equal(g.pilot().invoke('getHp'), before + 1);
+        assert.ok(g.pilot().invoke('getHealth01') > 0.99, 'Plating left the pilot on a partial bar');
     } finally { g.restore(); }
 });
 
@@ -545,7 +550,7 @@ test('a phased ghost cannot be shot, and can be again when it returns', async ()
         g.director().invoke('forceBudget', 0);
         g.swarm().invoke('clearAll');
 
-        g.swarm().invoke('spawnKind', 4, 900, 900, 1, 1);   // far from the pilot, inside the arena
+        g.swarm().invoke('spawnKind', 10, 900, 500, 1, 1);   // a Ghost   // far from the pilot, inside the arena
         await g.step(2);
         assert.equal(g.swarm().invoke('alive'), 1);
 
@@ -554,7 +559,7 @@ test('a phased ghost cannot be shot, and can be again when it returns', async ()
         let sawUntargetable = false;
         for (let i = 0; i < 60 * 8; i++) {
             await g.step(1);
-            const x = g.swarm().invoke('nearestX', 900, 900, 600);
+            const x = g.swarm().invoke('nearestX', 900, 500, 600);
             if (x > -900000) { sawTargetable = true; } else { sawUntargetable = true; }
             if (sawTargetable && sawUntargetable) { break; }
         }
@@ -571,14 +576,14 @@ test('area damage does not reach a phased ghost', async () => {
         await g.step(10);
         g.director().invoke('forceBudget', 0);
         g.swarm().invoke('clearAll');
-        g.swarm().invoke('spawnKind', 4, 900, 900, 1, 1);
+        g.swarm().invoke('spawnKind', 10, 900, 500, 1, 1);   // a Ghost
 
         // Wait for the phase-out, then try to nuke it.
         for (let i = 0; i < 60 * 8; i++) {
             await g.step(1);
-            if (g.swarm().invoke('nearestX', 900, 900, 600) <= -900000) { break; }
+            if (g.swarm().invoke('nearestX', 900, 500, 600) <= -900000) { break; }
         }
-        const hits = g.swarm().invoke('damageCircle', 900, 900, 400, 99999, 1);
+        const hits = g.swarm().invoke('damageCircle', 900, 500, 400, 99999, 1);
         assert.equal(hits, 0, 'a phased ghost was hit by area damage it should have been immune to');
         assert.equal(g.swarm().invoke('alive'), 1);
     } finally { g.restore(); }
@@ -625,10 +630,10 @@ test('a stacked shockwave chain does not blow the stack', async () => {
         // that looks like is not a crash: it is every script hook in the frame
         // failing afterwards, so damage silently stops landing and a boss never
         // dies. It reads exactly like a balance problem.
-        for (let i = 0; i < 6; i++) { g.pilot().invoke('addMod', 14); }
+        for (let i = 0; i < 6; i++) { g.pilot().invoke('addMod', 24); }   // Volatile
 
         for (let i = 0; i < 80; i++) {
-            g.swarm().invoke('spawnKind', 10, 200 + (i % 10) * 12, 200 + Math.floor(i / 10) * 12, 0.02, 0);
+            g.swarm().invoke('spawnKind', 1, 200 + (i % 10) * 12, 200 + Math.floor(i / 10) * 12, 0.02, 0.001);   // Mites
         }
         await g.step(4);
         assert.ok(g.swarm().invoke('alive') > 40, 'the test pack did not spawn');
@@ -705,7 +710,7 @@ test('every one of the eight pilots flies and fires', async () => {
             ship.transform.x = 0;
             ship.transform.y = 0;
 
-            g.swarm().invoke('spawnKind', 0, 130, 0, 2, 1);
+            g.swarm().invoke('spawnKind', 0, 130, 0, 2, 0.001);   // a Drone, held still
             await g.step(2);
 
             const before = g.swarm().invoke('alive');

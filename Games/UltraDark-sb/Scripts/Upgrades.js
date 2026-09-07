@@ -27,37 +27,63 @@
 // A stat nobody mentions is 1 for `mul` and 0 for `add`; declare its base in
 // BASES below when that is wrong.
 // ===========================================================================
+// UltraDark's general mod pool: four families, three rarities, and the
+// rarity-3 "cursed" ones that cost you something. Names and numbers are the
+// game's own, from its shared/mods.js.
 var UPGRADES = [
-    { id: 0,  name: "RAPID FEED",         effects: [{ stat: "cooldown", op: "mul", value: 0.92 }] },
-    { id: 1,  name: "HEAVY SLUG",         effects: [{ stat: "damage",   op: "mul", value: 1.12 }] },
-    { id: 2,  name: "THRUSTERS",          effects: [{ stat: "speed",    op: "mul", value: 1.09 }] },
-    { id: 3,  name: "PLATING",            effects: [{ stat: "maxHp",    op: "add", value: 18 }] },
-    { id: 4,  name: "SPLIT SHOT",         effects: [{ stat: "pellets",  op: "add", value: 1 }] },
-    { id: 5,  name: "LONG BARREL",        effects: [{ stat: "projSpeed",op: "mul", value: 1.18 }] },
-    { id: 6,  name: "PIERCER",            effects: [{ stat: "pierce",   op: "add", value: 1 }] },
-    { id: 7,  name: "VAMPIRE",            effects: [{ stat: "lifesteal",op: "add", value: 1 }] },
-    { id: 8,  name: "ORBITAL BLADE",      effects: [{ stat: "blades",   op: "add", value: 1 }] },
-    { id: 9,  name: "KINETIC PLATING",    effects: [{ stat: "kinetic",  op: "add", value: 1 }] },
-    { id: 10, name: "SCAVENGER",          effects: [{ stat: "coreBonus",op: "mul", value: 1.25 }] },
-    { id: 11, name: "MAGNETIC",           effects: [{ stat: "magnet",   op: "add", value: 1 }] },
-    { id: 12, name: "ADRENALINE",         effects: [{ stat: "adrenaline",op:"add", value: 1 }] },
-    { id: 13, name: "OVERDRIVE CELL",     effects: [{ stat: "coreBonus",op: "mul", value: 1.05 }] },
-    { id: 14, name: "SHOCKWAVE",          effects: [{ stat: "shockwave",op: "add", value: 1 }] },
-    { id: 15, name: "COLD ROUNDS",        effects: [{ stat: "chill",    op: "add", value: 1 }] },
-    { id: 16, name: "INCENDIARY",         effects: [{ stat: "burn",     op: "add", value: 1 }] },
-    { id: 17, name: "REACTIVE ARMOUR",    effects: [{ stat: "reactive", op: "add", value: 1 }] },
-    { id: 18, name: "REGENERATOR",        effects: [{ stat: "regen",    op: "add", value: 0.6 }] },
-    // The only one that costs you something, and it is one row rather than a
-    // special case anywhere.
-    { id: 19, name: "GLASS CANNON",       effects: [
-        { stat: "damage", op: "mul", value: 1.30 },
-        { stat: "maxHp",  op: "add", value: -12 },
-    ] },
-    { id: 20, name: "SWIFT RELOAD",       effects: [{ stat: "abilityCdr", op: "mul", value: 0.88 }] },
-    { id: 21, name: "TWIN LINK",          effects: [{ stat: "twinLink", op: "add", value: 1 }] },
-    { id: 22, name: "DEAD MAN'S TRIGGER", effects: [{ stat: "deadMan",  op: "add", value: 1 }] },
-    { id: 23, name: "CORE TAP",           effects: [{ stat: "coreTap",  op: "add", value: 1 }] },
+    // ---- Ballistics ------------------------------------------------------
+    { id: 0,  name: "Piercer",       family: 0, rarity: 1, desc: "Bullets pass through +1 enemy.",   effects: [{ stat: "pierce", op: "add", value: 1 }] },
+    { id: 1,  name: "Ricochet",      family: 0, rarity: 1, desc: "Bullets bounce off walls once.",   effects: [{ stat: "ricochet", op: "add", value: 1 }] },
+    { id: 2,  name: "Splitter",      family: 0, rarity: 2, desc: "Fire +1 bullet in a spread.",      effects: [{ stat: "pellets", op: "add", value: 1 }] },
+    { id: 3,  name: "Heavy Rounds",  family: 0, rarity: 2, desc: "+60% damage, -20% fire rate.",     effects: [{ stat: "damage", op: "mul", value: 1.6 }, { stat: "cooldown", op: "mul", value: 1.25 }] },
+    { id: 4,  name: "Overclock",     family: 0, rarity: 1, desc: "+25% fire rate.",                  effects: [{ stat: "cooldown", op: "mul", value: 0.8 }] },
+    { id: 5,  name: "Railshot",      family: 0, rarity: 1, desc: "+35% bullet speed.",               effects: [{ stat: "projSpeed", op: "mul", value: 1.35 }] },
+    { id: 6,  name: "Long Barrel",   family: 0, rarity: 1, desc: "+40% bullet range.",               effects: [{ stat: "projSpeed", op: "mul", value: 1.4 }] },
+    { id: 7,  name: "Railgun Coils", family: 0, rarity: 2, desc: "+60% bullet speed, pierce +1.",    effects: [{ stat: "projSpeed", op: "mul", value: 1.6 }, { stat: "pierce", op: "add", value: 1 }] },
+    { id: 8,  name: "Gunslinger",    family: 0, rarity: 1, desc: "+15% fire rate, +10% damage.",     effects: [{ stat: "cooldown", op: "mul", value: 0.87 }, { stat: "damage", op: "mul", value: 1.1 }] },
+    { id: 9,  name: "Heavyweight",   family: 0, rarity: 2, desc: "+30% damage, -8% move speed.",     effects: [{ stat: "damage", op: "mul", value: 1.3 }, { stat: "speed", op: "mul", value: 0.92 }] },
+    // ---- Field -----------------------------------------------------------
+    { id: 10, name: "Orbital",       family: 1, rarity: 2, desc: "A blade orbits you.",              effects: [{ stat: "blades", op: "add", value: 1 }] },
+    { id: 11, name: "Twin Orbital",  family: 1, rarity: 3, desc: "TWO more orbiting blades.",        effects: [{ stat: "blades", op: "add", value: 2 }] },
+    { id: 12, name: "Dash Nova",     family: 1, rarity: 2, desc: "Dashing releases a shockwave.",    effects: [{ stat: "kinetic", op: "add", value: 1 }] },
+    { id: 13, name: "Nova Core",     family: 1, rarity: 2, desc: "Stronger dash wave, dash -0.2s.",  effects: [{ stat: "kinetic", op: "add", value: 1 }, { stat: "dashBonus", op: "add", value: 0.2 }] },
+    { id: 14, name: "Static Coil",   family: 1, rarity: 2, desc: "Periodically zaps the nearest.",   effects: [{ stat: "static", op: "add", value: 1 }] },
+    { id: 15, name: "Thorn Plating", family: 1, rarity: 1, desc: "Enemies that touch you take damage.", effects: [{ stat: "thorns", op: "add", value: 1 }] },
+    { id: 16, name: "Yield Boost",   family: 1, rarity: 1, desc: "Smart bombs deal +1 damage.",      effects: [{ stat: "bombPower", op: "add", value: 1 }] },
+    // ---- Chassis ---------------------------------------------------------
+    { id: 17, name: "Thrusters",     family: 2, rarity: 1, desc: "+15% move speed.",                 effects: [{ stat: "speed", op: "mul", value: 1.15 }] },
+    { id: 18, name: "Twin Dash",     family: 2, rarity: 2, desc: "+1 dash charge.",                  effects: [{ stat: "dashCharges", op: "add", value: 1 }] },
+    { id: 19, name: "Featherframe",  family: 2, rarity: 1, desc: "+10% speed, faster dash recovery.", effects: [{ stat: "speed", op: "mul", value: 1.1 }, { stat: "dashBonus", op: "add", value: 0.3 }] },
+    { id: 20, name: "Plating",       family: 2, rarity: 2, desc: "+1 max HP (and heal 1 now).",      effects: [{ stat: "maxHp", op: "add", value: 1 }] },
+    { id: 21, name: "Overshield",    family: 2, rarity: 1, desc: "+50% longer invulnerability.",     effects: [{ stat: "iframes", op: "mul", value: 1.5 }] },
+    { id: 22, name: "Sprinter",      family: 2, rarity: 1, desc: "+8% speed, +8% fire rate.",        effects: [{ stat: "speed", op: "mul", value: 1.08 }, { stat: "cooldown", op: "mul", value: 0.926 }] },
+    // ---- Echo ------------------------------------------------------------
+    { id: 23, name: "Bounty Chip",   family: 3, rarity: 1, desc: "+25% score from your kills.",      effects: [{ stat: "scoreBonus", op: "mul", value: 1.25 }] },
+    { id: 24, name: "Volatile",      family: 3, rarity: 2, desc: "Your kills explode.",              effects: [{ stat: "shockwave", op: "add", value: 1 }] },
+    { id: 25, name: "Shrapnel",      family: 3, rarity: 2, desc: "Bigger kill explosions.",          effects: [{ stat: "shockwave", op: "add", value: 1 }] },
+    { id: 26, name: "Bloodrush",     family: 3, rarity: 1, desc: "Kills shave dash cooldown.",       effects: [{ stat: "bloodrush", op: "add", value: 0.15 }] },
+    { id: 27, name: "Momentum",      family: 3, rarity: 1, desc: "+30% damage for 1s after dashing.", effects: [{ stat: "momentum", op: "add", value: 1 }] },
+    { id: 28, name: "Kill Streak",   family: 3, rarity: 2, desc: "Every 25th kill grants a bomb.",   effects: [{ stat: "coreTap", op: "add", value: 1 }] },
+    { id: 29, name: "Grudge Core",   family: 3, rarity: 2, desc: "Hits keep 70% of your multiplier.", effects: [{ stat: "grudge", op: "add", value: 1 }] },
+    { id: 30, name: "Adrenal Loop",  family: 3, rarity: 1, desc: "+50% fire rate for 3s after a hit.", effects: [{ stat: "adrenaline", op: "add", value: 1 }] },
+    { id: 31, name: "Scavenger",     family: 3, rarity: 1, desc: "+15% score, +5% cores.",           effects: [{ stat: "scoreBonus", op: "mul", value: 1.15 }, { stat: "coreBonus", op: "mul", value: 1.05 }] },
+    // ---- Cursed: rarity 3, and every one of them costs you something -----
+    { id: 32, name: "Glass Cannon",  family: 0, rarity: 3, cursed: 1, desc: "+80% damage. Dash cooldown +1s.", effects: [{ stat: "damage", op: "mul", value: 1.8 }, { stat: "dashBonus", op: "add", value: -1 }] },
+    { id: 33, name: "Berserker",     family: 3, rarity: 3, cursed: 1, desc: "+40% fire rate. -1 max HP.",      effects: [{ stat: "cooldown", op: "mul", value: 0.714 }, { stat: "maxHp", op: "add", value: -1 }] },
+    { id: 34, name: "Scattergun",    family: 0, rarity: 3, cursed: 1, desc: "+2 split bullets. -25% damage.",  effects: [{ stat: "pellets", op: "add", value: 2 }, { stat: "damage", op: "mul", value: 0.75 }] },
+    { id: 35, name: "Turtle Shell",  family: 2, rarity: 3, cursed: 1, desc: "+2 max HP. -15% move speed.",     effects: [{ stat: "maxHp", op: "add", value: 2 }, { stat: "speed", op: "mul", value: 0.85 }] },
+    { id: 36, name: "Gambler's Coil",family: 3, rarity: 3, cursed: 1, desc: "+50% score. A hit drops you to x1.", effects: [{ stat: "scoreBonus", op: "mul", value: 1.5 }, { stat: "gambler", op: "add", value: 1 }] },
 ];
+
+var FAMILY_NAME = ["BALLISTICS", "FIELD", "CHASSIS", "ECHO"];
+var FAMILY_HEX  = ["#ff7a3d", "#39f0ff", "#b8ff5e", "#c26bfa"];
+
+function familyOf(id)    { var u = byId(id); return u ? u.family : 0; }
+function familyName(id)  { return FAMILY_NAME[familyOf(id)]; }
+function familyHex(id)   { return FAMILY_HEX[familyOf(id)]; }
+function rarityOf(id)    { var u = byId(id); return u ? u.rarity : 1; }
+function isCursed(id)    { var u = byId(id); return (u && u.cursed) ? 1 : 0; }
+function descOf(id)      { var u = byId(id); return u ? u.desc : ""; }
 
 // Stats whose "nothing taken" value is not the default (1 for mul, 0 for add).
 var BASES = {};
@@ -66,6 +92,8 @@ var BASES = {};
 // multiplier that stacks its way to zero is a weapon with no cadence at all.
 // Cooldown stacking has to stop somewhere: enough RAPID FEED and a weapon has
 // no cadence at all, which is not a build, it is the absence of one.
+// A fire-rate multiplier that stacks its way to nothing is a weapon with no
+// cadence at all.
 var CLAMPS = { cooldown: { min: 0.25 } };
 
 // ===========================================================================

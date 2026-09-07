@@ -49,6 +49,11 @@ var concurrentCap = 105;
 var bossEvery     = 5;       // 0 for no bosses at all
 var bossKinds     = 5;       // how many distinct bosses to cycle through
 
+// A boss wave still sends an escort, at this share of the ordinary budget. Too
+// low and the arena is empty around the fight; too high and the boss is the
+// least of your problems.
+var bossBudgetShare = 0.45;
+
 // ===========================================================================
 // Tuning -- the stall-breaker
 //
@@ -189,7 +194,7 @@ function startWave() {
 
     // A boss wave still sends a thinner escort, so the arena is never empty
     // around the fight.
-    budgetLeft = bossThisWave ? Math.floor(waveBudget(wave) * 0.35) : waveBudget(wave);
+    budgetLeft = bossThisWave ? Math.floor(waveBudget(wave) * bossBudgetShare) : waveBudget(wave);
 
     if (content) {
         content.call("onWaveStart", wave, bossThisWave);
