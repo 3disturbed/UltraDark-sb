@@ -70,24 +70,33 @@ public class SpriteRenderer : Component
     public SpriteEffects Effects { get; set; } = SpriteEffects.None;
 
     /// <summary>
-    /// Draw order within the batch. In the browser engine, higher is nearer the
-    /// camera: 0 = back, 1 = front.
+    /// Draw order within the batch. Higher is nearer the camera: 0 = back,
+    /// 1 = front, on both engines.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The browser sorts on this; <b>this engine currently does not</b>. Measured
-    /// with <c>Games/DepthProbe</c>, three runs whose depths and creation order
-    /// disagree in every combination: the sprite created last is in front every
-    /// time, whatever the depths say. The batch is opened with
-    /// <see cref="SpriteSortMode.BackToFront"/> in <c>RenderSystem2D.Begin</c>, so
-    /// why the sort does not take is not yet understood — do not treat this
-    /// summary as describing native behaviour until it is.
+    /// This was not always true, and the note that said so outlived the fix. The
+    /// batch used to open with <see cref="SpriteSortMode.BackToFront"/>, which in
+    /// MonoGame draws the <i>highest</i> depth first and therefore puts it at the
+    /// back — the exact inverse of the browser, whose painter's-order pass draws
+    /// ascending and leaves the highest depth on top. Worse, the 2D pass went
+    /// through a bare <c>SpriteBatch.Begin()</c>, so no sort ran at all and the
+    /// sprite created last simply won.
     /// </para>
     /// <para>
-    /// Until then a project that must look the same on both engines has to create
-    /// its actors back-to-front as well as depth them back-to-front. Whichever way
-    /// it is settled, both engines have to move together: a picture is the one
-    /// thing neither the validator nor a headless test can check.
+    /// Both are fixed: the scene is drawn through <c>RenderSystem2D</c>, whose
+    /// <c>SortMode</c> is <see cref="SpriteSortMode.FrontToBack"/> — ascending by
+    /// depth, highest drawn last, matching the browser. Re-measured with
+    /// <c>Games/DepthProbe</c> on 2026-09-07: a red sprite created <i>first</i> at
+    /// depth 0.90 fills the window over a blue one created after it at 0.10.
+    /// </para>
+    /// <para>
+    /// This matters more than it looks. A game that sorts by position — anything
+    /// top-down where a character walks in front of one wall and behind the next —
+    /// cannot express that in creation order, because the character is created
+    /// once and the relationship changes every step. It needs the depth to be
+    /// honoured, and now it is. <c>SpriteSortModeTests</c> pins the direction;
+    /// both engines have to move together if it is ever changed again.
     /// </para>
     /// </remarks>
     public float LayerDepth { get; set; } = 0f;
