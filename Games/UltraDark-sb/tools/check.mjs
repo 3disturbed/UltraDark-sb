@@ -8,6 +8,7 @@
 //   checks      24 tests of real situations
 //   draw-order  which side of the dark every layer is on
 //   perf        what a frame costs at the loads the game can produce
+//   ui layout   every UI state, at viewports it was not built at
 //   soak        three minutes of play, then six more starting in the dark
 //
 // The last four exist because the first one passes on a game that renders as a
@@ -25,6 +26,7 @@ const steps = [
     ['checks',     'node', ['--test', 'tools/checks.mjs'], gameDir],
     ['draw-order', 'node', ['tools/draw-order.mjs'], gameDir],
     ['perf',       'node', ['tools/perf.mjs'], gameDir],
+    ['ui layout',  'bash', ['tools/ui-sweep.sh'], gameDir],
     ['soak',       'node', ['tools/soak.mjs', '--minutes', '3'], gameDir],
     ['soak dark',  'node', ['tools/soak.mjs', '--wave', '14', '--minutes', '6'], gameDir],
 ];

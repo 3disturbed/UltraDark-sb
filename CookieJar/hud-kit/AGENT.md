@@ -79,6 +79,11 @@ ignored, because going from one overlay straight to another — game over into a
 dead — is ordinary, and keeping the previous heading is a lie on screen that nothing else will
 correct.
 
+The overlay is re-sized to the viewport every frame, not just when it is put up. A "full screen"
+panel is only full screen at the size it was made at, and a window that is resized, rotated or
+sent fullscreen while the overlay is up would otherwise leave it hanging off the edge — invisible
+until somebody plays in a window that is not the one it was built in.
+
 `overlayColour` is eight-digit hex (`#000000cc`) so the overlay can be see-through. Opaque black is
 right for a menu and wrong for anything the player is meant to look at while it is up: a ship to
 choose, a board to read, the arena they are about to go back to.
