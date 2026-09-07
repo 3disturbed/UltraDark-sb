@@ -90,6 +90,13 @@ var consumableChance = 0.34; // from chunky enemies only
 // ===========================================================================
 // Tuning -- draw order
 // ===========================================================================
+// The world is lit, so that the dark has something to take away.
+//
+// It used to be near-black -- floor (15,16,22) against a night colour of
+// (6,8,20) -- which read as atmospheric only because the renderer was
+// compositing straight alpha as premultiplied and every translucent sprite was
+// ADDING its colour. With that fixed the arithmetic is exact, and an overlay
+// almost the same colour as the floor is an overlay that does nothing.
 var depthFloor   = 0.05;
 var depthGrid    = 0.10;
 var depthWall    = 0.15;
@@ -264,7 +271,7 @@ function buildArena() {
     if (floor) {
         floor.tag = "Fx";
         Scene.addComponent(floor, "SpriteRenderer", {
-            Tint: { R: 15, G: 16, B: 22, A: 255 },
+            Tint: { R: 32, G: 36, B: 50, A: 255 },
             Size: [arenaHalf * 2, arenaHalf * 2],
             LayerDepth: depthFloor
         });
@@ -272,18 +279,18 @@ function buildArena() {
 
     // A sparse grid, so movement reads as movement even in an empty arena.
     for (var x = -arenaHalf + tileStep; x < arenaHalf; x += tileStep) {
-        line(x, 0, 2, arenaHalf * 2, 30, 32, 44);
+        line(x, 0, 2, arenaHalf * 2, 56, 60, 82);
     }
     for (var y = -arenaHalf + tileStep; y < arenaHalf; y += tileStep) {
-        line(0, y, arenaHalf * 2, 2, 30, 32, 44);
+        line(0, y, arenaHalf * 2, 2, 56, 60, 82);
     }
 
     // The boundary. Movement is clamped in script, so these are a picture of
     // the edge rather than a collider anything relies on.
-    line(0, -arenaHalf, arenaHalf * 2, 14, 90, 96, 130);
-    line(0,  arenaHalf, arenaHalf * 2, 14, 90, 96, 130);
-    line(-arenaHalf, 0, 14, arenaHalf * 2, 90, 96, 130);
-    line( arenaHalf, 0, 14, arenaHalf * 2, 90, 96, 130);
+    line(0, -arenaHalf, arenaHalf * 2, 14, 112, 120, 160);
+    line(0,  arenaHalf, arenaHalf * 2, 14, 112, 120, 160);
+    line(-arenaHalf, 0, 14, arenaHalf * 2, 112, 120, 160);
+    line( arenaHalf, 0, 14, arenaHalf * 2, 112, 120, 160);
 }
 
 // The grid and the boundary are two layers, so they are two names. One name at

@@ -273,7 +273,7 @@ function plantZone(x, y, r, life) {
     // game unfair. The alpha is low so it reads as a haze rather than a wall --
     // at 150 two overlapping zones looked like level geometry.
     Scene.addComponent(a, "SpriteRenderer", {
-        Tint: { R: 40, G: 10, B: 70, A: 95 },
+        Tint: { R: 58, G: 14, B: 96, A: 130 },
         Size: [r * 2, r * 2],
         LayerDepth: depthZone
     });
