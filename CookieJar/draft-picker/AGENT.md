@@ -66,6 +66,21 @@ if (waveTimer <= 0) { grant(myCards[0]); board.call("close"); }
 
 A run that can stall on a menu is a run that will.
 
+## Hiding: `active`, never a transparent tint
+
+Every actor the board will ever need is built once in `onStart` and then shown and hidden.
+Creating them on `open` would churn the scene at the exact moment the player is looking straight
+at it.
+
+**How they are hidden matters, and it is the one thing in this cookie that will bite you.** Alpha 0
+hides a sprite in the browser and does **not** reliably hide one in the native renderer. A board
+hidden that way leaves a white card sitting in the world for the whole run — invisible in every
+test, invisible in the web build, and the first thing you see in a native one. That is exactly how
+it shipped the first time.
+
+`setVisible` toggles `active`, which means the same thing to both engines. If you add a sprite to
+this cookie, hide it the same way.
+
 ## Draw order
 
 `depthBorder` (0.94), `depthCard` (0.95) and `depthPip` (0.97) put the row in front of everything,
