@@ -492,6 +492,7 @@ export class Editor {
         const copy = buildActor(buildActorDto(actor), (m) => this.state.warn(m));
         copy.name = `${actor.name} copy`;
 
+        // The DTO nests children, so `copy` may be a whole subtree; addActor takes all of it.
         scene.addActor(copy, actor.layerRef?.name ?? 'default');
         scene.flushPendingActors();
 
@@ -520,6 +521,36 @@ export class Editor {
         this.state.markDirty();
         this.state.notifyHierarchy();
         this.inspector.render();
+    }
+
+    /**
+     * Attaches one actor to another, so it moves with it and is destroyed with it.
+     * A cycle is refused by the engine; the editor reports it rather than throwing.
+     */
+    attachActor(child, parent) {
+        if (!child) return;
+        try {
+            child.attachTo(parent ?? null);
+        } catch (err) {
+            this.state.warn(err.message);
+            return;
+        }
+
+        // Attachment can move a child between layers when the two differ; the scene keeps
+        // the subtree together, so the outliner has to be rebuilt from scratch.
+        this.scene?.flushPendingActors();
+        this.state.markDirty();
+        this.state.notifyHierarchy();
+    }
+
+    /** Detaches an actor from its parent, or (with `children`) detaches its children. */
+    detachActor(actor, children = false) {
+        if (!actor) return;
+        if (children) actor.detachChildren();
+        else actor.detach();
+
+        this.state.markDirty();
+        this.state.notifyHierarchy();
     }
 
     moveActorToLayer(actor, layerName) {

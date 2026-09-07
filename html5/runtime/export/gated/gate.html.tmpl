@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+         background: #0e1014; color: #dfe3ec;
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 34rem; padding: 2rem; text-align: center; }
+  h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
+  p { color: #98a0b3; margin: 0 0 1.5rem; }
+  button { font: inherit; padding: .6rem 1.4rem; border: 0; border-radius: .4rem;
+           background: #7df9c6; color: #0e1014; font-weight: 600; cursor: pointer; }
+  button[disabled] { opacity: .5; cursor: default; }
+  .error { color: #e0685f; }
+</style>
+<script src="https://darksgames.app/sdk/dg-account.v1.js" crossorigin="anonymous" defer></script>
+</head>
+<body>
+<main>
+  <h1>{{title}}</h1>
+  <p id="status">Checking your access…</p>
+  <button id="action" hidden>Sign in</button>
+</main>
+
+<script type="module">
+// The gate. This page is the only thing under public/, so nginx can serve it off
+// disk; the build itself lives outside public/ and is reachable only through
+// /play/*, which falls through to Node and therefore through this check.
+//
+// The listing flag on the catalogue hides the tile. This is the lock.
+const status = document.getElementById('status');
+const action = document.getElementById('action');
+
+const say = (text, isError = false) => {
+    status.textContent = text;
+    status.classList.toggle('error', isError);
+};
+
+const show = (label, onClick) => {
+    action.textContent = label;
+    action.hidden = false;
+    action.disabled = false;
+    action.onclick = onClick;
+};
+
+try {
+    await DGAccount.init({ game: {{slugJson}} });
+} catch {
+    say('The Darks Games sign-in service is unreachable. Try again in a moment.', true);
+    throw new Error('hub unreachable');
+}
+
+const user = DGAccount.getUser?.();
+if (!user) {
+    say('This build is in closed testing. Sign in to check your access.');
+    show('Sign in', () => DGAccount.login({ returnTo: location.href }));
+} else {
+    const token = await DGAccount.getToken();
+    const res = await fetch('/api/session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token }),
+    });
+
+    if (res.ok) {
+        location.replace('/play/');
+    } else if (res.status === 403) {
+        // A plain no. The claim is minted only when the flag is set, so there is
+        // nothing to look up and nothing to retry.
+        say(`Signed in as ${user.name ?? user.handle ?? 'you'}, but this build is limited to playtesters.`);
+        show('Sign out', () => DGAccount.logout().then(() => location.reload()));
+    } else {
+        say('Something went wrong checking your access. Try again in a moment.', true);
+        show('Retry', () => location.reload());
+    }
+}
+</script>
+</body>
+</html>

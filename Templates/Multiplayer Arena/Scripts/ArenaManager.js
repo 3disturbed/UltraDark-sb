@@ -100,7 +100,8 @@ function onStart() {
     }
 
     // Spawn the local player at a random position.
-    var localId = Network.localId || "local";
+    // Not `Network.localId || "local"`: the host's id is 0, and `0 || x` is x.
+    var localId = Network.localId;
     spawnPlayer(localId);
 
     log("========================================");

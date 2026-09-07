@@ -465,7 +465,7 @@ public class ScriptingTests
     }
 
     [Fact]
-    public void BareLogWarnAndErrorAndTheNetworkStubReportThroughTheSink()
+    public void BareLogWarnAndErrorReportThroughTheSink()
     {
         using var project = new ScriptProject();
         var diagnostics = new List<ScriptDiagnostic>();
@@ -473,12 +473,11 @@ public class ScriptingTests
 
         var scene  = NewScene();
         var script = Attach(scene, new Actor("Talker"), project.Write("Talker.js", """
-            var solo = false, local = false;
+            var local = false;
             function onStart() {
                 log("hello", 1, { a: 2 });
                 warn("careful");
                 error("bad");
-                solo = Network.startServer(7777) === false;
                 local = Network.isLocalPlayer(Network.localId);
             }
             """));
@@ -489,8 +488,10 @@ public class ScriptingTests
             Assert.Contains(diagnostics, d => d.Level == ScriptDiagnosticLevel.Log && d.Message == "hello 1 {\"a\":2}");
             Assert.Contains(diagnostics, d => d.Level == ScriptDiagnosticLevel.Warning && d.Message == "careful");
             Assert.Contains(diagnostics, d => d.Level == ScriptDiagnosticLevel.Error && d.Message == "bad");
-            Assert.Contains(diagnostics, d => d.Level == ScriptDiagnosticLevel.Warning && d.Message.Contains("running solo"));
-            Assert.Equal("true", Eval(script, "solo && local"));
+
+            // Player 0 is the local player before a server has said otherwise, so a lobby
+            // script asking about itself gets a sensible answer with no session running.
+            Assert.Equal("true", Eval(script, "local"));
         }
         finally { scene.Destroy(); }
     }

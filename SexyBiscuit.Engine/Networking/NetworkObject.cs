@@ -118,18 +118,7 @@ public class NetworkObject : Component
         // Build the initial state snapshot (full send)
         byte[] initialState = netObj.CollectLocalState(forceAll: true);
 
-        // Encode spawn packet: [type(1)] [networkId(4)] [actorName(len-prefixed)] [state(rest)]
-        using var ms  = new System.IO.MemoryStream();
-        using var bw  = new System.IO.BinaryWriter(ms);
-        bw.Write((byte)PacketType.SpawnObject);
-        bw.Write(netObj.NetworkId);
-        bw.Write(actor.Name);
-        bw.Write(netObj.OwnerClientId);
-        bw.Write(initialState.Length);
-        bw.Write(initialState);
-        bw.Flush();
-
-        nm.SendToAll(ms.ToArray());
+        nm.BroadcastSpawn(netObj.NetworkId, actor.Name, netObj.OwnerClientId, initialState);
     }
 
     /// <summary>
@@ -152,14 +141,7 @@ public class NetworkObject : Component
         nm.Replication.UnregisterObject(netObj);
         nm.Rpc.Unregister(actor);
 
-        // Encode despawn packet: [type(1)] [networkId(4)]
-        using var ms  = new System.IO.MemoryStream();
-        using var bw  = new System.IO.BinaryWriter(ms);
-        bw.Write((byte)PacketType.DespawnObject);
-        bw.Write(netObj.NetworkId);
-        bw.Flush();
-
-        nm.SendToAll(ms.ToArray());
+        nm.BroadcastDespawn(netObj.NetworkId);
 
         actor.Destroy();
     }
@@ -191,13 +173,11 @@ public class NetworkObject : Component
         // sorted descending by Priority so high-priority data is written first.
         var members = GatherReplicatedMembers();
 
-        using var ms      = new System.IO.MemoryStream();
-        using var bw      = new System.IO.BinaryWriter(ms);
-
-        // Reserve space for the member count (written at the end)
-        long countPos = ms.Position;
-        bw.Write((ushort)0); // placeholder
-
+        // The body is written first and the count prepended, rather than reserving two bytes
+        // and seeking back. NetWriter cannot seek by design: the blob crosses to the browser
+        // engine, and a format that needs random access to encode is one more thing the two
+        // implementations can disagree about.
+        var body = new NetWriter();
         ushort writtenCount = 0;
 
         foreach (var (memberInfo, attr, target) in members)
@@ -218,21 +198,19 @@ public class NetworkObject : Component
 
             if (!isDirty) continue;
 
-            // Write: [memberName (string)] [value (typed)]
-            bw.Write(memberInfo.Name);
-            WriteMemberValue(bw, currentValue);
+            // Write: [memberName str][valueTag u8][value]
+            body.String(memberInfo.Name);
+            WriteMemberValue(body, currentValue);
 
             _lastSentValues[memberInfo] = DeepCopyValue(currentValue);
             writtenCount++;
         }
 
-        // Patch the count
-        long endPos = ms.Position;
-        ms.Seek(countPos, System.IO.SeekOrigin.Begin);
-        bw.Write(writtenCount);
-        ms.Seek(endPos, System.IO.SeekOrigin.Begin);
-
-        return ms.ToArray();
+        var payload = new NetWriter(2 + body.Length);
+        payload.Byte((byte)(writtenCount & 0xFF));
+        payload.Byte((byte)(writtenCount >> 8));
+        payload.Raw(body.ToArray());
+        return payload.ToArray();
     }
 
     // -------------------------------------------------------------------------
@@ -252,23 +230,24 @@ public class NetworkObject : Component
         // Build a lookup of all [Replicated] members for fast access
         var memberLookup = BuildMemberLookup();
 
-        using var ms = new System.IO.MemoryStream(data);
-        using var br = new System.IO.BinaryReader(ms);
+        var reader = new NetReader(data);
+        int count  = reader.Byte() | (reader.Byte() << 8);
 
-        ushort count = br.ReadUInt16();
         for (int i = 0; i < count; i++)
         {
-            string memberName = br.ReadString();
+            string memberName = reader.String();
 
             if (!memberLookup.TryGetValue(memberName, out var entry))
             {
-                // Unknown member — skip by attempting to read based on the embedded type tag
-                SkipValue(br);
+                // A member this build does not have. The tag says how long the value is, so
+                // the rest of the blob still decodes -- which is what lets an older client
+                // stay in a session with a newer server instead of dropping every update.
+                SkipValue(ref reader);
                 continue;
             }
 
             var (memberInfo, target) = entry;
-            object? value = ReadMemberValue(br, GetMemberType(memberInfo));
+            object? value = ReadMemberValue(ref reader, GetMemberType(memberInfo));
             SetMemberValue(memberInfo, target, value);
         }
     }
@@ -396,108 +375,73 @@ public class NetworkObject : Component
         Unknown = 255,
     }
 
-    private static void WriteMemberValue(System.IO.BinaryWriter bw, object? value)
+    private static void WriteMemberValue(NetWriter w, object? value)
     {
         switch (value)
         {
-            case bool b:
-                bw.Write((byte)ValueTag.Bool);
-                bw.Write(b);
-                break;
-            case byte by:
-                bw.Write((byte)ValueTag.Byte);
-                bw.Write(by);
-                break;
-            case int i:
-                bw.Write((byte)ValueTag.Int32);
-                bw.Write(i);
-                break;
-            case uint u:
-                bw.Write((byte)ValueTag.UInt32);
-                bw.Write(u);
-                break;
-            case long l:
-                bw.Write((byte)ValueTag.Int64);
-                bw.Write(l);
-                break;
-            case float f:
-                bw.Write((byte)ValueTag.Float);
-                bw.Write(f);
-                break;
-            case double d:
-                bw.Write((byte)ValueTag.Double);
-                bw.Write(d);
-                break;
-            case string s:
-                bw.Write((byte)ValueTag.String);
-                bw.Write(s);
-                break;
-            case Vector2 v2:
-                bw.Write((byte)ValueTag.Vector2);
-                bw.Write(v2.X);
-                bw.Write(v2.Y);
-                break;
+            case bool b:      w.Byte((byte)ValueTag.Bool).Bool(b); break;
+            case byte by:     w.Byte((byte)ValueTag.Byte).Byte(by); break;
+            case int i:       w.Byte((byte)ValueTag.Int32).Int(i); break;
+            case uint u:      w.Byte((byte)ValueTag.UInt32).UInt(u); break;
+            case long l:      w.Byte((byte)ValueTag.Int64).Double(l); break;
+            case float f:     w.Byte((byte)ValueTag.Float).Float(f); break;
+            case double d:    w.Byte((byte)ValueTag.Double).Double(d); break;
+            case string s:    w.Byte((byte)ValueTag.String).String(s); break;
+            case Vector2 v2:  w.Byte((byte)ValueTag.Vector2).Float(v2.X).Float(v2.Y); break;
             case Microsoft.Xna.Framework.Vector3 v3:
-                bw.Write((byte)ValueTag.Vector3);
-                bw.Write(v3.X);
-                bw.Write(v3.Y);
-                bw.Write(v3.Z);
+                w.Byte((byte)ValueTag.Vector3).Float(v3.X).Float(v3.Y).Float(v3.Z);
                 break;
             default:
-                // Unknown / unsupported type — write a zero-length sentinel
-                bw.Write((byte)ValueTag.Unknown);
-                bw.Write(0); // length = 0, no payload
+                // Anything else: a tag and an empty block, so a reader can step over it.
+                w.Byte((byte)ValueTag.Unknown).Bytes(ReadOnlySpan<byte>.Empty);
                 break;
         }
     }
 
-    private static object? ReadMemberValue(System.IO.BinaryReader br, Type expectedType)
+    private static object? ReadMemberValue(ref NetReader r, Type expectedType)
     {
-        var tag = (ValueTag)br.ReadByte();
+        var tag = (ValueTag)r.Byte();
         return tag switch
         {
-            ValueTag.Bool    => (object)br.ReadBoolean(),
-            ValueTag.Byte    => br.ReadByte(),
-            ValueTag.Int32   => br.ReadInt32(),
-            ValueTag.UInt32  => br.ReadUInt32(),
-            ValueTag.Int64   => br.ReadInt64(),
-            ValueTag.Float   => br.ReadSingle(),
-            ValueTag.Double  => br.ReadDouble(),
-            ValueTag.String  => br.ReadString(),
-            ValueTag.Vector2 => new Vector2(br.ReadSingle(), br.ReadSingle()),
-            ValueTag.Vector3 => new Microsoft.Xna.Framework.Vector3(
-                                    br.ReadSingle(), br.ReadSingle(), br.ReadSingle()),
-            ValueTag.Unknown => SkipUnknown(br),
-            _                => SkipUnknown(br),
+            ValueTag.Bool    => (object)r.Bool(),
+            ValueTag.Byte    => r.Byte(),
+            ValueTag.Int32   => r.Int(),
+            ValueTag.UInt32  => r.UInt(),
+            // Int64 rides as a double: JavaScript has no 64-bit integer in a Number, and a
+            // value that does not survive the round trip is worse than one that is documented
+            // to carry 53 bits.
+            ValueTag.Int64   => (long)r.Double(),
+            ValueTag.Float   => r.Float(),
+            ValueTag.Double  => r.Double(),
+            ValueTag.String  => r.String(),
+            ValueTag.Vector2 => new Vector2(r.Float(), r.Float()),
+            ValueTag.Vector3 => new Microsoft.Xna.Framework.Vector3(r.Float(), r.Float(), r.Float()),
+            _                => SkipUnknown(ref r),
         };
     }
 
-    private static void SkipValue(System.IO.BinaryReader br)
+    private static void SkipValue(ref NetReader r)
     {
-        var tag = (ValueTag)br.ReadByte();
+        var tag = (ValueTag)r.Byte();
         switch (tag)
         {
-            case ValueTag.Bool:    br.ReadBoolean(); break;
-            case ValueTag.Byte:    br.ReadByte();    break;
-            case ValueTag.Int32:   br.ReadInt32();   break;
-            case ValueTag.UInt32:  br.ReadUInt32();  break;
-            case ValueTag.Int64:   br.ReadInt64();   break;
-            case ValueTag.Float:   br.ReadSingle();  break;
-            case ValueTag.Double:  br.ReadDouble();  break;
-            case ValueTag.String:  br.ReadString();  break;
-            case ValueTag.Vector2: br.ReadSingle(); br.ReadSingle(); break;
-            case ValueTag.Vector3: br.ReadSingle(); br.ReadSingle(); br.ReadSingle(); break;
-            case ValueTag.Unknown:
-                int len = br.ReadInt32();
-                if (len > 0) br.ReadBytes(len);
-                break;
+            case ValueTag.Bool:    r.Bool();   break;
+            case ValueTag.Byte:    r.Byte();   break;
+            case ValueTag.Int32:   r.Int();    break;
+            case ValueTag.UInt32:  r.UInt();   break;
+            case ValueTag.Int64:   r.Double(); break;
+            case ValueTag.Float:   r.Float();  break;
+            case ValueTag.Double:  r.Double(); break;
+            case ValueTag.String:  r.String(); break;
+            case ValueTag.Vector2: r.Float(); r.Float(); break;
+            case ValueTag.Vector3: r.Float(); r.Float(); r.Float(); break;
+            default:               r.Bytes();  break;
         }
     }
 
-    private static object? SkipUnknown(System.IO.BinaryReader br)
+    private static object? SkipUnknown(ref NetReader r)
     {
-        int len = br.ReadInt32();
-        if (len > 0) br.ReadBytes(len);
+        r.Bytes();
         return null;
     }
 

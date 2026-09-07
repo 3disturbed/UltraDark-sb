@@ -30,6 +30,13 @@ public sealed class HierarchyPanel
     private Actor?  _draggedActor;
     private Layer?  _dropTargetLayer;
 
+    // Re-parenting is deferred like every other structural edit: AttachTo mutates the child
+    // lists the tree walk is iterating, and ImGui is mid-traversal when the drop lands.
+    private Actor?  _pendingAttachChild;
+    private Actor?  _pendingAttachParent;
+    private Actor?  _pendingDetach;
+    private Actor?  _pendingDetachChildren;
+
     // -------------------------------------------------------------------------
     // Draw
     // -------------------------------------------------------------------------
@@ -166,8 +173,10 @@ public sealed class HierarchyPanel
 
         if (layerOpen)
         {
+            // Attached actors are drawn under their parent, not again at the layer's top
+            // level -- the outliner is the hierarchy, so an actor appears once.
             foreach (var actor in layer.Actors.ToList())
-                DrawActorRow(actor);
+                if (actor.Parent == null) DrawActorRow(actor);
             ImGui.TreePop();
         }
 
@@ -205,18 +214,31 @@ public sealed class HierarchyPanel
         }
         else
         {
-            var nodeFlags = ImGuiTreeNodeFlags.Leaf
-                          | ImGuiTreeNodeFlags.SpanFullWidth
-                          | ImGuiTreeNodeFlags.NoTreePushOnOpen;
+            bool hasChildren = actor.Children.Count > 0;
+
+            var nodeFlags = ImGuiTreeNodeFlags.SpanFullWidth;
+            if (hasChildren)
+            {
+                // OpenOnArrow keeps clicking the label a selection rather than a fold, which
+                // is what every outliner does and what the drag source needs.
+                nodeFlags |= ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.DefaultOpen;
+            }
+            else
+            {
+                nodeFlags |= ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen;
+            }
             if (isSelected)
                 nodeFlags |= ImGuiTreeNodeFlags.Selected;
 
-            if (!actor.IsActive)
+            // Greyed out when the actor is off, or when an ancestor is: a child of a disabled
+            // parent is not running either, and the outliner should not claim otherwise.
+            if (!actor.IsActiveInHierarchy)
                 ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.5f, 0.5f, 0.5f, 1f));
 
-            ImGui.TreeNodeEx(actor.Name, nodeFlags);
+            string label = hasChildren ? $"{actor.Name}  ({actor.Children.Count})" : actor.Name;
+            bool nodeOpen = ImGui.TreeNodeEx(label, nodeFlags);
 
-            if (!actor.IsActive)
+            if (!actor.IsActiveInHierarchy)
                 ImGui.PopStyleColor();
 
             // Selection
@@ -262,9 +284,40 @@ public sealed class HierarchyPanel
                 if (ImGui.MenuItem("Duplicate"))
                     _pendingDuplicate = actor;
                 ImGui.Separator();
+                if (ImGui.MenuItem("Detach from parent", null, false, actor.Parent != null))
+                    _pendingDetach = actor;
+                if (ImGui.MenuItem("Detach children", null, false, actor.Children.Count > 0))
+                    _pendingDetachChildren = actor;
+                ImGui.Separator();
                 if (ImGui.MenuItem("Delete"))
                     _pendingDelete = actor;
                 ImGui.EndPopup();
+            }
+
+            // Drop target: an actor dropped onto another actor is attached to it. The
+            // engine refuses a cycle, so the guard here only avoids a pointless console line.
+            if (ImGui.BeginDragDropTarget())
+            {
+                unsafe
+                {
+                    var payload = ImGui.AcceptDragDropPayload(DragDropType);
+                    if (payload.NativePtr != null && _draggedActor != null
+                        && !ReferenceEquals(_draggedActor, actor)
+                        && !actor.IsDescendantOf(_draggedActor))
+                    {
+                        _pendingAttachChild  = _draggedActor;
+                        _pendingAttachParent = actor;
+                        _draggedActor = null;
+                    }
+                }
+                ImGui.EndDragDropTarget();
+            }
+
+            if (nodeOpen && hasChildren)
+            {
+                foreach (var child in actor.Children.ToList())
+                    DrawActorRow(child);
+                ImGui.TreePop();
             }
         }
 
@@ -277,11 +330,47 @@ public sealed class HierarchyPanel
 
     private void ExecutePendingOps(Scene scene)
     {
+        if (_pendingAttachChild != null && _pendingAttachParent != null)
+        {
+            try
+            {
+                _pendingAttachChild.AttachTo(_pendingAttachParent);
+                ConsoleLog.Add($"Attached '{_pendingAttachChild.Name}' to '{_pendingAttachParent.Name}'.", LogLevel.Info);
+            }
+            catch (InvalidOperationException ex)
+            {
+                ConsoleLog.Add(ex.Message, LogLevel.Warning);
+            }
+            _pendingAttachChild = _pendingAttachParent = null;
+        }
+
+        if (_pendingDetach != null)
+        {
+            _pendingDetach.AttachTo(null);
+            ConsoleLog.Add($"Detached '{_pendingDetach.Name}'.", LogLevel.Info);
+            _pendingDetach = null;
+        }
+
+        if (_pendingDetachChildren != null)
+        {
+            int count = _pendingDetachChildren.Children.Count;
+            _pendingDetachChildren.DetachChildren();
+            ConsoleLog.Add($"Detached {count} child(ren) from '{_pendingDetachChildren.Name}'.", LogLevel.Info);
+            _pendingDetachChildren = null;
+        }
+
         if (_pendingDelete != null)
         {
-            if (EditorState.SelectedActor == _pendingDelete)
+            if (EditorState.SelectedActor == _pendingDelete
+                || (EditorState.SelectedActor is { } selected && selected.IsDescendantOf(_pendingDelete)))
+            {
                 EditorState.SelectActor(null);
-            _pendingDelete.Layer_?.RemoveActor(_pendingDelete);
+            }
+
+            // Destroy, not Layer_.RemoveActor: deleting a tank in the outliner has to take its
+            // turret with it, and only Destroy walks the subtree.
+            _pendingDelete.Destroy();
+            scene.FlushPendingActors();
             ConsoleLog.Add($"Deleted actor '{_pendingDelete.Name}'.", LogLevel.Info);
             _pendingDelete = null;
         }

@@ -38,6 +38,26 @@
       "destroy": {
         "kind": "fn",
         "shared": true
+      },
+      "parent": {
+        "kind": "prop",
+        "shared": true
+      },
+      "children": {
+        "kind": "prop",
+        "shared": true
+      },
+      "attachTo": {
+        "kind": "fn",
+        "shared": true
+      },
+      "detach": {
+        "kind": "fn",
+        "shared": true
+      },
+      "findChild": {
+        "kind": "fn",
+        "shared": true
       }
     },
     "transform": {
@@ -386,6 +406,42 @@
       "broadcast": {
         "kind": "fn",
         "shared": true
+      },
+      "isHost": {
+        "kind": "prop",
+        "shared": true
+      },
+      "ping": {
+        "kind": "prop",
+        "shared": true
+      },
+      "room": {
+        "kind": "prop",
+        "shared": true
+      },
+      "playerName": {
+        "kind": "prop",
+        "shared": true
+      },
+      "players": {
+        "kind": "prop",
+        "shared": true
+      },
+      "startSolo": {
+        "kind": "fn",
+        "shared": true
+      },
+      "disconnect": {
+        "kind": "fn",
+        "shared": true
+      },
+      "sendTo": {
+        "kind": "fn",
+        "shared": true
+      },
+      "on": {
+        "kind": "fn",
+        "shared": true
       }
     },
     "UI": {
@@ -422,6 +478,60 @@
         "shared": true
       },
       "measure": {
+        "kind": "fn",
+        "shared": true
+      }
+    },
+    "DG": {
+      "available": {
+        "kind": "prop",
+        "shared": true
+      },
+      "signedIn": {
+        "kind": "prop",
+        "shared": true
+      },
+      "userId": {
+        "kind": "prop",
+        "shared": true
+      },
+      "userName": {
+        "kind": "prop",
+        "shared": true
+      },
+      "handle": {
+        "kind": "prop",
+        "shared": true
+      },
+      "displayName": {
+        "kind": "prop",
+        "shared": true
+      },
+      "game": {
+        "kind": "prop",
+        "shared": true
+      },
+      "presence": {
+        "kind": "fn",
+        "shared": true
+      },
+      "clearPresence": {
+        "kind": "fn",
+        "shared": true
+      },
+      "achievement": {
+        "kind": "fn",
+        "shared": true
+      },
+      "loadSave": {
+        "kind": "fn",
+        "shared": true
+      },
+      "saveCloud": {
+        "kind": "fn",
+        "shared": true
+      },
+      "on": {
         "kind": "fn",
         "shared": true
       }
@@ -554,6 +664,9 @@
       "shared": true
     },
     "onTriggerExit": {
+      "shared": true
+    },
+    "onNetworkMessage": {
       "shared": true
     }
   },

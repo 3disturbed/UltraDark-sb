@@ -78,8 +78,24 @@ export class Scene {
      * @param {import('./Actor.js').Actor|Function} actorOrClass
      * @param {string} [layerName='default']
      */
+    /**
+     * Adds an actor, and everything attached to it, to a layer.
+     *
+     * A child is an actor in its own right: it needs a place in a layer to be started,
+     * updated and drawn. Adding the subtree here rather than at each call site is what
+     * stops the scene loader, prefabs and duplicate from each having to remember to walk
+     * it — forgetting produced a turret that followed its tank perfectly and never drew.
+     * A descendant that already belongs to a layer is left where it is, so adding a
+     * parent twice cannot list a child twice.
+     */
     addActor(actorOrClass, layerName = 'default') {
-        return this.getOrCreateLayer(layerName).addActor(actorOrClass);
+        const layer = this.getOrCreateLayer(layerName);
+        const actor = layer.addActor(actorOrClass);
+
+        for (const descendant of actor.descendants()) {
+            if (!descendant.layerRef) layer.addActor(descendant);
+        }
+        return actor;
     }
 
     /** The first actor with this name, searching layers in draw order. */
@@ -124,6 +140,14 @@ export class Scene {
 
         actor.layerRef?.detachActor(actor);
         target.addActor(actor);
+
+        // The subtree moves with it. Leaving a turret drawing in the layer its tank just
+        // left is never what the drag meant, and the two would then sort against each other.
+        for (const descendant of actor.descendants()) {
+            if (descendant.layerRef === target) continue;
+            descendant.layerRef?.detachActor(descendant);
+            target.addActor(descendant);
+        }
     }
 
     /**

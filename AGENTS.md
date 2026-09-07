@@ -114,10 +114,16 @@ For a build the team keeps, and for the Game Card on the server:
 
 ```bash
 node tools/export.js ../Games/<Name> --pwa    # dist/Web/ plus <slug>-<version>-web.zip
+node tools/export.js ../Games/<Name> --pwa --dg <slug>   # …with accounts and friends
 ```
 
 The export is a static site with a manifest and a service worker, so it installs to a phone's home
 screen and runs offline.
+
+`--dg <slug>` (or `darksGames` in `ProjectSettings.json`) puts the account and social layer in the
+page: the two hub SDKs, identity, presence, friends and Join. A build with no slug loads nothing
+from the hub. `wiki/29-darksgames.md` is the reference; the slug has to match the catalogue entry,
+because it is also the token audience.
 
 **The web build is never published to DarksGames.** That API serves downloadable native builds.
 HTML5 development builds go on the server as a Game Card instead.
@@ -504,7 +510,8 @@ So the build does not live in `public/`. Layout:
 /srv/darksgames/games/<slug>/
   public/index.html     the gate: account SDK -> token -> POST /api/session
   game/                 the export from `node html5/tools/export.js <project> --pwa`
-  server/auth/dgVerify.js   copied from snerf; add `playtester: claims.playtester === true`
+  server/auth/dgVerify.js   the JWKS verifier, with the playtester claim
+  server/social.js      the s2s client, for achievements and server presence
   server.js             serves /play/* from game/ only for a request carrying the session cookie
   .env                  your session secret; add-game merges PORT= into it
 ```
@@ -512,15 +519,23 @@ So the build does not live in `public/`. Layout:
 `/play/…` exists nowhere on disk under `public/`, so every request for it falls through to Node,
 which is the whole point.
 
+**The export writes all of that.** `--gated` produces exactly this layout, with the slug already
+filled in and a `DEPLOY.txt` carrying the rsync and the dg-accounts steps, so the recipe below is
+now what to check rather than what to type:
+
+```bash
+node html5/tools/export.js Games/<Name> --pwa --dg <slug> --gated
+```
+
 ### The order
 
 ```bash
-# 1. the build
-node html5/tools/export.js Games/<Name> --pwa
+# 1. the build and the host, in one step
+node html5/tools/export.js Games/<Name> --pwa --dg <slug> --gated
 
-# 2. the service (copy an existing gated game; dgVerify.js is zero-dependency)
-mkdir -p /srv/darksgames/games/<slug>/{public,game,server/auth}
-cp -r Games/<Name>/dist/Web/. /srv/darksgames/games/<slug>/game/
+# 2. the service
+mkdir -p /srv/darksgames/games/<slug>
+rsync -a --delete Games/<Name>/dist/Web/ /srv/darksgames/games/<slug>/
 printf 'SESSION_SECRET=%s\n' "$(openssl rand -hex 32)" > /srv/darksgames/games/<slug>/.env
 chmod 600 /srv/darksgames/games/<slug>/.env
 chown -R darks:darks /srv/darksgames/games/<slug>

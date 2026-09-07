@@ -9,8 +9,11 @@ using Jint.Runtime.Interop;
 using Microsoft.Xna.Framework;
 using SexyBiscuit.Engine.Audio;
 using SexyBiscuit.Engine.Core;
+using SexyBiscuit.Engine.DarksGames;
 using SexyBiscuit.Engine.Input;
+using SexyBiscuit.Engine.Networking;
 using SexyBiscuit.Engine.Physics;
+using System.Text.Json.Nodes;
 
 using JintEngine = Jint.Engine;
 
@@ -53,7 +56,6 @@ public sealed class ScriptBridge
 
     private Transform3D?    _transform3D;
     private ObjectInstance? _transform3DProxy;
-    private bool            _networkWarned;
 
     /// <summary>The script the bridge serves, for diagnostics. Set by <see cref="ScriptComponent"/>.</summary>
     public string ScriptPath { get; set; } = string.Empty;
@@ -71,6 +73,7 @@ public sealed class ScriptBridge
     public ObjectInstance PhysicsProxy   { get; }
     public ObjectInstance TimeProxy      { get; }
     public ObjectInstance NetworkProxy   { get; }
+    public ObjectInstance DarksGamesProxy { get; }
     public ObjectInstance UiProxy        { get; }
 
     /// <summary>The engine every proxy allocates on. Used by <see cref="ComponentProxy"/>.</summary>
@@ -99,6 +102,7 @@ public sealed class ScriptBridge
         PhysicsProxy   = BuildPhysicsProxy();
         TimeProxy      = BuildTimeProxy();
         NetworkProxy   = BuildNetworkProxy();
+        DarksGamesProxy = BuildDarksGamesProxy();
         UiProxy        = BuildUiProxy();
 
         // The `actor` global is a proxy too: Scene.destroy(actor) must find its way back.
@@ -224,6 +228,51 @@ public sealed class ScriptBridge
 
         // actor.addComponent("BoxCollider2D")
         obj.Set("addComponent", Fn("addComponent", (_, args) => AddComponentValue(_actor, args.At(0), JsValue.Undefined), length: 1));
+
+        // ---- hierarchy -------------------------------------------------------
+
+        // actor.parent — null at the scene root.
+        Accessor(obj, "parent",
+            getter: (_, _) => _actor.Parent is { } p ? WrapActorAsProxy(p) : JsValue.Null,
+            setter: null, _engine);
+
+        // actor.children — a fresh array each read, so a script cannot mutate the engine's list.
+        Accessor(obj, "children",
+            getter: (_, _) => NewArray(_actor.Children.Select(WrapActorAsProxy)),
+            setter: null, _engine);
+
+        // actor.attachTo(other, keep = true). `keep` defaults to true: the common case is
+        // "hold this pickup where it is and make it follow the player", not "snap it to the
+        // player's origin".
+        obj.Set("attachTo", Fn("attachTo", (_, args) =>
+        {
+            var parent = args.At(0).IsNull() || args.At(0).IsUndefined() ? null : Unwrap(args.At(0));
+            if (parent == null && !(args.At(0).IsNull() || args.At(0).IsUndefined()))
+            {
+                Warn("actor.attachTo: the first argument is not an actor.");
+                return JsValue.Undefined;
+            }
+
+            bool keep = args.Length < 2 || args.At(1).IsUndefined() || TypeConverter.ToBoolean(args.At(1));
+            try { _actor.AttachTo(parent, keep); }
+            catch (InvalidOperationException ex) { Warn($"actor.attachTo: {ex.Message}"); }
+            return JsValue.Undefined;
+        }, length: 2));
+
+        // actor.detach(keep = true)
+        obj.Set("detach", Fn("detach", (_, args) =>
+        {
+            bool keep = args.Length < 1 || args.At(0).IsUndefined() || TypeConverter.ToBoolean(args.At(0));
+            _actor.AttachTo(null, keep);
+            return JsValue.Undefined;
+        }, length: 1));
+
+        // actor.findChild(name, recursive = false)
+        obj.Set("findChild", Fn("findChild", (_, args) =>
+        {
+            var found = _actor.FindChild(args.At(0).ToString(), TypeConverter.ToBoolean(args.At(1)));
+            return found != null ? WrapActorAsProxy(found) : JsValue.Null;
+        }, length: 2));
 
         return obj;
     }
@@ -1008,37 +1057,386 @@ public sealed class ScriptBridge
     private static string ToHex(Color c) => $"#{c.R:x2}{c.G:x2}{c.B:x2}";
 
     // =========================================================================
-    // Network proxy — a stub that lets a multiplayer script run solo
+    // Network proxy
     // =========================================================================
+
+    /// <summary>Handlers this script registered, so they go away with the script.</summary>
+    private readonly List<Action> _networkUnsubscribes = new();
+
+    /// <summary>Drops this script's network handlers. Called when the component goes away.</summary>
+    internal void DisposeNetwork()
+    {
+        foreach (var unsubscribe in _networkUnsubscribes) unsubscribe();
+        _networkUnsubscribes.Clear();
+    }
+
+    private static NetworkManager? Net => NetworkManager.Instance;
+
+    /// <summary>
+    /// The manager a start call should act on, created if there is none.
+    /// </summary>
+    /// <remarks>
+    /// Only the three explicit calls -- startServer, startSolo, connect -- reach this. A send
+    /// with no session is a no-op instead: an earlier version started a loopback session on any
+    /// send, which meant a script broadcasting a position every frame silently hosted a game
+    /// nobody had asked for, and left it running. "Runs alone" is already covered without that,
+    /// because isLocalPlayer(0) is true before a server has said otherwise.
+    /// </remarks>
+    private static NetworkManager StartableNet() => NetworkManager.Instance ?? new NetworkManager();
 
     private ObjectInstance BuildNetworkProxy()
     {
         var obj = NewObj();
 
-        // Player 0 is the local player when there is no network, so a lobby script that asks
-        // `Network.isLocalPlayer(id)` behaves as a one-player game rather than a dead one.
-        Accessor(obj, "localId",     getter: (_, _) => new JsNumber(0), setter: null, _engine);
-        Accessor(obj, "isServer",    getter: (_, _) => JsBoolean.False,  setter: null, _engine);
-        Accessor(obj, "isConnected", getter: (_, _) => JsBoolean.False,  setter: null, _engine);
+        // Player 0 is the local player before a server has said otherwise, so a lobby script
+        // that asks `Network.isLocalPlayer(id)` behaves as a one-player game rather than a
+        // dead one.
+        Accessor(obj, "localId",     getter: (_, _) => new JsNumber(Net?.LocalClientId is int id and >= 0 ? id : 0), setter: null, _engine);
+        Accessor(obj, "isServer",    getter: (_, _) => Bool(Net?.IsServer ?? false),    setter: null, _engine);
+        Accessor(obj, "isHost",      getter: (_, _) => Bool(Net?.IsHost ?? false),      setter: null, _engine);
+        Accessor(obj, "isConnected", getter: (_, _) => Bool(Net?.IsConnected ?? false), setter: null, _engine);
+        Accessor(obj, "ping",        getter: (_, _) => new JsNumber(Net?.Ping ?? 0),    setter: null, _engine);
+        Accessor(obj, "room",        getter: (_, _) => new JsString(Net?.Room ?? string.Empty), setter: null, _engine);
 
-        obj.Set("isLocalPlayer", Fn("isLocalPlayer", (_, args) => Bool(Num(args.At(0), -1f) == 0f), length: 1));
+        Accessor(obj, "playerName",
+            getter: (_, _) => new JsString(Net?.PlayerName ?? "Player"),
+            setter: (_, args) => { EnsureNetName(args.At(0).ToString()); return JsValue.Undefined; },
+            _engine);
 
-        JsValue Unavailable(JsValue thisObj, JsValue[] args)
+        // A fresh array each read, so a script cannot mutate the engine's roster.
+        Accessor(obj, "players", getter: (_, _) =>
         {
-            if (!_networkWarned)
+            var manager = Net;
+            if (manager == null) return NewArray(Array.Empty<JsValue>());
+            return NewArray(manager.Players.Select(p =>
             {
-                _networkWarned = true;
-                Warn("Network is not available in this build; the script is running solo.");
+                var entry = NewObj();
+                entry.Set("id",   new JsNumber(p.Key));
+                entry.Set("name", new JsString(p.Value));
+                return (JsValue)entry;
+            }));
+        }, setter: null, _engine);
+
+        obj.Set("isLocalPlayer", Fn("isLocalPlayer", (_, args) =>
+        {
+            int local = Net?.LocalClientId is int id and >= 0 ? id : 0;
+            return Bool((int)Num(args.At(0), -1f) == local);
+        }, length: 1));
+
+        // Network.startServer(port) -- WebSocket by default, because that is the only wire a
+        // browser can join and the same script has to work there.
+        obj.Set("startServer", Fn("startServer", (_, args) =>
+        {
+            try
+            {
+                var manager = StartableNet();
+                if (manager.IsRunning) return Bool(true);
+                manager.StartServer((int)Num(args.At(0), 7777f));
+                return Bool(true);
             }
-            return JsBoolean.False;
+            catch (Exception ex) { Warn($"Network.startServer: {ex.Message}"); return Bool(false); }
+        }, length: 2));
+
+        // Network.startSolo() -- host with no socket at all.
+        obj.Set("startSolo", Fn("startSolo", (_, _) =>
+        {
+            try
+            {
+                var manager = StartableNet();
+                if (!manager.IsRunning) manager.StartSolo();
+                return Bool(true);
+            }
+            catch (Exception ex) { Warn($"Network.startSolo: {ex.Message}"); return Bool(false); }
+        }));
+
+        // Network.connect(address, port) and Network.connect("ws://...").
+        obj.Set("connect", Fn("connect", (_, args) =>
+        {
+            try
+            {
+                var manager = StartableNet();
+                if (manager.IsRunning) manager.Disconnect();
+
+                string address = args.At(0).ToString();
+                if (address.StartsWith("ws://", StringComparison.Ordinal) ||
+                    address.StartsWith("wss://", StringComparison.Ordinal))
+                {
+                    manager.ConnectToUrl(address, args.At(1).IsString() ? args.At(1).ToString() : "");
+                }
+                else
+                {
+                    manager.ConnectToServer(address, (int)Num(args.At(1), 7777f));
+                }
+                return Bool(true);
+            }
+            catch (Exception ex) { Warn($"Network.connect: {ex.Message}"); return Bool(false); }
+        }, length: 2));
+
+        obj.Set("disconnect", Fn("disconnect", (_, _) =>
+        {
+            Net?.Disconnect();
+            return JsValue.Undefined;
+        }));
+
+        // Network.sendToAll(type, data) -- and `broadcast`, which the bundled templates use
+        // for the same thing.
+        JsValue SendToAll(JsValue thisObj, JsValue[] args)
+        {
+            Net?.SendMessageToAll(args.At(0).ToString(), ToJsonNode(args.At(1)));
+            return JsValue.Undefined;
         }
-        obj.Set("startServer", Fn("startServer", Unavailable, length: 1));
-        obj.Set("connect",     Fn("connect",     Unavailable, length: 1));
-        obj.Set("sendToAll",   Fn("sendToAll",   (_, _) => JsValue.Undefined, length: 2));
-        obj.Set("broadcast",   Fn("broadcast",   (_, _) => JsValue.Undefined, length: 2));
+        obj.Set("sendToAll", Fn("sendToAll", SendToAll, length: 2));
+        obj.Set("broadcast", Fn("broadcast", SendToAll, length: 2));
+
+        obj.Set("sendTo", Fn("sendTo", (_, args) =>
+        {
+            Net?.SendMessageTo((int)Num(args.At(0), -1f), args.At(1).ToString(), ToJsonNode(args.At(2)));
+            return JsValue.Undefined;
+        }, length: 3));
+
+        // Network.on("message", (sender, type, data) => …)
+        obj.Set("on", Fn("on", (_, args) =>
+        {
+            string eventName = args.At(0).ToString();
+            if (!args.At(1).IsObject() || args.At(1) is not Jint.Native.Function.Function handler)
+            {
+                Warn($"Network.on('{eventName}'): the second argument must be a function.");
+                return JsValue.Undefined;
+            }
+
+            // A subscription needs something to subscribe to. Nothing is started here: a script
+            // that wants events before a session exists uses the onNetworkMessage hook, which
+            // attaches itself the frame a session appears.
+            if (NetworkManager.Instance is not { } manager)
+            {
+                Warn($"Network.on('{eventName}'): no session is running. "
+                   + "Start one first, or use the onNetworkMessage hook, which waits for one.");
+                return JsValue.Undefined;
+            }
+
+            Action? unsubscribe = eventName switch
+            {
+                "message" => Subscribe<int, string, JsonNode?>(
+                    h => manager.OnMessage += h, h => manager.OnMessage -= h,
+                    (sender, type, payload) => Call(handler, new JsNumber(sender), new JsString(type), FromJsonNode(payload))),
+                "playerJoined" => Subscribe<int, string>(
+                    h => manager.OnPlayerJoined += h, h => manager.OnPlayerJoined -= h,
+                    (id, name) => Call(handler, new JsNumber(id), new JsString(name))),
+                "playerLeft" => Subscribe<int>(
+                    h => manager.OnPlayerLeft += h, h => manager.OnPlayerLeft -= h,
+                    id => Call(handler, new JsNumber(id))),
+                "connected" => Subscribe(
+                    h => manager.OnConnectedToServer += h, h => manager.OnConnectedToServer -= h,
+                    () => Call(handler)),
+                "disconnected" => Subscribe<string>(
+                    h => manager.OnDisconnectedFromServer += h, h => manager.OnDisconnectedFromServer -= h,
+                    reason => Call(handler, new JsString(reason))),
+                _ => null,
+            };
+
+            if (unsubscribe == null)
+            {
+                Warn($"Network.on: unknown event '{eventName}'. Try message, playerJoined, playerLeft, connected or disconnected.");
+                return JsValue.Undefined;
+            }
+
+            _networkUnsubscribes.Add(unsubscribe);
+            return Fn("off", (_, _) => { unsubscribe(); _networkUnsubscribes.Remove(unsubscribe); return JsValue.Undefined; });
+        }, length: 2));
 
         return obj;
     }
+
+    private static void EnsureNetName(string name) => StartableNet().PlayerName = name;
+
+    private static Action Subscribe(Action<Action> add, Action<Action> remove, Action handler)
+    {
+        add(handler);
+        return () => remove(handler);
+    }
+
+    private static Action Subscribe<T>(Action<Action<T>> add, Action<Action<T>> remove, Action<T> handler)
+    {
+        add(handler);
+        return () => remove(handler);
+    }
+
+    private static Action Subscribe<T1, T2>(Action<Action<T1, T2>> add, Action<Action<T1, T2>> remove, Action<T1, T2> handler)
+    {
+        add(handler);
+        return () => remove(handler);
+    }
+
+    private static Action Subscribe<T1, T2, T3>(Action<Action<T1, T2, T3>> add, Action<Action<T1, T2, T3>> remove, Action<T1, T2, T3> handler)
+    {
+        add(handler);
+        return () => remove(handler);
+    }
+
+    /// <summary>Calls a script handler, isolating a throw so one bad listener cannot kill the session.</summary>
+    private void Call(Jint.Native.Function.Function handler, params JsValue[] args)
+    {
+        try { handler.Call(JsValue.Undefined, args); }
+        catch (Exception ex) { Warn($"Network handler threw: {ex.Message}"); }
+    }
+
+    /// <summary>A script value as JSON, for the message channel. Undefined and null both become null.</summary>
+    /// <remarks>
+    /// Jint's own serialiser rather than evaluating <c>JSON.stringify</c> in the script's engine.
+    /// The evaluated form looked equivalent and was not: it re-enters the engine while a frame is
+    /// being dispatched, and a script that had shadowed <c>JSON</c> would decide what the wire
+    /// carried.
+    /// </remarks>
+    private JsonNode? ToJsonNode(JsValue value)
+    {
+        if (value.IsUndefined() || value.IsNull()) return null;
+        try
+        {
+            var json = new Jint.Native.Json.JsonSerializer(_engine)
+                .Serialize(value, JsValue.Undefined, JsValue.Undefined);
+            return json.IsUndefined() ? null : JsonNode.Parse(json.ToString());
+        }
+        catch (Exception)
+        {
+            // A cyclic object, or something JSON cannot express. Dropping the payload beats
+            // taking the send down: the message type still arrives.
+            Warn("Network: the message payload could not be converted to JSON; sending it empty.");
+            return null;
+        }
+    }
+
+    /// <summary>JSON back into a script value. Internal so ScriptComponent can dispatch a message.</summary>
+    internal JsValue JsonToScript(JsonNode? node) => FromJsonNode(node);
+
+    /// <summary>JSON back into a script value.</summary>
+    private JsValue FromJsonNode(JsonNode? node)
+    {
+        if (node == null) return JsValue.Null;
+        try
+        {
+            return new Jint.Native.Json.JsonParser(_engine).Parse(node.ToJsonString());
+        }
+        catch (Exception) { return JsValue.Null; }
+    }
+
+    // =========================================================================
+    // DG proxy — the Darks Games account and social layer
+    // =========================================================================
+
+    /// <summary>Handlers this script registered with the DG runtime.</summary>
+    private readonly List<Action> _dgUnsubscribes = new();
+
+    /// <summary>Drops this script's DG handlers. Called when the component goes away.</summary>
+    internal void DisposeDarksGames()
+    {
+        foreach (var unsubscribe in _dgUnsubscribes) unsubscribe();
+        _dgUnsubscribes.Clear();
+    }
+
+    private static DarksGamesRuntime? Dg => DarksGamesRuntime.Instance;
+
+    private ObjectInstance BuildDarksGamesProxy()
+    {
+        var obj = NewObj();
+
+        // Every read is safe signed out, and safe with no runtime at all. A game that never
+        // ships to DarksGames still runs every line of a script that uses this.
+        Accessor(obj, "available", getter: (_, _) => Bool(Dg != null),          setter: null, _engine);
+        Accessor(obj, "signedIn",  getter: (_, _) => Bool(Dg?.SignedIn ?? false), setter: null, _engine);
+        Accessor(obj, "userId",    getter: (_, _) => Str(Dg?.User.Id),          setter: null, _engine);
+        Accessor(obj, "userName",  getter: (_, _) => Str(Dg?.User.Name),        setter: null, _engine);
+        Accessor(obj, "handle",    getter: (_, _) => Str(Dg?.User.Handle),      setter: null, _engine);
+        Accessor(obj, "displayName", getter: (_, _) => new JsString(Dg?.User.DisplayName ?? "Player"), setter: null, _engine);
+        Accessor(obj, "game",      getter: (_, _) => new JsString(Dg?.Game ?? string.Empty), setter: null, _engine);
+
+        // DG.presence({ state: "wave 7", detail: "…", joinCode: "ABC234", players: 3, max: 4 })
+        obj.Set("presence", Fn("presence", (_, args) =>
+        {
+            if (Dg == null) return JsValue.Undefined;
+            if (args.At(0) is not ObjectInstance fields)
+            {
+                Warn("DG.presence: pass an object, e.g. { state: 'lobby', joinCode: room }.");
+                return JsValue.Undefined;
+            }
+
+            Dg.Presence(
+                Text(fields.Get("state"), "playing"),
+                Text(fields.Get("detail"), string.Empty),
+                fields.Get("joinCode") is { } code && !code.IsUndefined() && !code.IsNull() ? code.ToString() : null,
+                fields.Get("joinable") is { } joinable && !joinable.IsUndefined()
+                    ? TypeConverter.ToBoolean(joinable) : true,
+                Count(fields.Get("players")),
+                Count(fields.Get("max")));
+            return JsValue.Undefined;
+        }, length: 1));
+
+        obj.Set("clearPresence", Fn("clearPresence", (_, _) => { Dg?.ClearPresence(); return JsValue.Undefined; }));
+
+        // DG.achievement("first_clear") / DG.achievement("kills", 10)
+        obj.Set("achievement", Fn("achievement", (_, args) =>
+        {
+            Dg?.Achievement(args.At(0).ToString(), Count(args.At(1)));
+            return JsValue.Undefined;
+        }, length: 2));
+
+        // DG.loadSave() -- the save arrives on the "save" event, because a game loop cannot wait.
+        obj.Set("loadSave", Fn("loadSave", (_, _) => { Dg?.LoadSave(); return JsValue.Undefined; }));
+
+        obj.Set("saveCloud", Fn("saveCloud", (_, args) =>
+        {
+            Dg?.WriteSave(ToJsonNode(args.At(0)), (int)Num(args.At(1), 1f));
+            return JsValue.Undefined;
+        }, length: 2));
+
+        obj.Set("on", Fn("on", (_, args) =>
+        {
+            string eventName = args.At(0).ToString();
+            if (Dg == null) return JsValue.Undefined;
+            if (args.At(1) is not Jint.Native.Function.Function handler)
+            {
+                Warn($"DG.on('{eventName}'): the second argument must be a function.");
+                return JsValue.Undefined;
+            }
+
+            var runtime = Dg;
+            Action? unsubscribe = eventName switch
+            {
+                "user" => Subscribe<DarksGamesUser>(
+                    h => runtime.UserChanged += h, h => runtime.UserChanged -= h,
+                    user => Call(handler, Bool(user.SignedIn), Str(user.Id), new JsString(user.DisplayName))),
+                "save" => Subscribe<DarksGamesSave?>(
+                    h => runtime.SaveLoaded += h, h => runtime.SaveLoaded -= h,
+                    save => Call(handler, save == null ? JsValue.Null : FromJsonNode(save.Data))),
+                "saveConflict" => Subscribe<DarksGamesSave>(
+                    h => runtime.SaveConflict += h, h => runtime.SaveConflict -= h,
+                    save => Call(handler, FromJsonNode(save.Data))),
+                "achievement" => Subscribe<string, bool>(
+                    h => runtime.AchievementReported += h, h => runtime.AchievementReported -= h,
+                    (key, ok) => Call(handler, new JsString(key), Bool(ok))),
+                _ => null,
+            };
+
+            if (unsubscribe == null)
+            {
+                Warn($"DG.on: unknown event '{eventName}'. Try user, save, saveConflict or achievement.");
+                return JsValue.Undefined;
+            }
+
+            _dgUnsubscribes.Add(unsubscribe);
+            return Fn("off", (_, _) => { unsubscribe(); _dgUnsubscribes.Remove(unsubscribe); return JsValue.Undefined; });
+        }, length: 2));
+
+        return obj;
+    }
+
+    private static JsValue Str(string? value) => value == null ? JsValue.Null : new JsString(value);
+
+    private static string Text(JsValue value, string fallback)
+        => value.IsUndefined() || value.IsNull() ? fallback : value.ToString();
+
+    /// <summary>A seat count from a script, or null when it did not give one.</summary>
+    private static int? Count(JsValue value)
+        => value.IsUndefined() || value.IsNull() ? null : (int)TypeConverter.ToNumber(value);
 
     // =========================================================================
     // Components

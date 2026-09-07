@@ -29,6 +29,170 @@ public class Actor
     public Layer?  Layer_ { get; internal set; }
 
     // -------------------------------------------------------------------------
+    // Hierarchy
+    // -------------------------------------------------------------------------
+
+    private Actor?               _parent;
+    private readonly List<Actor> _children = new();
+
+    /// <summary>The actor this one is attached to, or <c>null</c> when it sits at the root.</summary>
+    public Actor? Parent => _parent;
+
+    /// <summary>The actors attached to this one, in attachment order.</summary>
+    public IReadOnlyList<Actor> Children => _children;
+
+    /// <summary>The topmost ancestor, or this actor when it is not attached to anything.</summary>
+    public Actor Root
+    {
+        get
+        {
+            var a = this;
+            while (a._parent != null) a = a._parent;
+            return a;
+        }
+    }
+
+    /// <summary>
+    /// True only when this actor and every ancestor is active.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IsActive"/> says whether this actor was switched off; it says nothing about
+    /// a parent that was. Gameplay code asking "should this be running?" wants this one.
+    /// </remarks>
+    public bool IsActiveInHierarchy
+    {
+        get
+        {
+            for (var a = this; a != null; a = a._parent)
+                if (!a.IsActive) return false;
+            return true;
+        }
+    }
+
+    /// <summary>The 3D transform, or <c>null</c> on a purely 2D actor.</summary>
+    public Transform3D? Transform3D => GetComponent<Transform3D>();
+
+    /// <summary>
+    /// Attaches this actor to <paramref name="parent"/>, or detaches it when that is null.
+    /// </summary>
+    /// <param name="parent">The new parent, or <c>null</c> to return to the scene root.</param>
+    /// <param name="keepWorldTransform">
+    /// When true (the default) the actor does not move: its local transform is rebased into
+    /// the parent's space. When false the local transform is kept as written and the actor
+    /// jumps to the parent's frame — what a turret mounted at a socket offset wants.
+    /// </param>
+    /// <remarks>
+    /// Both transforms follow the attachment: <see cref="Transform"/> always, and
+    /// <see cref="Transform3D"/> whenever both actors have one. Keeping the two in step is
+    /// the reason attachment lives on the actor rather than on a transform — a 3D actor
+    /// parented through the 2D transform alone inherits nothing, because no 3D renderer
+    /// ever reads it.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The new parent is this actor or one of its own descendants, which would make a cycle
+    /// that every hierarchy walk in the engine would hang on.
+    /// </exception>
+    public void AttachTo(Actor? parent, bool keepWorldTransform = true)
+    {
+        if (ReferenceEquals(parent, this))
+            throw new InvalidOperationException($"{Name} cannot be attached to itself.");
+        if (parent != null && parent.IsDescendantOf(this))
+            throw new InvalidOperationException(
+                $"{parent.Name} is a descendant of {Name}; attaching would make a cycle.");
+        if (ReferenceEquals(_parent, parent)) return;
+
+        _parent?._children.Remove(this);
+        _parent = parent;
+        _parent?._children.Add(this);
+
+        Transform.SetParent(parent?.Transform, keepWorldTransform);
+
+        // Only when both ends have one. Attaching a 3D child to a 2D parent leaves the 3D
+        // transform at the root rather than silently inventing a Transform3D on the parent.
+        var childSpatial  = Transform3D;
+        var parentSpatial = parent?.Transform3D;
+        if (childSpatial != null && (parent == null || parentSpatial != null))
+            childSpatial.SetParent(parentSpatial, keepWorldTransform);
+    }
+
+    /// <summary>Detaches this actor from its parent, returning it to the scene root.</summary>
+    public void Detach(bool keepWorldTransform = true) => AttachTo(null, keepWorldTransform);
+
+    /// <summary>Detaches every child, leaving them at the scene root where they stand.</summary>
+    public void DetachChildren(bool keepWorldTransform = true)
+    {
+        foreach (var child in _children.ToArray())
+            child.AttachTo(null, keepWorldTransform);
+    }
+
+    /// <summary>True when <paramref name="other"/> is this actor's parent, or its parent's parent, and so on.</summary>
+    public bool IsDescendantOf(Actor other)
+    {
+        for (var a = _parent; a != null; a = a._parent)
+            if (ReferenceEquals(a, other)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// The first child with this name, searching the whole subtree when
+    /// <paramref name="recursive"/> is set.
+    /// </summary>
+    public Actor? FindChild(string name, bool recursive = false)
+    {
+        foreach (var child in _children)
+            if (child.Name == name) return child;
+
+        if (!recursive) return null;
+
+        foreach (var child in _children)
+            if (child.FindChild(name, true) is { } found) return found;
+
+        return null;
+    }
+
+    /// <summary>
+    /// A child looked up by a slash-separated path, as the editor and scene files write it:
+    /// <c>FindChildByPath("Turret/Barrel/Muzzle")</c>.
+    /// </summary>
+    public Actor? FindChildByPath(string path)
+    {
+        var actor = this;
+        foreach (var segment in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            actor = actor.FindChild(segment);
+            if (actor == null) return null;
+        }
+        return ReferenceEquals(actor, this) ? null : actor;
+    }
+
+    /// <summary>Every descendant, depth first, parents before their own children.</summary>
+    public IEnumerable<Actor> Descendants()
+    {
+        foreach (var child in _children)
+        {
+            yield return child;
+            foreach (var grandchild in child.Descendants())
+                yield return grandchild;
+        }
+    }
+
+    /// <summary>
+    /// The path from the root, as <see cref="FindChildByPath"/> reads it. Used by the editor's
+    /// outliner and by scene diffing, where two actors can share a name but never a path.
+    /// </summary>
+    public string HierarchyPath
+    {
+        get
+        {
+            if (_parent == null) return Name;
+            var names = new List<string>();
+            for (var a = this; a != null; a = a._parent) names.Add(a.Name);
+            names.Reverse();
+            return string.Join('/', names);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Unique ID
     // -------------------------------------------------------------------------
     public uint Id { get; } = _nextId++;
@@ -278,6 +442,14 @@ public class Actor
         if (_destroyed) return;
         _destroyed = true;
 
+        // Leave the hierarchy before anything else, so a parent that outlives this actor is
+        // not left holding a destroyed child in its Children list. Children that were queued
+        // alongside this actor detach themselves the same way; any that were not (a child
+        // attached after Destroy was called) are cut loose rather than left pointing at a
+        // shell.
+        AttachTo(null, keepWorldTransform: true);
+        DetachChildren();
+
         // Cancel anything this actor started so a coroutine cannot outlive its target.
         CoroutineRunner.Instance.StopAllFor(this);
 
@@ -372,13 +544,24 @@ public class Actor
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Queues the actor for destruction. It is removed at the end of the current frame, so
-    /// iteration in progress over the scene's actors stays valid.
+    /// Queues the actor, and everything attached to it, for destruction. They are removed at
+    /// the end of the current frame, so iteration in progress over the scene's actors stays
+    /// valid.
     /// </summary>
+    /// <remarks>
+    /// Destroying a parent destroys its children. The alternative — orphaning them where they
+    /// stand — leaves a turret hanging in the air when its tank dies, and every caller would
+    /// have to remember to walk the subtree first. Call <see cref="DetachChildren"/> before
+    /// destroying when the children really are meant to survive.
+    /// </remarks>
     public void Destroy()
     {
         if (_destroyed) return;
         Scene?.MarkForDestroy(this);
+
+        // Snapshot: a child's own Destroy detaches it, which would mutate the list underneath.
+        foreach (var child in _children.ToArray())
+            child.Destroy();
     }
 
     /// <summary>Destroys the actor after <paramref name="delaySeconds"/> of scaled time.</summary>

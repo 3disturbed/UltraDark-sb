@@ -36,7 +36,15 @@ actor.transform          // the same object as the `transform` global
 actor.transform3d        // Transform3D proxy, or null in a 2D scene
 actor.getComponent("Rigidbody2D")   // a component proxy, or null
 actor.addComponent("BoxCollider2D") // adds and returns a component proxy
-actor.destroy()          // queue removal at end of frame
+actor.destroy()          // queue removal at end of frame (takes its children with it)
+
+actor.parent             // the actor it is attached to, or null
+actor.children           // an array of actor proxies, a fresh copy each read
+actor.attachTo(other)             // keeps its world position
+actor.attachTo(other, false)      // treats its transform as a local offset
+actor.detach()                    // back to the scene root
+actor.findChild("Muzzle")         // direct children
+actor.findChild("Muzzle", true)   // the whole subtree
 ```
 
 ### `transform` and `transform3d`
@@ -126,13 +134,50 @@ Physics.overlapBox(x, y, w, h)
 Time.deltaTime, Time.unscaledDeltaTime, Time.time, Time.frameCount, Time.fps
 Time.timeScale = 0.5;
 
-Network.localId, Network.isServer, Network.isConnected
-Network.isLocalPlayer(id)                       // true for id 0 when there is no network
-Network.startServer(), Network.connect(), Network.sendToAll(), Network.broadcast()
+Network.localId, Network.isServer, Network.isHost, Network.isConnected, Network.ping
+Network.room, Network.players, Network.playerName
+Network.isLocalPlayer(id)                       // true for id 0 before a server says otherwise
+Network.startServer(port), Network.startSolo(), Network.connect(address, port), Network.disconnect()
+Network.sendToAll(type, data), Network.broadcast(type, data), Network.sendTo(id, type, data)
+Network.on("message" | "playerJoined" | "playerLeft" | "connected" | "disconnected", fn)
 ```
 
-`Network` is a stub on both engines: it lets a multiplayer template run as a one-player game
-and warns once that no transport is attached.
+`Network` is real on both engines and drives the same wire — see
+[15. Networking](15-networking.md). Two things worth knowing before you use it:
+
+- **A script that sends with no session running starts a solo one.** A multiplayer game played
+  alone is the single-player case, not an error, and going through the same encode, dispatch and
+  replication path is what stops "works alone, breaks with two players".
+- **`isHost` means "should I run the simulation?"** — the server when there is one, and otherwise
+  the lowest client id in the room.
+
+Messages arrive on a lifecycle hook, like collisions do:
+
+```js
+function onNetworkMessage(type, data, sender) {
+    if (type === "playerMove") movePeer(sender, data);
+}
+```
+
+`sender` is the id the **server** assigned, never the one in the payload: a peer that can name
+itself can name anybody.
+
+### `DG` — the Darks Games account and social layer
+
+```js
+DG.available, DG.signedIn, DG.userId, DG.userName, DG.handle, DG.displayName, DG.game
+DG.presence({ state: "wave 7", detail: "Gatehold", joinCode: room, players: 3, max: 4 })
+DG.clearPresence()
+DG.achievement("first_clear"), DG.achievement("kills", 10)
+DG.loadSave(), DG.saveCloud(data, version)
+DG.on("user" | "save" | "saveConflict" | "achievement", fn)
+```
+
+Every read is safe signed out and safe with no hub at all, so a game that never ships to
+DarksGames still runs every line of a script that uses this. Reads are properties and writes are
+fire-and-forget, so a cloud save arrives on `DG.on("save")` rather than as a return value — Jint
+cannot await, and one contract has to describe both engines. See
+[29. Darks Games](29-darksgames.md).
 
 ### `UI` — screen space
 
@@ -207,7 +252,7 @@ Release build.
 ## Lifecycle hooks
 
 A script defines any of these at top level; the engine calls the ones it finds
-(`JintRuntime.KnownHooks`, the same twelve as the browser's `SCRIPT_HOOKS`):
+(`JintRuntime.KnownHooks`, the same thirteen as the browser's `SCRIPT_HOOKS`):
 
 ```js
 function onAwake() {}            // once, when the script loads — after the actor has joined its scene
@@ -222,6 +267,7 @@ function onCollisionExit(data) {}
 function onTriggerEnter(other) {}    // other = actor proxy
 function onTriggerStay(other) {}
 function onTriggerExit(other) {}
+function onNetworkMessage(type, data, sender) {}   // sender = the id the server assigned
 ```
 
 `data.tag` and `data.name` forward to `data.other`, so `if (data.tag === "Ground")` works.

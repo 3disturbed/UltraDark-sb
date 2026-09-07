@@ -381,6 +381,53 @@ public sealed class ActorTools
         return McpToolResult.Json(SceneViews.ActorRow(target));
     }
 
+    [McpTool("attach_actor",
+        "Attach an actor to a parent, so it moves, rotates and scales with it and is destroyed with it. " +
+        "Both the 2D and 3D transforms follow. Pass no parent to detach.",
+        Mutating = true, Label = "Attach {actor} to {parent}")]
+    public McpToolResult AttachActor(
+        [McpParam("Actor id or name -- the child")] string actor,
+        [McpParam("Actor id or name -- the new parent. Omit to detach to the scene root.")] string? parent = null,
+        [McpParam("Keep the child where it is on screen (true), or treat its current transform as a local offset from the parent (false)")]
+        bool keepWorldTransform = true)
+    {
+        var scene  = RequireScene(_host);
+        var child  = ActorRef.Resolve(scene, actor);
+        var target = string.IsNullOrWhiteSpace(parent) ? null : ActorRef.Resolve(scene, parent);
+
+        try
+        {
+            child.AttachTo(target, keepWorldTransform);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // A cycle. The engine refuses it because every hierarchy walk would hang; the
+            // tool has to say so rather than surfacing it as an internal error.
+            throw new McpToolException(ex.Message, "Attach the other way round, or detach one of them first.");
+        }
+
+        return McpToolResult.Json(SceneViews.ActorRow(child),
+            target == null ? $"Detached '{child.Name}'." : $"Attached '{child.Name}' to '{target.Name}'.");
+    }
+
+    [McpTool("detach_actor",
+        "Detach an actor from its parent, returning it to the scene root. It keeps its world position and " +
+        "stops being destroyed with the parent.",
+        Mutating = true, Label = "Detach {actor}")]
+    public McpToolResult DetachActor(
+        [McpParam("Actor id or name")] string actor,
+        [McpParam("Detach this actor's children instead of the actor itself")] bool children = false)
+    {
+        var scene  = RequireScene(_host);
+        var target = ActorRef.Resolve(scene, actor);
+
+        if (children) target.DetachChildren();
+        else          target.AttachTo(null);
+
+        return McpToolResult.Json(SceneViews.ActorRow(target),
+            children ? $"Detached {target.Children.Count} child(ren) from '{target.Name}'." : $"Detached '{target.Name}'.");
+    }
+
     // -------------------------------------------------------------------------
 
     private static Actor ConstructActor(string? className, string name)

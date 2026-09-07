@@ -120,7 +120,13 @@ public static class SceneSerializer
         {
             var actorDtos = new List<ActorDto>();
             foreach (var actor in layer.Actors)
+            {
+                // Attached actors are written inside their parent's `children`, so the
+                // layer lists only roots. Writing them at both levels would load the
+                // subtree twice.
+                if (actor.Parent != null) continue;
                 actorDtos.Add(BuildActorDto(actor, options));
+            }
 
             layerDtos.Add(new LayerDto
             {
@@ -198,6 +204,14 @@ public static class SceneSerializer
             dto.Position3 = new[] { t3d.LocalPosition.X, t3d.LocalPosition.Y, t3d.LocalPosition.Z };
             dto.Rotation3 = new[] { t3d.LocalRotation.X, t3d.LocalRotation.Y, t3d.LocalRotation.Z, t3d.LocalRotation.W };
             dto.Scale3    = new[] { t3d.LocalScale.X, t3d.LocalScale.Y, t3d.LocalScale.Z };
+        }
+
+        if (actor.Children.Count > 0)
+        {
+            var children = new List<ActorDto>(actor.Children.Count);
+            foreach (var child in actor.Children)
+                children.Add(BuildActorDto(child, options));
+            dto.Children = children;
         }
 
         return dto;
@@ -284,8 +298,8 @@ public static class SceneSerializer
 
             foreach (var actorDto in layerDto.Actors ?? Enumerable.Empty<ActorDto>())
             {
-                var actor = BuildActor(actorDto);
-                scene.AddActor(actor, layer.Name);
+                // AddActor takes the whole subtree, into the layer it was written under.
+                scene.AddActor(BuildActor(actorDto), layer.Name);
             }
         }
 
@@ -400,6 +414,13 @@ public static class SceneSerializer
             if (compDto.Properties is { Count: > 0 })
                 ApplyProperties(component, type, compDto.Properties, compDto.Type);
         }
+
+        // Children last: the parent's own transform has to be in place before a child is
+        // attached to it. `keepWorldTransform: false` is the whole point — the file stores
+        // a child's transform as its local offset, so rebasing it into the parent's space
+        // would apply that offset twice.
+        foreach (var childDto in dto.Children ?? Enumerable.Empty<ActorDto>())
+            BuildActor(childDto).AttachTo(actor, keepWorldTransform: false);
 
         return actor;
     }
@@ -880,6 +901,15 @@ internal sealed class ActorDto
 
     [JsonPropertyName("components")]
     public List<ComponentDto>? Components { get; set; }
+
+    /// <summary>
+    /// The actors attached to this one, nested. A child's transform blocks are its
+    /// <em>local</em> offset from this actor, which is why loading attaches with the
+    /// world transform not preserved: the file already says where the child sits in
+    /// its parent's frame.
+    /// </summary>
+    [JsonPropertyName("children")]
+    public List<ActorDto>? Children { get; set; }
 }
 
 /// <summary>

@@ -37,7 +37,7 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [12. Scenes & Prefabs](12-scenes-prefabs.md) | Scene JSON format, serialisation, prefabs, world streaming |
 | [13. Assets](13-assets.md) | `AssetManager`, supported types, reference counting, bundles, hot reload |
 | [14. Save & Preferences](14-save-system.md) | Save slots, encryption, binary saves, `PlayerPrefs` |
-| [15. Networking](15-networking.md) | `NetworkManager`, replication, RPCs, LAN discovery, diagnostics |
+| [15. Networking](15-networking.md) | One wire for both engines: the transport seam, WebSocket and UDP, rooms and link-to-join, replication and RPC |
 | [22. Gameplay Framework](22-gameplay-framework.md) | `GameInstance`, `GameMode`, `GameState`, `Pawn`, `Character`, controllers, subsystems |
 | [23. AI](23-ai.md) | Blackboards, behaviour trees, navmesh, `AIController` |
 | [24. Localization & Utilities](24-localization.md) | `Loc`, object pooling, 2D lighting, tilemap collision, 3D constraints, `SBMath`, `Bounds` |
@@ -54,6 +54,7 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [26. The HTML5 Port](26-html5.md) | The JavaScript engine under `html5/`, shared project files, the Web build target, and three bugs it found |
 | [27. The Game Factory Workflow](27-game-factory-workflow.md) | Making many small games with an agent: the shared scripting contract, the node toolchain (validate, serve, export, upload), the native port, and the token rules |
 | [28. The CookieJar](28-the-cookiejar.md) | The module library: cookies and jars, installing into a project, baking work back out, and the trust gate |
+| [29. Darks Games](29-darksgames.md) | Accounts and social: identity, presence, Join, parties, cloud saves and achievements, in both engines and in the exported build |
 
 ## Reference
 

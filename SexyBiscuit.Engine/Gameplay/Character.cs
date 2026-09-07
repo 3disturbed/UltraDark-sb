@@ -51,7 +51,13 @@ public class Character : Pawn
     public CharacterController3D Movement { get; private set; } = null!;
 
     /// <summary>The character's 3D transform.</summary>
-    public Transform3D Transform3D { get; private set; } = null!;
+    /// <remarks>
+    /// Deliberately hides <see cref="Actor.Transform3D"/>, which is nullable because most actors
+    /// are 2D. A Character always has one — <see cref="OnStart"/> adds it if the scene did not —
+    /// so this narrows the type for the movement code rather than making every call site
+    /// null-check something that cannot be null. Both resolve to the same component.
+    /// </remarks>
+    public new Transform3D Transform3D { get; private set; } = null!;
 
     /// <summary>True while the capsule is resting on walkable ground.</summary>
     public bool IsGrounded => Movement.IsGrounded;
