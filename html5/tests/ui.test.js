@@ -54,6 +54,30 @@ test('an anchored element stays put when the window changes size', () => {
     assert.equal(large.y + large.height, 1080 - 12, 'still twelve pixels up from the bottom');
 });
 
+test('the host keeps the UI viewport in step with the drawing buffer', () => {
+    // The UI is laid out against ITS OWN width and height, so if the host never
+    // tells it about a resize, every anchor is measured against whatever size the
+    // canvas happened to be when the host was built. A bare <canvas> with no
+    // width/height attributes is 300x150, and the UI canvas used to be built from
+    // one before the first resize() -- so `center` resolved to (150, 75), which
+    // is the top-left corner, and a panel sized UI.width x UI.height covered a
+    // fraction of the screen.
+    //
+    // Nothing about that throws, and nothing is visible until a game puts
+    // something on screen, which is why it is pinned here rather than left to a
+    // playtest.
+    const source = fs.readFileSync(path.join(repoRoot, 'html5/src/EngineHost.js'), 'utf8');
+
+    const resize = source.slice(source.indexOf('    resize() {'));
+    const body = resize.slice(0, resize.indexOf('\n    }'));
+
+    assert.match(body, /this\.ui\??\.setViewport\(/,
+        'EngineHost.resize() does not send the new size to the UI canvas');
+
+    assert.doesNotMatch(source, /new UiCanvas\(\{\s*width:\s*this\.canvas2D\.width/,
+        'the UI canvas is sized from an un-resized canvas, which is 300x150');
+});
+
 test('every anchor name resolves, and centre really is the centre', () => {
     const ui = new UiCanvas({ width: 1000, height: 500 });
     for (const name of Object.keys(ANCHORS)) {
