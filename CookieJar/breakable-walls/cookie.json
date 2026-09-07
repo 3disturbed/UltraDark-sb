@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "breakable-walls",
+  "name": "Breakable Walls",
+  "version": "1.0.0",
+  "summary": "Chop a hole through a wall, without paying thirty actors per wall for the destructibility nobody has used yet.",
+  "description": "A rectangle cannot lose a piece, so the usual answer is to tile every wall up front and spend the frame budget on destruction that has not happened. Here a wall is one actor until something hits it, and only then becomes a grid of chunks with the hit ones removed -- lazily, with a hard ceiling on how many walls may be broken at once, because a mechanic with no upper bound degrades over twenty minutes in a way that looks like a memory leak. Every chunk keeps a collider, so the hole is real and the door stops being the only way in. Reads footprints from the collider rather than the sprite, which is what makes it safe in a world with height.",
+  "tags": ["destruction", "terrain", "walls", "physics", "sandbox", "survival"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["BreakableWalls.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put BreakableWalls.js on a manager actor and tag it Walls.",
+    "Tag destructible scenery Wall and give each one a BoxCollider2D.",
+    "Call damage(x, y, radius) from whatever swings or explodes; 0 back means a clean miss.",
+    "Set maxShattered from your frame budget, not from how generous it feels.",
+    "If the world has height, set chunkHeight and keep faceShade equal to Depth25D's."
+  ]
+}

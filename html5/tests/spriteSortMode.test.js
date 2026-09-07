@@ -11,11 +11,18 @@
 // first" while the sort is ascending, so a game laid out by believing the
 // comment drew its ground over its own city.
 //
-// The engines do NOT currently agree. This side sorts; the native side, measured
-// with Games/DepthProbe, draws in creation order whatever the depths say. These
-// tests pin the half that is settled — the browser's direction, and that both
-// comments describe what their code does, native caveat included — so that when
-// the native sort is fixed the target is written down rather than guessed at.
+// The engines now agree, and this is where that is recorded. The browser sorts
+// ascending and draws the highest depth last. The native side reaches the same
+// answer from the opposite-sounding constant: MonoGame's BackToFront draws the
+// HIGHEST depth first, which puts it at the back, so RenderSystem2D opens its
+// batch with FrontToBack instead. Re-measured with Games/DepthProbe on a native
+// build, 2026-09-07: a red sprite created FIRST at depth 0.90 fills the window
+// over a blue one created after it at 0.10.
+//
+// Keeping them agreed is not cosmetic. A game that sorts by position — anything
+// top-down where you walk in front of one wall and behind the next — cannot be
+// laid out in creation order, because the actor is created once and the
+// relationship changes every step. It needs the depth honoured on both sides.
 // -----------------------------------------------------------------------------
 
 import test from 'node:test';
@@ -82,9 +89,23 @@ test('both engines document the same direction as they implement', () => {
         'the C# LayerDepth summary had the direction backwards; it must not come back');
     assert.match(summary[1], /0 = back, 1 = front|[Hh]igher is nearer/,
         'the summary must say which end of layerDepth is the front');
-    // And it must keep saying that the native path does not sort on it yet, so
-    // nobody reads the first line alone and lays a scene out against it.
-    const cs2 = fs.readFileSync(path.join(repoRoot, 'SexyBiscuit.Engine/Rendering/SpriteRenderer.cs'), 'utf8');
-    assert.match(cs2, /this engine currently does not|DepthProbe/i,
-        'the LayerDepth remarks must keep the native caveat until the sort is fixed');
+    // The summary must not still be telling readers the native side ignores it.
+    // That claim was true, then was fixed, and then outlived the fix by a day —
+    // during which it was advising games to lay themselves out in creation order.
+    assert.doesNotMatch(summary[1], /this engine currently does not|does not sort/i,
+        'the native caveat was removed when the sort was fixed; it must not come back untested');
+});
+
+test('the native batch sorts the way the browser does', () => {
+    // The one line that decides it, read from the source rather than trusted.
+    // MonoGame's names are counter-intuitive here: BackToFront draws the HIGHEST
+    // depth FIRST, which lands it at the back — the exact inverse of this engine.
+    // FrontToBack is the one that matches. Anyone changing it has to change this.
+    const rs = fs.readFileSync(path.join(repoRoot, 'SexyBiscuit.Engine/Rendering/RenderSystem2D.cs'), 'utf8');
+    const mode = /public SpriteSortMode SortMode \{ get; set; \} = SpriteSortMode\.(\w+);/.exec(rs);
+
+    assert.ok(mode, 'RenderSystem2D should still declare a default SortMode');
+    assert.equal(mode[1], 'FrontToBack',
+        'the scene batch must sort ascending by depth, as the browser does; ' +
+        'BackToFront would silently invert every layered scene in the repository');
 });

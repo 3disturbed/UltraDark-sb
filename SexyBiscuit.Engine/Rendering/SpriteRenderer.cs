@@ -186,6 +186,11 @@ public class SpriteRenderer : Component
 
     public override void Draw(SpriteBatch sb)
     {
+        // Off screen: nothing to submit. A pass with no camera does not cull at
+        // all, so a tool or a test that draws with an identity transform still
+        // gets every sprite.
+        if (!RenderSystem2D.IsVisible(Actor.Transform.Position, CullRadius())) return;
+
         // No art yet: a tinted box, which is what the browser engine has always
         // drawn here. Every bundled template relies on it — their actors carry a
         // SpriteRenderer with nothing but a Tint — so returning early was why a
@@ -210,6 +215,37 @@ public class SpriteRenderer : Component
             DrawSliced(sb, position, rotation, scale);
         else
             DrawNormal(sb, position, rotation, scale);
+    }
+
+    /// <summary>
+    /// A radius around the actor's position that this sprite cannot draw outside.
+    /// Public so a game with its own culling or spatial index can use the same
+    /// bound the renderer does, rather than a second guess at it.
+    /// </summary>
+    /// <remarks>
+    /// It has to be the distance to the FURTHEST corner, not half the size, and
+    /// that depends on the pivot: a pivot of (0.5, 1) hangs the whole sprite
+    /// above the actor, which is exactly how the 2.5D games extrude a wall out of
+    /// one rectangle. Measuring from the centre would cull those the moment their
+    /// footprint left the screen and take the visible half of the wall with it.
+    /// Rotation is covered by taking the corner distance rather than the extents.
+    /// </remarks>
+    public float CullRadius()
+    {
+        Vector2 size = Texture == null
+            ? Size
+            : new Vector2((SourceRect ?? Texture.Bounds).Width, (SourceRect ?? Texture.Bounds).Height);
+
+        Vector2 scale = Actor.Transform.Scale;
+        float w = MathF.Abs(size.X * scale.X);
+        float h = MathF.Abs(size.Y * scale.Y);
+
+        // The pivot splits each axis; whichever side is longer is the one that
+        // can reach off screen.
+        float reachX = w * MathF.Max(Pivot.X, 1f - Pivot.X);
+        float reachY = h * MathF.Max(Pivot.Y, 1f - Pivot.Y);
+
+        return MathF.Sqrt(reachX * reachX + reachY * reachY);
     }
 
     private void DrawNormal(SpriteBatch sb, Vector2 position, float rotation, Vector2 scale)

@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "top-down-driving",
+  "name": "Top-Down Driving",
+  "version": "1.0.0",
+  "summary": "Get in, drive, run things over, get out -- without any other system in the game learning that cars exist.",
+  "description": "The rider stays the player: getting in hides the player's sprite and rides the player actor at the car's position, so camera follow, enemy targeting, noise, spawn distance and every other 'where is the player' query keep working untouched. Throttle and brake, speed-scaled steering that reverses correctly -- the one line that separates driving from sliding a box around -- run-over above a speed threshold, and a constant engine noise so a vehicle is a decision rather than a free movement upgrade. Carries the traps too: a car cannot wear scenery, it must be driven through its body and not its transform, and driving has to be tested first because everything else leaves the player dead.",
+  "tags": ["vehicles", "driving", "top-down", "gta", "movement", "sandbox"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["Driving.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put Driving.js on the player actor, beside the on-foot movement script.",
+    "Tag cars Car; each needs a BoxCollider2D and a heavy, well-damped Rigidbody2D.",
+    "Make on-foot movement return early when isDriving() is true.",
+    "Wire one context key and let entering a car win over every other use of it.",
+    "Point noiseTag at the noise-and-hearing director, or set it to \"\" if nothing can hear."
+  ]
+}

@@ -108,6 +108,7 @@ public class RenderSystem2D
             throw new InvalidOperationException("RenderSystem2D.Begin called without a matching End.");
 
         Matrix? viewMatrix = camera?.GetViewMatrix(_gd);
+        SetCullBounds(camera);
 
         sb.Begin(
             sortMode:       SortMode,
@@ -130,6 +131,7 @@ public class RenderSystem2D
             throw new InvalidOperationException("RenderSystem2D.Begin called without a matching End.");
 
         Matrix? viewMatrix = camera?.GetViewMatrix(_gd);
+        SetCullBounds(camera);
 
         sb.Begin(
             sortMode:        SortMode,
@@ -151,6 +153,56 @@ public class RenderSystem2D
 
         sb.End();
         _inBatch = false;
+
+        // Off again the moment the pass is over. A cull rectangle that outlives
+        // its camera would silently apply to the next batch — the screen-space
+        // HUD, say, whose coordinates are nothing to do with the world.
+        CullEnabled = false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Culling
+    //
+    // Nothing here changes what a scene looks like: a sprite is skipped only when
+    // it provably cannot touch the viewport. What it changes is what a big map
+    // costs. Without it every actor in the scene is submitted every frame, sorted
+    // by MonoGame and handed to the driver, so a city of ten thousand walls pays
+    // for all ten thousand to draw the two hundred you can see.
+    // -------------------------------------------------------------------------
+
+    /// <summary>Whether the current pass is culling to a camera's view.</summary>
+    public static bool CullEnabled { get; private set; }
+
+    private static float _cullMinX, _cullMinY, _cullMaxX, _cullMaxY;
+
+    private void SetCullBounds(Camera2D? camera)
+    {
+        // No camera means no idea what is on screen, so draw everything: a pass
+        // with an identity transform is usually a tool or a test, and quietly
+        // dropping its sprites would be far worse than drawing too many.
+        if (camera == null) { CullEnabled = false; return; }
+
+        var view = camera.VisibleWorldBounds(_gd);
+        _cullMinX = view.X;
+        _cullMinY = view.Y;
+        _cullMaxX = view.X + view.Width;
+        _cullMaxY = view.Y + view.Height;
+        CullEnabled = true;
+    }
+
+    /// <summary>
+    /// True when something of the given radius at the given point could appear in
+    /// the pass currently being drawn.
+    /// </summary>
+    /// <remarks>
+    /// The radius is the caller's own conservative bound — it has to cover the
+    /// sprite's pivot, scale and rotation, because this test knows none of them.
+    /// </remarks>
+    public static bool IsVisible(Vector2 centre, float radius)
+    {
+        if (!CullEnabled) return true;
+        return centre.X + radius >= _cullMinX && centre.X - radius <= _cullMaxX
+            && centre.Y + radius >= _cullMinY && centre.Y - radius <= _cullMaxY;
     }
 
     // -------------------------------------------------------------------------
