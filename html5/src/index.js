@@ -37,6 +37,16 @@ export {
 // ---- Engine -----------------------------------------------------------------
 export { EngineHost, EngineConfig } from './EngineHost.js';
 
+// ---- Networking ----
+export {
+    NetworkManager, NetTransportKind, NetworkObject, ReplicateCondition,
+    NetMessage, NET_PROTOCOL_VERSION, NetDelivery,
+    NetWriter, NetReader, NetProtocolError,
+    LoopbackTransport, WebSocketTransport, NetPeerHandle,
+    createRoom, readRoom, roomSocketUrl, roomCodeFromUrl,
+    generateRoomCode, isRoomCode, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH,
+} from './net/index.js';
+
 // ---- Scene ------------------------------------------------------------------
 export {
     SceneSerializer, serialize, deserialize, buildActor, buildActorDto,

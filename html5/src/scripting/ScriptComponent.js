@@ -17,7 +17,7 @@
 import { Component } from '../core/Component.js';
 import { registerComponent } from '../core/TypeRegistry.js';
 import { PropertyType as P } from '../core/PropertyTypes.js';
-import { createScriptGlobals, wrapActor, wrapCollisionData, SCRIPT_HOOKS } from './ScriptBridge.js';
+import { createScriptGlobals, wrapActor, wrapCollisionData, SCRIPT_HOOKS, DISPOSE } from './ScriptBridge.js';
 
 /** Attaches a JavaScript file to an actor. */
 export class ScriptComponent extends Component {
@@ -93,6 +93,13 @@ export class ScriptComponent extends Component {
             this._delegate.onDestroy?.();
             this._delegate = null;
         }
+
+        // The script's own network handlers and UI go with it. Without this a destroyed
+        // actor's Network.on callback keeps firing every time a message arrives, which is
+        // a leak that only shows up as a growing stall.
+        this._globals?.[DISPOSE]?.();
+        this._globals = null;
+
         this._hooks = {};
         this._functions = {};
     }
@@ -176,6 +183,7 @@ export class ScriptComponent extends Component {
 
     _instantiateFunctions(source) {
         const globals = createScriptGlobals(this.actor);
+        this._globals = globals;
         const names = Object.keys(globals);
 
         // Each script gets its own function scope, so two components running the

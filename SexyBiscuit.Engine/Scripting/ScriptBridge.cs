@@ -10,7 +10,9 @@ using Microsoft.Xna.Framework;
 using SexyBiscuit.Engine.Audio;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.Input;
+using SexyBiscuit.Engine.Networking;
 using SexyBiscuit.Engine.Physics;
+using System.Text.Json.Nodes;
 
 using JintEngine = Jint.Engine;
 
@@ -53,7 +55,6 @@ public sealed class ScriptBridge
 
     private Transform3D?    _transform3D;
     private ObjectInstance? _transform3DProxy;
-    private bool            _networkWarned;
 
     /// <summary>The script the bridge serves, for diagnostics. Set by <see cref="ScriptComponent"/>.</summary>
     public string ScriptPath { get; set; } = string.Empty;
@@ -1051,36 +1052,253 @@ public sealed class ScriptBridge
     private static string ToHex(Color c) => $"#{c.R:x2}{c.G:x2}{c.B:x2}";
 
     // =========================================================================
-    // Network proxy — a stub that lets a multiplayer script run solo
+    // Network proxy
     // =========================================================================
+
+    /// <summary>Handlers this script registered, so they go away with the script.</summary>
+    private readonly List<Action> _networkUnsubscribes = new();
+
+    /// <summary>Drops this script's network handlers. Called when the component goes away.</summary>
+    internal void DisposeNetwork()
+    {
+        foreach (var unsubscribe in _networkUnsubscribes) unsubscribe();
+        _networkUnsubscribes.Clear();
+    }
+
+    private static NetworkManager? Net => NetworkManager.Instance;
+
+    /// <summary>
+    /// The manager, started solo if a script asked to send before anything started a session.
+    /// </summary>
+    /// <remarks>
+    /// A multiplayer script running with no session is the single-player case, not an error.
+    /// Starting a loopback session rather than warning and doing nothing means the same script
+    /// drives the same code path alone as it does in a lobby -- which is what stops "works
+    /// alone, breaks with two players".
+    /// </remarks>
+    private static NetworkManager EnsureNet()
+    {
+        if (NetworkManager.Instance is { IsRunning: true } running) return running;
+
+        var manager = NetworkManager.Instance ?? new NetworkManager();
+        if (!manager.IsRunning) manager.StartSolo();
+        return manager;
+    }
 
     private ObjectInstance BuildNetworkProxy()
     {
         var obj = NewObj();
 
-        // Player 0 is the local player when there is no network, so a lobby script that asks
-        // `Network.isLocalPlayer(id)` behaves as a one-player game rather than a dead one.
-        Accessor(obj, "localId",     getter: (_, _) => new JsNumber(0), setter: null, _engine);
-        Accessor(obj, "isServer",    getter: (_, _) => JsBoolean.False,  setter: null, _engine);
-        Accessor(obj, "isConnected", getter: (_, _) => JsBoolean.False,  setter: null, _engine);
+        // Player 0 is the local player before a server has said otherwise, so a lobby script
+        // that asks `Network.isLocalPlayer(id)` behaves as a one-player game rather than a
+        // dead one.
+        Accessor(obj, "localId",     getter: (_, _) => new JsNumber(Net?.LocalClientId is int id and >= 0 ? id : 0), setter: null, _engine);
+        Accessor(obj, "isServer",    getter: (_, _) => Bool(Net?.IsServer ?? false),    setter: null, _engine);
+        Accessor(obj, "isHost",      getter: (_, _) => Bool(Net?.IsHost ?? false),      setter: null, _engine);
+        Accessor(obj, "isConnected", getter: (_, _) => Bool(Net?.IsConnected ?? false), setter: null, _engine);
+        Accessor(obj, "ping",        getter: (_, _) => new JsNumber(Net?.Ping ?? 0),    setter: null, _engine);
+        Accessor(obj, "room",        getter: (_, _) => new JsString(Net?.Room ?? string.Empty), setter: null, _engine);
 
-        obj.Set("isLocalPlayer", Fn("isLocalPlayer", (_, args) => Bool(Num(args.At(0), -1f) == 0f), length: 1));
+        Accessor(obj, "playerName",
+            getter: (_, _) => new JsString(Net?.PlayerName ?? "Player"),
+            setter: (_, args) => { EnsureNetName(args.At(0).ToString()); return JsValue.Undefined; },
+            _engine);
 
-        JsValue Unavailable(JsValue thisObj, JsValue[] args)
+        // A fresh array each read, so a script cannot mutate the engine's roster.
+        Accessor(obj, "players", getter: (_, _) =>
         {
-            if (!_networkWarned)
+            var manager = Net;
+            if (manager == null) return NewArray(Array.Empty<JsValue>());
+            return NewArray(manager.Players.Select(p =>
             {
-                _networkWarned = true;
-                Warn("Network is not available in this build; the script is running solo.");
+                var entry = NewObj();
+                entry.Set("id",   new JsNumber(p.Key));
+                entry.Set("name", new JsString(p.Value));
+                return (JsValue)entry;
+            }));
+        }, setter: null, _engine);
+
+        obj.Set("isLocalPlayer", Fn("isLocalPlayer", (_, args) =>
+        {
+            int local = Net?.LocalClientId is int id and >= 0 ? id : 0;
+            return Bool((int)Num(args.At(0), -1f) == local);
+        }, length: 1));
+
+        // Network.startServer(port) -- WebSocket by default, because that is the only wire a
+        // browser can join and the same script has to work there.
+        obj.Set("startServer", Fn("startServer", (_, args) =>
+        {
+            try
+            {
+                var manager = NetworkManager.Instance ?? new NetworkManager();
+                if (manager.IsRunning) return Bool(true);
+                manager.StartServer((int)Num(args.At(0), 7777f));
+                return Bool(true);
             }
-            return JsBoolean.False;
+            catch (Exception ex) { Warn($"Network.startServer: {ex.Message}"); return Bool(false); }
+        }, length: 2));
+
+        // Network.startSolo() -- host with no socket at all.
+        obj.Set("startSolo", Fn("startSolo", (_, _) =>
+        {
+            try { EnsureNet(); return Bool(true); }
+            catch (Exception ex) { Warn($"Network.startSolo: {ex.Message}"); return Bool(false); }
+        }));
+
+        // Network.connect(address, port) and Network.connect("ws://...").
+        obj.Set("connect", Fn("connect", (_, args) =>
+        {
+            try
+            {
+                var manager = NetworkManager.Instance ?? new NetworkManager();
+                if (manager.IsRunning) manager.Disconnect();
+
+                string address = args.At(0).ToString();
+                if (address.StartsWith("ws://", StringComparison.Ordinal) ||
+                    address.StartsWith("wss://", StringComparison.Ordinal))
+                {
+                    manager.ConnectToUrl(address, args.At(1).IsString() ? args.At(1).ToString() : "");
+                }
+                else
+                {
+                    manager.ConnectToServer(address, (int)Num(args.At(1), 7777f));
+                }
+                return Bool(true);
+            }
+            catch (Exception ex) { Warn($"Network.connect: {ex.Message}"); return Bool(false); }
+        }, length: 2));
+
+        obj.Set("disconnect", Fn("disconnect", (_, _) =>
+        {
+            Net?.Disconnect();
+            return JsValue.Undefined;
+        }));
+
+        // Network.sendToAll(type, data) -- and `broadcast`, which the bundled templates use
+        // for the same thing.
+        JsValue SendToAll(JsValue thisObj, JsValue[] args)
+        {
+            EnsureNet().SendMessageToAll(args.At(0).ToString(), ToJsonNode(args.At(1)));
+            return JsValue.Undefined;
         }
-        obj.Set("startServer", Fn("startServer", Unavailable, length: 1));
-        obj.Set("connect",     Fn("connect",     Unavailable, length: 1));
-        obj.Set("sendToAll",   Fn("sendToAll",   (_, _) => JsValue.Undefined, length: 2));
-        obj.Set("broadcast",   Fn("broadcast",   (_, _) => JsValue.Undefined, length: 2));
+        obj.Set("sendToAll", Fn("sendToAll", SendToAll, length: 2));
+        obj.Set("broadcast", Fn("broadcast", SendToAll, length: 2));
+
+        obj.Set("sendTo", Fn("sendTo", (_, args) =>
+        {
+            EnsureNet().SendMessageTo((int)Num(args.At(0), -1f), args.At(1).ToString(), ToJsonNode(args.At(2)));
+            return JsValue.Undefined;
+        }, length: 3));
+
+        // Network.on("message", (sender, type, data) => …)
+        obj.Set("on", Fn("on", (_, args) =>
+        {
+            string eventName = args.At(0).ToString();
+            if (!args.At(1).IsObject() || args.At(1) is not Jint.Native.Function.Function handler)
+            {
+                Warn($"Network.on('{eventName}'): the second argument must be a function.");
+                return JsValue.Undefined;
+            }
+
+            var manager = EnsureNet();
+            Action? unsubscribe = eventName switch
+            {
+                "message" => Subscribe<int, string, JsonNode?>(
+                    h => manager.OnMessage += h, h => manager.OnMessage -= h,
+                    (sender, type, payload) => Call(handler, new JsNumber(sender), new JsString(type), FromJsonNode(payload))),
+                "playerJoined" => Subscribe<int, string>(
+                    h => manager.OnPlayerJoined += h, h => manager.OnPlayerJoined -= h,
+                    (id, name) => Call(handler, new JsNumber(id), new JsString(name))),
+                "playerLeft" => Subscribe<int>(
+                    h => manager.OnPlayerLeft += h, h => manager.OnPlayerLeft -= h,
+                    id => Call(handler, new JsNumber(id))),
+                "connected" => Subscribe(
+                    h => manager.OnConnectedToServer += h, h => manager.OnConnectedToServer -= h,
+                    () => Call(handler)),
+                "disconnected" => Subscribe<string>(
+                    h => manager.OnDisconnectedFromServer += h, h => manager.OnDisconnectedFromServer -= h,
+                    reason => Call(handler, new JsString(reason))),
+                _ => null,
+            };
+
+            if (unsubscribe == null)
+            {
+                Warn($"Network.on: unknown event '{eventName}'. Try message, playerJoined, playerLeft, connected or disconnected.");
+                return JsValue.Undefined;
+            }
+
+            _networkUnsubscribes.Add(unsubscribe);
+            return Fn("off", (_, _) => { unsubscribe(); _networkUnsubscribes.Remove(unsubscribe); return JsValue.Undefined; });
+        }, length: 2));
 
         return obj;
+    }
+
+    private static void EnsureNetName(string name)
+    {
+        var manager = NetworkManager.Instance ?? new NetworkManager();
+        manager.PlayerName = name;
+    }
+
+    private static Action Subscribe(Action<Action> add, Action<Action> remove, Action handler)
+    {
+        add(handler);
+        return () => remove(handler);
+    }
+
+    private static Action Subscribe<T>(Action<Action<T>> add, Action<Action<T>> remove, Action<T> handler)
+    {
+        add(handler);
+        return () => remove(handler);
+    }
+
+    private static Action Subscribe<T1, T2>(Action<Action<T1, T2>> add, Action<Action<T1, T2>> remove, Action<T1, T2> handler)
+    {
+        add(handler);
+        return () => remove(handler);
+    }
+
+    private static Action Subscribe<T1, T2, T3>(Action<Action<T1, T2, T3>> add, Action<Action<T1, T2, T3>> remove, Action<T1, T2, T3> handler)
+    {
+        add(handler);
+        return () => remove(handler);
+    }
+
+    /// <summary>Calls a script handler, isolating a throw so one bad listener cannot kill the session.</summary>
+    private void Call(Jint.Native.Function.Function handler, params JsValue[] args)
+    {
+        try { handler.Call(JsValue.Undefined, args); }
+        catch (Exception ex) { Warn($"Network handler threw: {ex.Message}"); }
+    }
+
+    /// <summary>A script value as JSON, for the message channel. Undefined and null both become null.</summary>
+    private JsonNode? ToJsonNode(JsValue value)
+    {
+        if (value.IsUndefined() || value.IsNull()) return null;
+        try
+        {
+            return JsonNode.Parse(_engine.Evaluate("JSON.stringify")
+                .Call(JsValue.Undefined, value).ToString());
+        }
+        catch (Exception)
+        {
+            // A cyclic object, or something JSON cannot express. Dropping the payload beats
+            // taking the send down: the message type still arrives.
+            Warn("Network: the message payload could not be converted to JSON; sending it empty.");
+            return null;
+        }
+    }
+
+    /// <summary>JSON back into a script value.</summary>
+    private JsValue FromJsonNode(JsonNode? node)
+    {
+        if (node == null) return JsValue.Null;
+        try
+        {
+            return _engine.Evaluate("JSON.parse")
+                .Call(JsValue.Undefined, new JsString(node.ToJsonString()));
+        }
+        catch (Exception) { return JsValue.Null; }
     }
 
     // =========================================================================

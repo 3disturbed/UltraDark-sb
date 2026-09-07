@@ -406,6 +406,42 @@
       "broadcast": {
         "kind": "fn",
         "shared": true
+      },
+      "isHost": {
+        "kind": "prop",
+        "shared": true
+      },
+      "ping": {
+        "kind": "prop",
+        "shared": true
+      },
+      "room": {
+        "kind": "prop",
+        "shared": true
+      },
+      "playerName": {
+        "kind": "prop",
+        "shared": true
+      },
+      "players": {
+        "kind": "prop",
+        "shared": true
+      },
+      "startSolo": {
+        "kind": "fn",
+        "shared": true
+      },
+      "disconnect": {
+        "kind": "fn",
+        "shared": true
+      },
+      "sendTo": {
+        "kind": "fn",
+        "shared": true
+      },
+      "on": {
+        "kind": "fn",
+        "shared": true
       }
     },
     "UI": {

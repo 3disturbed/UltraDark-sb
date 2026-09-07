@@ -116,7 +116,14 @@ public sealed class ScriptComponent : Component
         => TryCall("onLateUpdate", dt);
 
     public override void OnDestroy()
-        => TryCall("onDestroy");
+    {
+        TryCall("onDestroy");
+
+        // The script's own network handlers go with it. Without this a destroyed actor's
+        // Network.on callback keeps firing into a dead Jint object every time a message
+        // arrives, which is a leak that only shows up as a growing stall.
+        Runtime?.Bridge.DisposeNetwork();
+    }
 
     public override void OnCollisionEnter(CollisionData data) => DispatchCollision("onCollisionEnter", data);
     public override void OnCollisionStay(CollisionData data)  => DispatchCollision("onCollisionStay",  data);

@@ -16,6 +16,16 @@ import { schemaOf } from '../core/TypeRegistry.js';
 import { coerce } from '../core/PropertyTypes.js';
 import { applyProperties } from '../scene/SceneSerializer.js';
 import { widestLine } from '../ui/UiCanvas.js';
+import { NetworkManager as NetworkManagerClass } from '../net/NetworkManager.js';
+
+/** The events `Network.on` accepts. The Jint bridge accepts exactly these. */
+const NETWORK_EVENTS = ['message', 'playerJoined', 'playerLeft', 'connected', 'disconnected'];
+
+/**
+ * Releases everything a script's globals still hold — its network handlers and its
+ * UI elements. Keyed by a symbol so it is not a global a script can see.
+ */
+export const DISPOSE = Symbol('sb.script.dispose');
 
 /** Proxies handed to scripts, mapped back to the actor each stands for. */
 const proxyToActor = new WeakMap();
@@ -261,26 +271,119 @@ export function createScriptGlobals(actor, services = {}) {
         set timeScale(value) { Time.timeScale = Number(value); },
     };
 
-    // ---- Network — a stub that lets a multiplayer script run solo -------------
-    // Player 0 is the local player when there is no network, so a lobby script that asks
-    // `Network.isLocalPlayer(id)` behaves as a one-player game rather than a dead one.
-    let networkWarned = false;
-    const unavailable = () => {
-        if (!networkWarned) {
-            networkWarned = true;
-            log('warn', 'Network is not available in this build; the script is running solo.');
-        }
-        return false;
+    // ---- Network -------------------------------------------------------------
+    //
+    // Member for member the same proxy the Jint bridge installs, over the same
+    // wire. A multiplayer script running with no session is the single-player
+    // case, not an error: `ensureNet()` starts a loopback session rather than
+    // warning and doing nothing, so the same script drives the same code path
+    // alone as it does in a lobby.
+
+    const net = () => NetworkManagerClass.instance;
+
+    const ensureNet = () => {
+        const running = NetworkManagerClass.instance;
+        if (running?.isRunning) return running;
+
+        const manager = running ?? new NetworkManagerClass();
+        if (!manager.isRunning) manager.startSolo();
+        return manager;
     };
+
+    /** Handlers this script registered, so they go away with the script. */
+    const networkUnsubscribes = [];
+
     const networkProxy = {
-        get localId() { return 0; },
-        get isServer() { return false; },
-        get isConnected() { return false; },
-        isLocalPlayer(id) { return Number(id) === 0; },
-        startServer() { return unavailable(); },
-        connect() { return unavailable(); },
-        sendToAll() {},
-        broadcast() {},
+        // Player 0 is the local player before a server has said otherwise, so a lobby
+        // script that asks `Network.isLocalPlayer(id)` behaves as a one-player game
+        // rather than a dead one.
+        get localId() { const id = net()?.localClientId ?? -1; return id >= 0 ? id : 0; },
+        get isServer() { return net()?.isServer ?? false; },
+        get isHost() { return net()?.isHost ?? false; },
+        get isConnected() { return net()?.isConnected ?? false; },
+        get ping() { return net()?.ping ?? 0; },
+        get room() { return net()?.room ?? ''; },
+
+        get playerName() { return net()?.playerName ?? 'Player'; },
+        set playerName(value) {
+            const manager = NetworkManagerClass.instance ?? new NetworkManagerClass();
+            manager.playerName = String(value);
+        },
+
+        // A fresh array each read, so a script cannot mutate the engine's roster.
+        get players() {
+            return [...(net()?.players ?? new Map())].map(([id, name]) => ({ id, name }));
+        },
+
+        isLocalPlayer(id) {
+            const local = net()?.localClientId ?? -1;
+            return Number(id) === (local >= 0 ? local : 0);
+        },
+
+        startServer(port = 7777) {
+            try {
+                const manager = NetworkManagerClass.instance ?? new NetworkManagerClass();
+                if (manager.isRunning) return true;
+                manager.startServer(port);
+                return true;
+            } catch (err) {
+                log('warn', `Network.startServer: ${err.message}`);
+                return false;
+            }
+        },
+
+        startSolo() {
+            try { ensureNet(); return true; } catch (err) {
+                log('warn', `Network.startSolo: ${err.message}`);
+                return false;
+            }
+        },
+
+        connect(address, port) {
+            try {
+                const manager = NetworkManagerClass.instance ?? new NetworkManagerClass();
+                if (manager.isRunning) manager.disconnect();
+
+                const target = String(address ?? '');
+                if (target.startsWith('ws://') || target.startsWith('wss://')) {
+                    manager.connectToUrl(target, { room: typeof port === 'string' ? port : '' });
+                } else {
+                    manager.connect(target, Number(port) || 7777);
+                }
+                return true;
+            } catch (err) {
+                log('warn', `Network.connect: ${err.message}`);
+                return false;
+            }
+        },
+
+        disconnect() { net()?.disconnect(); },
+
+        sendToAll(type, data) { ensureNet().sendMessageToAll(String(type), data ?? null); },
+        broadcast(type, data) { ensureNet().sendMessageToAll(String(type), data ?? null); },
+        sendTo(clientId, type, data) {
+            ensureNet().sendMessageTo(Number(clientId), String(type), data ?? null);
+        },
+
+        on(event, handler) {
+            const name = String(event);
+            if (typeof handler !== 'function') {
+                log('warn', `Network.on('${name}'): the second argument must be a function.`);
+                return () => {};
+            }
+            if (!NETWORK_EVENTS.includes(name)) {
+                log('warn', `Network.on: unknown event '${name}'. Try ${NETWORK_EVENTS.join(', ')}.`);
+                return () => {};
+            }
+
+            const unsubscribe = ensureNet().on(name, handler);
+            networkUnsubscribes.push(unsubscribe);
+            return () => {
+                unsubscribe();
+                const i = networkUnsubscribes.indexOf(unsubscribe);
+                if (i >= 0) networkUnsubscribes.splice(i, 1);
+            };
+        },
     };
 
     // ---- UI — screen space, which the world-space globals above cannot reach ---
@@ -356,7 +459,7 @@ export function createScriptGlobals(actor, services = {}) {
         measure(text, scale) { return measureText(String(text ?? ''), Number(scale) || 1); },
     };
 
-    return {
+    const globals = {
         actor: actorProxy,
         UI: uiProxy,
         transform: transformProxy,
@@ -375,6 +478,19 @@ export function createScriptGlobals(actor, services = {}) {
         warn: debugProxy.warn,
         error: debugProxy.error,
     };
+
+    // Teardown hangs off a symbol, not a name: the parity test compares this object's
+    // own property names against the Jint bridge's globals, and a `__dispose` key would
+    // be a global a script could see and the other engine does not have.
+    Object.defineProperty(globals, DISPOSE, {
+        value: () => {
+            for (const unsubscribe of networkUnsubscribes) unsubscribe();
+            networkUnsubscribes.length = 0;
+            uiProxy.clear();
+        },
+    });
+
+    return globals;
 }
 
 /**

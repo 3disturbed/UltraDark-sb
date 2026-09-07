@@ -385,47 +385,36 @@ public class RpcSystem
     // Packet encoding / decoding
     // -------------------------------------------------------------------------
 
-    // Packet layout (after the 1-byte PacketType discriminator written by NetworkManager):
-    // [networkId: uint32]
-    // [isServerRpc: bool]
-    // [hasTargetClient: bool]
-    // [targetClientId: int32] (only present when hasTargetClient == true)
-    // [methodName: string (length-prefixed UTF-8)]
-    // [argsByteCount: int32]
-    // [argsBytes: byte[argsByteCount]]
+    // The frame, as NetMessage.Rpc defines it and the browser engine reads it:
+    // [id u8][networkId u32][isServerRpc u8][targetClientId i32][method str][args bytes]
+    //
+    // The target is -1 rather than a present/absent pair: a fixed layout is one less thing for
+    // the two implementations to disagree about, and four bytes on a rare frame is nothing.
 
     internal static byte[] EncodeRpcPacket(uint networkId, string methodName, byte[] argBytes,
                                            int? targetClientId, bool isServerRpc)
-    {
-        using var ms = new System.IO.MemoryStream();
-        using var bw = new System.IO.BinaryWriter(ms);
-        bw.Write((byte)PacketType.Rpc);
-        bw.Write(networkId);
-        bw.Write(isServerRpc);
-        bw.Write(targetClientId.HasValue);
-        if (targetClientId.HasValue) bw.Write(targetClientId.Value);
-        bw.Write(methodName);
-        bw.Write(argBytes.Length);
-        bw.Write(argBytes);
-        bw.Flush();
-        return ms.ToArray();
-    }
+        => new NetWriter(NetMessage.Rpc)
+            .UInt(networkId)
+            .Bool(isServerRpc)
+            .Int(targetClientId ?? -1)
+            .String(methodName)
+            .Bytes(argBytes)
+            .ToArray();
 
     /// <summary>
     /// Decodes an Rpc packet body (after the PacketType byte has been consumed).
     /// </summary>
-    internal static void DecodeRpcPacket(System.IO.BinaryReader br,
+    internal static void DecodeRpcPacket(ref NetReader reader,
                                          out uint networkId, out bool isServerRpc,
                                          out int? targetClientId, out string methodName,
                                          out byte[] argBytes)
     {
-        networkId      = br.ReadUInt32();
-        isServerRpc    = br.ReadBoolean();
-        bool hasTarget = br.ReadBoolean();
-        targetClientId = hasTarget ? br.ReadInt32() : (int?)null;
-        methodName     = br.ReadString();
-        int len        = br.ReadInt32();
-        argBytes       = len > 0 ? br.ReadBytes(len) : Array.Empty<byte>();
+        networkId   = reader.UInt();
+        isServerRpc = reader.Bool();
+        int target  = reader.Int();
+        targetClientId = target < 0 ? null : target;
+        methodName  = reader.String();
+        argBytes    = reader.Bytes();
     }
 
     // -------------------------------------------------------------------------
@@ -454,71 +443,38 @@ public class RpcSystem
     {
         if (args == null || args.Length == 0) return Array.Empty<byte>();
 
-        using var ms = new System.IO.MemoryStream();
-        using var bw = new System.IO.BinaryWriter(ms);
-        bw.Write((byte)args.Length);
+        var w = new NetWriter();
+        w.Byte((byte)args.Length);
 
         foreach (var arg in args)
         {
             switch (arg)
             {
-                case null:
-                    bw.Write((byte)ArgTag.Null);
-                    break;
-                case bool b:
-                    bw.Write((byte)ArgTag.Bool);
-                    bw.Write(b);
-                    break;
-                case byte by:
-                    bw.Write((byte)ArgTag.Byte);
-                    bw.Write(by);
-                    break;
-                case int i:
-                    bw.Write((byte)ArgTag.Int32);
-                    bw.Write(i);
-                    break;
-                case uint u:
-                    bw.Write((byte)ArgTag.UInt32);
-                    bw.Write(u);
-                    break;
-                case long l:
-                    bw.Write((byte)ArgTag.Int64);
-                    bw.Write(l);
-                    break;
-                case float f:
-                    bw.Write((byte)ArgTag.Float);
-                    bw.Write(f);
-                    break;
-                case double d:
-                    bw.Write((byte)ArgTag.Double);
-                    bw.Write(d);
-                    break;
-                case string s:
-                    bw.Write((byte)ArgTag.String);
-                    bw.Write(s);
-                    break;
-                case Vector2 v2:
-                    bw.Write((byte)ArgTag.Vector2);
-                    bw.Write(v2.X);
-                    bw.Write(v2.Y);
-                    break;
+                case null:        w.Byte((byte)ArgTag.Null); break;
+                case bool b:      w.Byte((byte)ArgTag.Bool).Bool(b); break;
+                case byte by:     w.Byte((byte)ArgTag.Byte).Byte(by); break;
+                case int i:       w.Byte((byte)ArgTag.Int32).Int(i); break;
+                case uint u:      w.Byte((byte)ArgTag.UInt32).UInt(u); break;
+                // Int64 rides as a double, as it does in a replicated member: JavaScript has
+                // no 64-bit integer in a Number, and a value that does not survive the round
+                // trip is worse than one documented to carry 53 bits.
+                case long l:      w.Byte((byte)ArgTag.Int64).Double(l); break;
+                case float f:     w.Byte((byte)ArgTag.Float).Float(f); break;
+                case double d:    w.Byte((byte)ArgTag.Double).Double(d); break;
+                case string s:    w.Byte((byte)ArgTag.String).String(s); break;
+                case Vector2 v2:  w.Byte((byte)ArgTag.Vector2).Float(v2.X).Float(v2.Y); break;
                 case Microsoft.Xna.Framework.Vector3 v3:
-                    bw.Write((byte)ArgTag.Vector3);
-                    bw.Write(v3.X);
-                    bw.Write(v3.Y);
-                    bw.Write(v3.Z);
+                    w.Byte((byte)ArgTag.Vector3).Float(v3.X).Float(v3.Y).Float(v3.Z);
                     break;
                 default:
-                    // Unsupported type — encode as null to keep stream valid
                     Console.Error.WriteLine(
                         $"[RpcSystem] SerialiseArgs: unsupported type '{arg.GetType().Name}' — encoding as null.");
-                    bw.Write((byte)ArgTag.Null);
+                    w.Byte((byte)ArgTag.Null);
                     break;
             }
         }
 
-        bw.Flush();
-        return ms.ToArray();
+        return w.ToArray();
     }
 
     internal static object?[] DeserialiseArgs(byte[] data, ParameterInfo[] parameters)
@@ -526,29 +482,27 @@ public class RpcSystem
         if (data == null || data.Length == 0)
             return Array.Empty<object?>();
 
-        using var ms = new System.IO.MemoryStream(data);
-        using var br = new System.IO.BinaryReader(ms);
-
-        int count    = br.ReadByte();
-        var result   = new object?[count];
+        var reader = new NetReader(data);
+        int count  = reader.Byte();
+        var result = new object?[count];
 
         for (int i = 0; i < count; i++)
         {
-            var tag = (ArgTag)br.ReadByte();
+            var tag = (ArgTag)reader.Byte();
             result[i] = tag switch
             {
                 ArgTag.Null    => null,
-                ArgTag.Bool    => (object)br.ReadBoolean(),
-                ArgTag.Byte    => br.ReadByte(),
-                ArgTag.Int32   => br.ReadInt32(),
-                ArgTag.UInt32  => br.ReadUInt32(),
-                ArgTag.Int64   => br.ReadInt64(),
-                ArgTag.Float   => br.ReadSingle(),
-                ArgTag.Double  => br.ReadDouble(),
-                ArgTag.String  => br.ReadString(),
-                ArgTag.Vector2 => new Vector2(br.ReadSingle(), br.ReadSingle()),
+                ArgTag.Bool    => (object)reader.Bool(),
+                ArgTag.Byte    => reader.Byte(),
+                ArgTag.Int32   => reader.Int(),
+                ArgTag.UInt32  => reader.UInt(),
+                ArgTag.Int64   => (long)reader.Double(),
+                ArgTag.Float   => reader.Float(),
+                ArgTag.Double  => reader.Double(),
+                ArgTag.String  => reader.String(),
+                ArgTag.Vector2 => new Vector2(reader.Float(), reader.Float()),
                 ArgTag.Vector3 => new Microsoft.Xna.Framework.Vector3(
-                                      br.ReadSingle(), br.ReadSingle(), br.ReadSingle()),
+                                      reader.Float(), reader.Float(), reader.Float()),
                 _              => null,
             };
 
