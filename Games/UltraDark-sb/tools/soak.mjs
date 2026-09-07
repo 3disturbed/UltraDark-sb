@@ -172,19 +172,34 @@ const wall = (Date.now() - t0) / 1000;
 // Clear the field and let the pools take everything back, then count. An actor
 // count taken mid-wave says nothing -- of course things are alive. What matters
 // is whether the scene can return to where it started.
+// Stop the tap BEFORE emptying the bucket. Clearing the field while the
+// director is still spawning measures how fast the game refills, not whether
+// anything leaked: four seconds of settling was enough for a live wave to put
+// twenty enemies back, and the count swung by forty between identical runs.
+director.invoke('forceBudget', 0);
 swarm.invoke('clearAll');
 bullets.invoke('clearAll');
 const bossLeft = scene.allActors.find((a) => a.tag === 'Boss' && !a.isDestroyed);
 if (bossLeft) { bossLeft.destroy(); }
 await g.step(240);
 const settledActors = scene.allActors.filter((a) => !a.isDestroyed).length;
+// The leak measurement: what is still SWITCHED ON with the field cleared.
+//
+// Counting everything undestroyed counted the pools too, and a pool holding a
+// hundred parked shots is a pool doing its job -- the number tracked the peak of
+// the run rather than anything being lost. It moved between 233 and 495 across
+// identical runs, so the check was really a slow coin toss with a 400-wide
+// slack bolted on to hide it.
+//
+// A parked actor is inactive; a leaked one is not. Nothing should be alive on an
+// empty field but the fixtures the scene started with.
+const liveActors = scene.allActors.filter((a) => !a.isDestroyed && a.isActive).length;
 
 g.restore();
 
 // ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
-const liveActors = scene.allActors.filter((a) => !a.isDestroyed).length;
 
 // The log is the only place a boss says it arrived and died, so it is what the
 // gate below reads: a boss that spawns and never dies is a wave that never ends.
@@ -200,7 +215,7 @@ console.log(`  bosses killed  ${bossKills}  (of ${bossSpawns} met)`);
 console.log(`  runs / deaths  ${stats.deaths + 1} / ${stats.deaths}`);
 console.log(`  peak enemies   ${stats.maxEnemies}`);
 console.log(`  peak shots     ${stats.maxBullets}`);
-console.log(`  peak actors    ${stats.maxActors}   (settled to ${settledActors}, baseline ${baselineActors})`);
+console.log(`  peak actors    ${stats.maxActors}   (settled to ${settledActors}, of which ${liveActors} live; baseline ${baselineActors})`);
 
 const timed = waveSeconds.map((sec, w) => (sec ? `${w}:${sec.toFixed(0)}s` : null)).filter(Boolean);
 if (timed.length) { console.log(`  wave lengths   ${timed.join('  ')}`); }
@@ -239,12 +254,16 @@ if (assist && minutes >= 15 && startWave === 0) {
 }
 
 // Pools are what make the game affordable, so a pool that forgets to hand an
-// actor back is a real defect. The measurement is taken with the field cleared:
-// the settled count is allowed to exceed the baseline by the pools themselves,
-// and by nothing like the peak.
-const poolHeadroom = 400;
-if (settledActors > baselineActors + poolHeadroom) {
-    failures.push(`the scene settled at ${settledActors} actors against a baseline of ${baselineActors} -- something is not being recycled`);
+// actor back is a real defect -- but a pool HOLDING actors is not one, and the
+// old form of this check could not tell the two apart. It counted every
+// undestroyed actor, so it counted the pools, so it tracked the peak of the run
+// and failed on the good runs: a fix that let bosses die pushed the game further
+// and tripped it. Wrong thing measured, and generously enough to hide that.
+//
+// Alive-on-an-empty-field is the thing that cannot be explained away.
+const liveHeadroom = 24;
+if (liveActors > baselineActors + liveHeadroom) {
+    failures.push(`${liveActors} actors are still live on a cleared field against a baseline of ${baselineActors} -- something is not being recycled`);
 }
 
 if (failures.length > 0) {

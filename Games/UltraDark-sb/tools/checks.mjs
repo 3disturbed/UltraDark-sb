@@ -126,6 +126,47 @@ test('a boss dies to ordinary gunfire, not just to a direct call', async () => {
     } finally { g.restore(); }
 });
 
+test('the SECOND boss dies to gunfire too', async () => {
+    // Reported from play: "bosses sometimes don't take damage", noticed only
+    // once bosses grew health bars. "Sometimes" was every boss after the first.
+    //
+    // The projectile pool caches the boss's script and refreshes it with
+    // `if (!bossActor || bossActor.active !== true)`. A DESTROYED actor kept
+    // reporting active === true, so the guard never fired and every shot went on
+    // being delivered to the previous, dead boss. The check above only ever
+    // spawned one boss, so it passed throughout.
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(10);
+
+        const killBossWithGunfire = async () => {
+            const boss = g.find('Boss');
+            assert.ok(boss, 'no boss actor on a boss wave');
+            const before = g.said('BOSS DOWN');
+            for (let i = 0; i < 500; i++) {
+                boss.transform.x = 0;
+                boss.transform.y = 0;
+                g.bullets().invoke('fire', -60, 0, 0, 900, 40, 0, 6, 0.5, 0, 0);
+                await g.step(4);
+                if (g.said('BOSS DOWN') > before) { return true; }
+            }
+            return false;
+        };
+
+        g.director().invoke('forceWave', 5);
+        await g.step(90);
+        assert.ok(await killBossWithGunfire(), 'the FIRST boss would not die to gunfire');
+
+        // A second boss, fought exactly the same way.
+        g.director().invoke('forceWave', 10);
+        await g.step(90);
+        assert.ok(await killBossWithGunfire(),
+            'the SECOND boss took five hundred shots and did not die -- the gun is ' +
+            'still firing at the first one');
+    } finally { g.restore(); }
+});
+
 test('an enemy standing on the pilot can still be shot', async () => {
     const g = boot();
     try {
