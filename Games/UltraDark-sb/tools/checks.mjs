@@ -248,6 +248,148 @@ test('a pilot on auto-aim can kill a boss with no adds on the field', async () =
 });
 
 // ---------------------------------------------------------------------------
+// The screen. All of this used to be world-space sprites and a log line.
+// ---------------------------------------------------------------------------
+
+const uiTexts = (g) => g.ui.elements.filter((e) => e.visible && e.text).map((e) => String(e.text));
+
+test('the HUD reads the run, not just the pilot', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(30);
+        g.director().invoke('forceWave', 7);
+        await g.step(10);
+
+        const texts = uiTexts(g);
+        assert.ok(texts.includes('WAVE'), 'no WAVE row on the HUD');
+        assert.ok(texts.includes('SCORE'), 'no SCORE row on the HUD');
+        assert.ok(texts.includes('CORES'), 'no CORES row on the HUD');
+        assert.ok(texts.includes('HULL'), 'no hull bar on the HUD');
+
+        // The stat rows come off the Director by tag, not forwarded through the
+        // pilot, so this is what proves the `from` wiring works at all.
+        assert.ok(texts.includes('7'), `the wave row does not show the wave: ${texts.join(' ')}`);
+    } finally { g.restore(); }
+});
+
+test('the HUD title becomes the pilot who launched', async () => {
+    const g = boot();
+    try {
+        await g.step(5);
+        g.pilot().invoke('setPilot', 1);          // BLAZE
+        g.director().invoke('forceLaunch');
+        await g.step(10);
+        assert.ok(uiTexts(g).includes('BLAZE'), 'the HUD still says something else');
+    } finally { g.restore(); }
+});
+
+test('a draft card says what it is, in words', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(10);
+        g.director().invoke('forceWave', 1);
+        g.director().invoke('forceBudget', 0);
+        g.swarm().invoke('clearAll');
+        await g.step(20);
+
+        assert.equal(g.director().invoke('getPhase'), 2, 'the draft did not open');
+
+        const texts = uiTexts(g);
+        assert.ok(texts.includes('DRAFT'), 'the board has no heading');
+
+        // Every card carries a real mod name and a real description. Before the
+        // UI globals this was a colour and a row of pips.
+        const names = ['RAPID FEED', 'HEAVY SLUG', 'THRUSTERS', 'PLATING', 'SPLIT SHOT',
+            'LONG BARREL', 'PIERCER', 'VAMPIRE', 'ORBITAL BLADE', 'KINETIC PLATING',
+            'SCAVENGER', 'MAGNETIC', 'ADRENALINE', 'OVERDRIVE CELL', 'SHOCKWAVE',
+            'COLD ROUNDS', 'INCENDIARY', 'REACTIVE ARMOUR', 'REGENERATOR',
+            'GLASS CANNON', 'SWIFT RELOAD', 'TWIN LINK', "DEAD MAN'S TRIGGER", 'CORE TAP'];
+        const shown = texts.filter((t) => names.includes(t));
+        assert.equal(shown.length, 3, `expected three named cards, saw ${shown.length}: ${texts.join(' | ')}`);
+    } finally { g.restore(); }
+});
+
+test('clicking a draft card takes it', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(10);
+        g.director().invoke('forceWave', 1);
+        g.director().invoke('forceBudget', 0);
+        g.swarm().invoke('clearAll');
+        await g.step(20);
+        assert.equal(g.director().invoke('getPhase'), 2, 'the draft did not open');
+
+        const before = g.pilot().invoke('modCount');
+
+        // The middle card sits on the centre of the viewport. A click is a
+        // release inside the element that also went down inside it.
+        g.pointAt(1280 / 2, 720 / 2);
+        g.pointerDown(true);
+        await g.step(2);
+        g.pointerDown(false);
+        await g.step(3);
+
+        assert.ok(g.pilot().invoke('modCount') > before, 'clicking the card granted nothing');
+        assert.notEqual(g.director().invoke('getPhase'), 2, 'the board is still open after a pick');
+    } finally { g.restore(); }
+});
+
+test('escape pauses the run and escape again lets it go', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(60);
+        const wave = g.director().invoke('getWave');
+
+        g.press('Escape');
+        await g.step(2);
+        assert.ok(uiTexts(g).includes('PAUSED'), 'no pause overlay');
+
+        // Paused means the Director stops working, not just that a panel is up.
+        const enemiesWhenPaused = g.swarm().invoke('alive');
+        await g.step(240);
+        assert.equal(g.director().invoke('getWave'), wave, 'the wave moved on while paused');
+        assert.equal(g.swarm().invoke('alive'), enemiesWhenPaused, 'the arena kept filling while paused');
+
+        g.press('Escape');
+        await g.step(2);
+        assert.ok(!uiTexts(g).includes('PAUSED'), 'the overlay stayed up');
+    } finally { g.restore(); }
+});
+
+test('a dead pilot gets an overlay saying so, and R clears it', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(30);
+        for (let i = 0; i < 30; i++) { g.pilot().invoke('hurt', 999); await g.step(40); }
+
+        assert.equal(g.director().invoke('getPhase'), 4);
+        assert.ok(uiTexts(g).includes('RUN OVER'), 'no game-over overlay');
+
+        g.press('R');
+        await g.step(4);
+        assert.ok(uiTexts(g).includes('HANGAR'), 'R did not return to the hangar');
+    } finally { g.restore(); }
+});
+
+test('pausing is refused where it would trap the player', async () => {
+    const g = boot();
+    try {
+        await g.step(10);
+        // The hangar and the game-over screen already own the overlay; pausing
+        // one of them would replace the only thing telling the player what to do.
+        assert.ok(uiTexts(g).includes('HANGAR'));
+        g.press('Escape');
+        await g.step(3);
+        assert.ok(uiTexts(g).includes('HANGAR'), 'Escape replaced the hangar overlay');
+    } finally { g.restore(); }
+});
+
+// ---------------------------------------------------------------------------
 // Mods -- stacking is the design, and deduplication would quietly remove it
 // ---------------------------------------------------------------------------
 
@@ -268,6 +410,25 @@ test('mods stack: the same mod taken twice counts twice', async () => {
         assert.ok(Math.abs(twice - before * 1.12 * 1.12) < 1e-9,
             'stacking is not multiplicative as computeStats declares');
         assert.equal(g.pilot().invoke('modCount'), 2);
+    } finally { g.restore(); }
+});
+
+test('the pilot never reads an undefined stat, however start order falls', async () => {
+    const g = boot();
+    try {
+        // The very first frame: the pilot has found the Upgrades actor but that
+        // script may not have initialised, and a call into it returns undefined.
+        // Anything derived from that is NaN, silently, for the rest of the run --
+        // no error, no log line, and a weapon that does no damage.
+        await g.step(1);
+
+        for (const getter of ['getDamageMul', 'getHealth01', 'getShield01',
+                              'getAbility01', 'getDash01', 'getConsumable01',
+                              'getCoreBonus', 'getMagnet', 'getShockwave', 'getHp']) {
+            const v = Number(g.pilot().invoke(getter));
+            assert.ok(v === v, `${getter} is NaN on the first frame`);
+        }
+        assert.equal(g.pilot().invoke('getDamageMul'), 1, 'damage does not start at x1');
     } finally { g.restore(); }
 });
 

@@ -13,14 +13,11 @@ var smoothSpeed = 6.0;      // how fast the camera catches up (1/sec)
 var leadFactor  = 0.16;     // how far ahead of the ship the view sits
 var leadMax     = 190;      // ...and the cap on that, in px
 
-var shakeDecay  = 5.5;
-
 // ===========================================================================
 // State
 // ===========================================================================
 var player = null;
 var lastX = 0, lastY = 0;
-var shake = 0;
 
 function onStart() {
     player = Scene.findFirstByTag("Player");
@@ -59,17 +56,9 @@ function onLateUpdate(dt) {
     var k = Math.min(1, smoothSpeed * dt);
     actor.transform.x += (targetX - actor.transform.x) * k;
     actor.transform.y += (targetY - actor.transform.y) * k;
-
-    if (shake > 0) {
-        shake -= shakeDecay * dt * shake;
-        if (shake < 0.05) { shake = 0; }
-        actor.transform.x += (Math.random() - 0.5) * shake;
-        actor.transform.y += (Math.random() - 0.5) * shake;
-    }
 }
 
-// Called by anything that wants the view to flinch.
-function addShake(amount) {
-    shake = Math.min(40, shake + (Number(amount) || 0));
-    return shake;
-}
+// No shake here. The `screen-effects` cookie owns it, and owning it in two
+// places is how a camera ends up stuttering: both would write the transform in
+// onLateUpdate and take turns. Effects adds its offset on top of wherever this
+// rig put the camera, and takes it back again next frame.

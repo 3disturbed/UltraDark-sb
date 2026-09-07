@@ -47,12 +47,13 @@ const EXPECT = [
     { match: /^NightOverlay$/,     band: 'dark',  order: 14, what: 'THE DARK' },
 
     { match: /^Fx$/,               band: 'light', order: 15, what: 'muzzle flash and explosions' },
-    { match: /^BarBack\d+$/,       band: 'light', order: 16, what: 'status bar backs' },
-    { match: /^BarFill\d+$/,       band: 'light', order: 17, what: 'status bar fills' },
-    { match: /^CardBorder\d+$/,    band: 'light', order: 18, what: 'draft card borders' },
-    { match: /^Card\d+$/,          band: 'light', order: 19, what: 'draft cards' },
-    { match: /^Pip\d+_\d+$/,       band: 'light', order: 20, what: 'draft card pips' },
 ];
+
+// The HUD and the draft board are not in this ladder any more, and that is the
+// point: they are screen-space UI now, drawn by the UI layer above every sprite
+// there is. What used to need a place in the depth order -- five bars over the
+// pilot's head, three cards and their pips -- needs none, and cannot be put on
+// the wrong side of the dark by accident.
 
 function classify(name) {
     for (const row of EXPECT) { if (row.match.test(name)) { return row; } }
@@ -82,8 +83,9 @@ try {
     g.director().invoke('onBossKilled', 0, 0, 0);        // drops pickups, deterministically
     g.bullets().invoke('fire', 0, 0, 0, 300, 1, 0, 4, 5, 0, 0);
     g.bullets().invoke('fire', 0, 0, 3, 300, 1, 1, 4, 5, 0, 0);
+    g.board().invoke('setHeading', 'DRAFT');
     g.board().invoke('open', 3);
-    for (let i = 0; i < 3; i++) { g.board().invoke('setCard', i, 200, 200, 200, 3); }
+    for (let i = 0; i < 3; i++) { g.board().invoke('setCard', i, 'TEST', 'a line', '', '#ffffff'); }
     await g.step(120);
 
     // ----------------------------------------------------------------------
@@ -159,6 +161,14 @@ try {
 
     if (!floor) { problems.push('no floor was drawn at all'); }
     if (!rows.find((r) => r.what === 'THE DARK')) { problems.push('the dark overlay was never built'); }
+
+    // 5. The HUD and the board must NOT be sprites. If one comes back into the
+    //    world it is a regression to the era before the contract had a viewport.
+    for (const name of ['BarBack0', 'Card0', 'Pip0_0', 'NightOverlay']) {
+        const actor = g.scene.allActors.find((a) => a.name === name && !a.isDestroyed);
+        if (name === 'NightOverlay') { continue; }
+        if (actor) { problems.push(`'${name}' is a world sprite again -- the HUD and the board are screen-space UI now`); }
+    }
 
 } finally {
     g.restore();

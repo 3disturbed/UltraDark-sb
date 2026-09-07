@@ -13,13 +13,16 @@
 // ---------------------------------------------------------------------------
 // What to show
 // ---------------------------------------------------------------------------
-var title      = "";              // "" hides the title row
+var title      = "ULTRADARK";     // "" hides the title row
 var targetTag  = "Player";
 
 // One row per bar: the label, the getter on the player's script, and a colour.
 var bars = [
-    { label: "HP",  source: "getHealth01",  colour: "#c63832" },
-    { label: "STA", source: "getStamina01", colour: "#d8c88a" },
+    { label: "HULL", source: "getHealth01",     colour: "#c63832" },
+    { label: "SHLD", source: "getShield01",     colour: "#4e96d4" },
+    { label: "ABIL", source: "getAbility01",    colour: "#be78ff" },
+    { label: "DASH", source: "getDash01",       colour: "#78d4c0" },
+    { label: "ITEM", source: "getConsumable01", colour: "#78f0c8" },
 ];
 
 // Numeric readouts, drawn above the bars. A bar is a fraction of something; a
@@ -35,7 +38,12 @@ var bars = [
 //       { label: "SCORE", source: "getScore", from: "Director" },
 //       { label: "MULT",  source: "getMult",  from: "Director", prefix: "x", decimals: 1 },
 //   ];
-var stats = [];
+var stats = [
+    { label: "WAVE",  source: "getWave",  from: "Director" },
+    { label: "SCORE", source: "getScore", from: "Director" },
+    { label: "CORES", source: "getCores", from: "Director" },
+    { label: "MULT",  source: "getMult",  from: "Director", prefix: "x", decimals: 2 },
+];
 
 // ---------------------------------------------------------------------------
 // Shape
@@ -43,9 +51,9 @@ var stats = [];
 var anchor      = "topleft";
 var marginX     = 12;
 var marginY     = 12;
-var panelWidth  = 240;
+var panelWidth  = 210;
 var rowHeight   = 14;
-var labelWidth  = 34;
+var labelWidth  = 46;
 var textScale   = 1;
 var titleScale  = 2;
 

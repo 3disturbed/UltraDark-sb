@@ -8,7 +8,7 @@ Install one from the editor's Cookie Jar panel, or ask the assistant — `search
 
 ## What is in the jar
 
-Ten cookies. **The `engines` field is the first thing to check** — a `csharp` cookie is no use
+Thirteen cookies. **The `engines` field is the first thing to check** — a `csharp` cookie is no use
 in a phase 1 HTML5 prototype, which is where every game starts, and a `js` cookie is not drawn in
 a native build.
 
@@ -24,6 +24,9 @@ unchanged in the browser and under Jint. Nothing to compile.
 | **`day-night-cycle`** | A clock that becomes pressure. Publishes a 0–1 darkness curve and a day number for other systems to read, announces each phase once, and dims the world through an overlay pinned to the player. It deliberately decides nothing about what night *means*. |
 | **`wave-director`** | Endless escalating waves, a boss on a cadence, and the stall-breaker that stops a wave being unfinishable. A wave is a *budget*, not a headcount, so it gets harder rather than longer; the budget converts into spawns no faster than they are cleared, which is a pacing decision and a frame-cost ceiling at once. It owns the shape of a run and nothing about its content. |
 | **`projectile-pool`** | Hundreds of bullets in one script over a pool of reused actors — and a swept collision test, because a projectile checked only where it lands walks straight through anything narrower than its own speed. A railgun at 1750 px/s misses every target at every range, silently, and no test on either side of the engine says a word. |
+| **`entity-ledger`** | Forty enemies in one script instead of forty script engines — a row per entity, actors that carry only a sprite and a collider, and the four rules that make a ledger safe: removal swaps, iterate backwards, a cascade must not recurse, and colliders exist so projectiles can find what they hit. |
+| **`stacking-upgrades`** | A bag of upgrades that stack, recomputed from scratch every time and never deduplicated, so two copies are exactly two applications. Effects are a data table rather than a switch, so the cards can read what the maths reads. |
+| **`pickup-drops`** | Coins and hearts on the floor: pooled, timed, blinking before they expire, and magnetised by an upgrade the collector holds. Collecting one is a single `onPickup(kind, value)`. |
 | **`draft-picker`** | Stop the round and ask a question: one of N cards, chosen by number key or by walking into one. In world space because there is no viewport, and said in colour and pips because there is no font. The board knows nothing about what is on the cards. |
 
 ### C# — for the native engine

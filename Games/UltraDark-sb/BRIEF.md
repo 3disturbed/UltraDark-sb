@@ -56,6 +56,24 @@ Three things, in this order:
 Everything else is tuning. Every number that matters is in a labelled block at
 the top of its script.
 
+## What changed once the contract grew a viewport and a font
+
+The first cut of this game had no text anywhere, because the scripting contract
+had none: the HUD was five coloured bars floating over the ship, and a draft card
+was a colour and a row of pips whose meaning only appeared in the log. `UI.panel`,
+`UI.label` and `UI.width` changed what the game could be, so:
+
+- the HUD is a real panel — wave, score, cores, multiplier, and five vitals;
+- a draft card carries the mod's **name**, what it does, its family and how many
+  you already hold, and can be clicked as well as keyed;
+- being hit shakes the camera and flashes the screen, and a boss dying stops time
+  for a moment;
+- Escape pauses, and dying says so on the screen rather than only in a log;
+- mouse aim is exact instead of assuming a 1280x720 window.
+
+The old world-space HUD is gone rather than kept as an option. It was a
+workaround, and workarounds should not outlive the problem.
+
 ## What it deliberately is not
 
 Not co-op. The scripting contract's `Network` is a stub on both engines, so the

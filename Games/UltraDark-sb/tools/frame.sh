@@ -29,19 +29,38 @@ WORK=$(mktemp -d /var/tmp/ultradark-frame.XXXXXX)
 trap 'rm -rf "$WORK"' EXIT
 cp -r "$SRC/." "$WORK/"
 
-# The patch: launch out of the hangar and jump to a wave, once, a second in.
+# The patch: launch out of the hangar, jump to a wave, and keep the pilot alive.
+#
+# The last part matters more than it sounds. Nobody is holding the controls, so
+# the pilot dies in about twenty seconds and every frame after that is a picture
+# of the game-over overlay with a corpse under it -- which is exactly the frame
+# you cannot judge the game from, and the overlay darkens everything on top of
+# whatever you were trying to look at.
 cat >> "$WORK/Scripts/Director.js" <<PATCH
 
 // ---- appended by tools/frame.sh; not part of the game ----------------------
 var __frameArmed = 0;
 var __frameClock = 0;
+var __frameHeal = 0;
 function onLateUpdate(dt) {
-    if (__frameArmed) { return; }
-    __frameClock += dt;
-    if (__frameClock < 1.0) { return; }
-    __frameArmed = 1;
-    forceLaunch();
-    if ($WAVE > 1) { forceWave($WAVE); }
+    if (!__frameArmed) {
+        __frameClock += dt;
+        if (__frameClock < 1.0) { return; }
+        __frameArmed = 1;
+        forceLaunch();
+        if ($WAVE > 1) { forceWave($WAVE); }
+        return;
+    }
+
+    __frameHeal -= dt;
+    if (__frameHeal <= 0) {
+        __frameHeal = 0.5;
+        var p = Scene.findFirstByTag("Player");
+        if (p) {
+            var s = p.getComponent("ScriptComponent");
+            if (s) { s.call("heal", 9999); }
+        }
+    }
 }
 PATCH
 

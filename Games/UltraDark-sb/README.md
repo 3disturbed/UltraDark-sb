@@ -48,13 +48,20 @@ engine, so anything that exists in dozens does not get one.
 | `ProjectilePool.js` | every projectile, pooled and swept. The `projectile-pool` cookie |
 | `Boss.js` | the five bosses. One actor at a time, so one script engine is a fair trade |
 | `Pilot.js` | the ship: eight pilots, mods, abilities, consumables, damage |
-| `DraftBoard.js` | one-of-N cards in world space. The `draft-picker` cookie |
+| `DraftBoard.js` | one-of-N cards, in screen space with real text. The `draft-picker` cookie |
 | `DayNightCycle.js` | the dark. The `day-night-cycle` cookie, driven by wave rather than by a clock |
-| `FloatingBars.js` | the HUD. The `floating-status-bars` cookie |
-| `CameraRig.js` | follow, with a little lead |
+| `Hud.js` | the HUD: run stats, vitals, messages, pause and game-over. The `hud-kit` cookie |
+| `Effects.js` | shake, flash, hit-stop, fade. The `screen-effects` cookie |
+| `Upgrades.js` | the 24 mods and the stats they add up to. The `stacking-upgrades` cookie |
+| `PickupDrops.js` | cores and consumables on the floor. The `pickup-drops` cookie |
+| `CameraRig.js` | follow, with a little lead. It does **not** shake; `screen-effects` owns that |
 
-Three of those were **baked back into the CookieJar** from this game:
-`wave-director`, `projectile-pool` and `draft-picker`.
+Six of those were **baked back into the CookieJar** from this game — `wave-director`,
+`projectile-pool`, `draft-picker`, `entity-ledger`, `stacking-upgrades` and `pickup-drops` — and
+three more are used as they came: `day-night-cycle`, `hud-kit` and `screen-effects`.
+
+`Swarm.js` is the worked example the `entity-ledger` cookie was generalised from; it keeps its
+twelve kinds and the boss-aware `nearestX` that a generic ledger cannot have.
 
 ## Things worth knowing before changing it
 
@@ -77,7 +84,17 @@ climbing. A wipe is the only way a run ends.
 feedback loop on a prototype is "make it faster", and that should be a one-line
 diff.
 
-## Five bugs this game's harnesses found that nothing else could
+**The HUD and the draft are screen-space UI, not sprites.** They were world-space
+before the contract had a viewport or a font, and `tools/draw-order.mjs` now fails
+if one comes back into the world — five bars over the pilot's head cannot be put
+on the wrong side of the dark, but they also cannot say which bar is which.
+
+**Nothing caches an upgrade stat.** `Upgrades.js` recomputes every stat from the
+list of taken mods whenever it changes, and a cross-script read of it needs a
+default — an uninitialised script returns `undefined`, and every number derived
+from that is silently `NaN`.
+
+## Six bugs this game's harnesses found that nothing else could
 
 Each of these passed `validate --strict` and the engine's own 110 tests.
 
@@ -98,10 +115,17 @@ Each of these passed `validate --strict` and the engine's own 110 tests.
 5. **An enemy standing on you was immune to your gun.** Shots left the ship 17 px
    ahead, past the collider of anything in contact. It reads as "sometimes I
    cannot kill the thing on me", and only the slow-cadence pilots ever met it.
+6. **Every pilot stat was `undefined` for a run.** The pilot reads its stats from
+   the upgrades script the moment it *finds* that actor, which is not the moment
+   that actor is ready — and a call into an uninitialised script returns
+   `undefined`, so every derived number was `NaN` with no error anywhere.
 
 ## What is deliberately not here
 
 Not co-op: the contract's `Network` is a stub on both engines, so the lobby,
 invite links, shared multiplier and revives of the original are out of scope and
-the run is one pilot. Not text either — there is no font in the contract, so the
-wave, the score and the draft are told in colour, shape and the log.
+the run is one pilot.
+
+No sound. `Audio.play` and `Audio.playOneShot` are in the contract, but there is
+not a single audio file anywhere in the engine repository or the jar, and a
+shooter's audio is not something to fake with silence.

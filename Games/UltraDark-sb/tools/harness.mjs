@@ -10,6 +10,13 @@
 //               its source, so the boss is an actor with no behaviour
 //   input.touch without it Input.joystickX throws, because the bridge guards
 //               only the first hop of input()?.touch.leftJoystick.value.x
+//   ui          without it every UI.panel/label/bar/button returns null and
+//               warns, so the HUD, the draft board and every screen effect are
+//               absent -- and a game built on them looks fine until you run it
+//   Time        the clock is a module singleton, and a harness that steps a
+//               fixed dt ignores Time.timeScale entirely. Pause and hit-stop
+//               both work by setting it, so a harness that does not honour it
+//               reports that neither does anything
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,7 +29,13 @@ export const repoRoot = path.resolve(gameDir, '../..');
 const engine = await import(path.join(repoRoot, 'html5/src/index.js'));
 export const { deserialize, ScriptComponent, PhysicsSystem2D, Vector2 } = engine;
 
+// UiCanvas is not re-exported from the engine index, so it is imported by path.
+const { UiCanvas } = await import(path.join(repoRoot, 'html5/src/ui/UiCanvas.js'));
+const { Time } = await import(path.join(repoRoot, 'html5/src/core/Time.js'));
+
 export const DT = 1 / 60;
+
+export const VIEWPORT = { width: 1280, height: 720 };
 
 export function boot({ scene: sceneName = 'Scenes/Ultradark.scene' } = {}) {
     const held = new Set();
@@ -59,12 +72,20 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene' } = {}) {
     console.warn = (...a) => logs.push(a.join(' '));
     console.log = (...a) => logs.push(a.join(' '));
 
+    // The clock is a module singleton shared by every boot in a process, so a
+    // test that left timeScale at 0 would freeze the next one.
+    Time.reset();
+
     const scene = deserialize(fs.readFileSync(path.join(gameDir, sceneName), 'utf8'),
                               { onWarning: () => {} });
+
+    const ui = new UiCanvas({ width: VIEWPORT.width, height: VIEWPORT.height });
 
     scene.engine = {
         input,
         audio: null,
+        ui,
+        Time,
         assets: { loadText: async (p) => fs.readFileSync(path.join(gameDir, p), 'utf8') },
     };
     scene.physics2D = new PhysicsSystem2D({ scene, gravity: new Vector2(0, 0) });
@@ -87,12 +108,24 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene' } = {}) {
         return a ? a.getComponents(ScriptComponent)[0] : null;
     };
 
+    // Where the pointer is, and whether it is down, for UI hover and clicks.
+    const pointer = { x: -1, y: -1, down: false };
+
     async function step(frames = 1) {
         for (let i = 0; i < frames; i++) {
-            scene.update(DT);
-            scene.physics2D.fixedStep(DT);
-            scene.fixedUpdate(DT);
-            scene.lateUpdate(DT);
+            ui.setPointer(pointer.x, pointer.y, pointer.down);
+            ui.update();
+
+            // Advance the real clock, then hand the scene the SCALED delta, the
+            // same as the engine host does. A pause is timeScale 0, and a
+            // harness that passes a fixed dt would step straight through it.
+            Time.advance(DT);
+            const dt = Time.deltaTime;
+
+            scene.update(dt);
+            scene.physics2D.fixedStep(dt);
+            scene.fixedUpdate(dt);
+            scene.lateUpdate(dt);
             scene.flushPendingActors();
             pressed.clear();
             // Let a runtime-attached script's loadText settle.
@@ -101,6 +134,7 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene' } = {}) {
     }
 
     function restore() {
+        Time.reset();          // timeScale is a module singleton; a paused test would leak it
         console.error = realError;
         console.warn = realWarn;
         console.log = realLog;
@@ -108,6 +142,13 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene' } = {}) {
 
     return {
         scene, input, errors, logs, find, byTag, scriptOn, step, restore,
+        ui,
+        Time,
+        // Drive the UI pointer: `click(x, y)` presses this frame and releases
+        // next, because a click is a release inside the element that also went
+        // down inside it.
+        pointAt: (x, y) => { pointer.x = x; pointer.y = y; },
+        pointerDown: (on) => { pointer.down = !!on; },
         press: (k) => pressed.add(k),
         hold: (k, on) => { if (on) held.add(k); else held.delete(k); },
         mouse: (b, on) => { if (on) mouseHeld.add(b); else mouseHeld.delete(b); },

@@ -35,6 +35,29 @@ That is the whole coupling: one string per bar. Numbers cross the script boundar
 both engines, which objects do not reliably do — so getters that return a plain number are what
 to write, not one returning a `{hp, stamina}` object.
 
+## Numeric stats
+
+A bar is a fraction of something. A **stat** is a number in its own right — a wave, a score, a
+count of coins — and showing one as a percentage of the largest it has ever been says nothing. So
+they are a separate list, drawn above the bars:
+
+```js
+var stats = [
+    { label: "WAVE",  source: "getWave",  from: "Director" },
+    { label: "SCORE", source: "getScore", from: "Director" },
+    { label: "MULT",  source: "getMult",  from: "Director", prefix: "x", decimals: 2 },
+];
+```
+
+`from` is a **tag**, so a stat comes from whatever script actually owns it rather than being
+forwarded through the player — a run's score belongs to whatever is running the run. Leave it out
+and it reads from the player like a bar does. `prefix`, `suffix` and `decimals` are the formatting;
+thousands are separated for you, because a six-figure score in one run of digits is a number
+nobody can compare to their last one at a glance.
+
+A stat whose script is not in the scene yet is retried each frame rather than dropped, so a
+manager spawned at runtime still lands.
+
 ## The rest of it
 
 ```js
@@ -45,10 +68,20 @@ hud.call("setPaused", true, "PAUSED", "Esc to resume");
 hud.call("setPaused", true, "YOU DIED", "R to start again");
 hud.call("setPaused", false);
 hud.call("isPaused");                                 // 1 or 0
+hud.call("setTitle", "BLAZE");                        // the heading, if you built one
 ```
 
 The overlay is a panel sized to `UI.width` × `UI.height`. There is no "full screen" flag in the
 contract, but there is now a viewport, which is the same thing said plainly.
+
+Calling `setPaused(true, ...)` while it is **already** up swaps the words rather than being
+ignored, because going from one overlay straight to another — game over into a menu, paused into
+dead — is ordinary, and keeping the previous heading is a lie on screen that nothing else will
+correct.
+
+`overlayColour` is eight-digit hex (`#000000cc`) so the overlay can be see-through. Opaque black is
+right for a menu and wrong for anything the player is meant to look at while it is up: a ship to
+choose, a board to read, the arena they are about to go back to.
 
 ## Tuning
 

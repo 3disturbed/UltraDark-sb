@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "entity-ledger",
+  "name": "Entity Ledger",
+  "version": "1.0.0",
+  "summary": "Forty enemies in one script instead of forty script engines — and the four rules that make a ledger safe.",
+  "description": "A ScriptComponent is a script engine, and one per enemy is the single most expensive thing a wave-based game can do to itself. So an entity here is a row in parallel arrays, its actor carries only a sprite and a collider, and one update walks all of them. Spawning, removal, statuses, separation, contact, area damage and queries come with it; behave() is the one function you write. It also carries the four rules that are easy to get wrong and expensive to rediscover: removal swaps, iterate backwards, a cascade must not recurse, and colliders exist so projectiles can find what they hit.",
+  "tags": ["performance", "enemies", "ledger", "pooling", "spawner", "shooter"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["EntityLedger.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put EntityLedger.js on a manager actor and tag it Ledger.",
+    "Fill in the KIND_* arrays: one column entry per kind of thing.",
+    "Write behave(i, dt, nx, ny, dist, speed) -- that is your game; the rest is machinery.",
+    "Implement onEntityKilled(kind, x, y, score) on whatever you set notifyTag to.",
+    "Read the four rules at the top before changing anything that can kill."
+  ]
+}

@@ -1,32 +1,17 @@
 // soak.mjs -- play UltraDark headlessly for minutes of game time and report.
 //
-// The bundled template smoke test runs sixty frames with no physics host and no
-// asset loader. Neither is enough here:
-//
-//   * Bullets.js finds what it hit with Physics.overlapCircle, which returns
-//     nothing at all without a PhysicsSystem2D on the scene. With no physics the
-//     game runs happily and nothing can ever be shot.
-//   * The Boss is attached at RUNTIME with Scene.addComponent(..., "ScriptComponent"),
-//     which loads its source through engine.assets.loadText. With no asset loader
-//     every boss is an actor with no behaviour, and wave 5 never ends.
-//   * Sixty frames is one second. The dark arrives on wave 16.
-//
-// So this gives the scene a real physics world, an asset loader backed by the
-// filesystem, an input device the bot drives, and then plays.
+// The bundled template smoke test runs sixty frames with no host at all. This
+// runs minutes of real play through the same host every other tool here uses
+// (tools/harness.mjs), which is the point: a soak whose host is missing a
+// system is a soak that reports the game works without ever running half of it.
 //
 //   node tools/soak.mjs                 # ~6 minutes of game time
-//   node tools/soak.mjs --minutes 20    # long enough to reach the dark
-//   node tools/soak.mjs --wave 16       # start there instead
+//   node tools/soak.mjs --minutes 20    # a long run
+//   node tools/soak.mjs --wave 14       # start in the dark
 //   node tools/soak.mjs --pilot 3       # fly DAVE
+//   node tools/soak.mjs --no-assist     # let the bot die
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const gameDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const repoRoot = path.resolve(gameDir, '../..');
-const engine = await import(path.join(repoRoot, 'html5/src/index.js'));
-const { deserialize, ScriptComponent, PhysicsSystem2D, Vector2 } = engine;
+import { boot, VIEWPORT } from './harness.mjs';
 
 // ---------------------------------------------------------------------------
 // Arguments
@@ -50,90 +35,20 @@ const verbose = argv.includes('--verbose');
 // off, which is a rough read on how far an indifferent player gets unaided.
 const assist = !argv.includes('--no-assist');
 
-const DT = 1 / 60;
 const totalFrames = Math.round(minutes * 60 * 60);
 
-// ---------------------------------------------------------------------------
-// The input device the bot drives.
-//
-// Shaped exactly like the members ScriptBridge reads, including the touch
-// object -- Input.joystickX reads input().touch.leftJoystick.value.x and only
-// guards the first hop, so a stub without it throws.
-// ---------------------------------------------------------------------------
-const held = new Set();
-const pressed = new Set();
+const g = boot();
+const { scene, errors, logs, find } = g;
+const press = g.press;
+const hold = g.hold;
 
-const input = {
-    mousePosition: { x: 640, y: 360 },
-    mouseDelta: { x: 0, y: 0 },
-    scrollDelta: 0,
-    touch: { touchCount: 0, touches: [], leftJoystick: { value: { x: 0, y: 0 } } },
-    _mouseHeld: new Set(),
-
-    isPressed: () => false,
-    isHeld: () => false,
-    isReleased: () => false,
-    getAxis: () => 0,
-
-    isKeyDown: (k) => held.has(String(k)),
-    isKeyPressed: (k) => pressed.has(String(k)),
-    isKeyReleased: () => false,
-
-    isMouseButtonDown: (b) => input._mouseHeld.has(Number(b)),
-    isMouseButtonPressed: (b) => input._mouseHeld.has(Number(b)),
-    isMouseButtonReleased: () => false,
-};
-
-const press = (key) => pressed.add(key);
-const hold = (key, on) => { if (on) held.add(key); else held.delete(key); };
-
-// ---------------------------------------------------------------------------
-// The scene
-// ---------------------------------------------------------------------------
-const errors = [];
-const logs = [];
-const originalError = console.error;
-const originalLog = console.log;
-console.error = (...a) => errors.push(a.join(' '));
-console.log = (...a) => { const line = a.join(' '); logs.push(line); if (verbose) originalLog(line); };
-
-const sceneFile = path.join(gameDir, 'Scenes/Ultradark.scene');
-const scene = deserialize(fs.readFileSync(sceneFile, 'utf8'), { onWarning: () => {} });
-
-// The asset loader a runtime-attached script needs. Paths are project-relative,
-// the same rule the engine uses when it reads them off disk.
-const assets = {
-    loadText: async (p) => fs.readFileSync(path.join(gameDir, p), 'utf8'),
-};
-
-scene.engine = { input, assets, audio: null };
-scene.physics2D = new PhysicsSystem2D({ scene, gravity: new Vector2(0, 0) });
-
-scene.flushPendingActors();
-
-// Scripts placed in the scene file are fed in directly; anything attached later
-// goes through the loader above.
-for (const actor of scene.allActors) {
-    for (const script of actor.getComponents(ScriptComponent)) {
-        const file = path.join(gameDir, script.scriptPath);
-        if (!fs.existsSync(file)) { errors.push(`missing script ${script.scriptPath}`); continue; }
-        script.setSource(fs.readFileSync(file, 'utf8'));
-    }
-}
-scene.flushPendingActors();
-
-const find = (name) => scene.allActors.find((a) => a.name === name && !a.isDestroyed);
-const scriptOn = (name) => {
-    const a = find(name);
-    return a ? a.getComponents(ScriptComponent)[0] : null;
-};
-
-const director = scriptOn('Director');
-const swarm = scriptOn('Swarm');
-const bullets = scriptOn('Bullets');
-const pilotScript = scriptOn('Player');
+const director = g.director();
+const swarm = g.swarm();
+const bullets = g.bullets();
+const pilotScript = g.pilot();
 if (!director || !swarm || !bullets || !pilotScript) {
-    originalError('soak: a manager script is missing from the scene');
+    g.restore();
+    console.error('soak: a manager script is missing from the scene');
     process.exit(1);
 }
 
@@ -188,7 +103,7 @@ const stats = {
 };
 
 let frame = 0;
-input._mouseHeld.add(0);          // hold fire for the whole run
+g.mouse(0, true);                 // hold fire for the whole run
 
 director.invoke('forceLaunch');
 if (pilotIndex > 0) pilotScript.invoke('setPilot', pilotIndex);
@@ -205,7 +120,6 @@ const t0 = Date.now();
 const baselineActors = scene.allActors.filter((a) => !a.isDestroyed).length;
 
 for (frame = 0; frame < totalFrames; frame++) {
-    pressed.clear();
     steer();
 
     const phase = director.invoke('getPhase');
@@ -229,15 +143,7 @@ for (frame = 0; frame < totalFrames; frame++) {
 
     if (assist && frame % 180 === 0) { pilotScript.invoke('heal', 9999); }
 
-    scene.update(DT);
-    scene.physics2D.fixedStep(DT);
-    scene.fixedUpdate(DT);
-    scene.lateUpdate(DT);
-    scene.flushPendingActors();
-
-    // Let a runtime-attached script's loadText settle; without this the boss
-    // never gets its source and wave 5 never ends.
-    if (frame % 10 === 0) await new Promise((r) => setImmediate(r));
+    await g.step(1);
 
     const wave = director.invoke('getWave');
     const enemies = swarm.invoke('alive');
@@ -267,13 +173,10 @@ swarm.invoke('clearAll');
 bullets.invoke('clearAll');
 const bossLeft = scene.allActors.find((a) => a.tag === 'Boss' && !a.isDestroyed);
 if (bossLeft) { bossLeft.destroy(); }
-for (let i = 0; i < 240; i++) {
-    scene.update(DT); scene.lateUpdate(DT); scene.flushPendingActors();
-}
+await g.step(240);
 const settledActors = scene.allActors.filter((a) => !a.isDestroyed).length;
 
-console.error = originalError;
-console.log = originalLog;
+g.restore();
 
 // ---------------------------------------------------------------------------
 // Report

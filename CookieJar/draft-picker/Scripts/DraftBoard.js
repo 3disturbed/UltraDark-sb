@@ -1,48 +1,54 @@
-// DraftBoard.js -- pick one of N cards, in world space.
+// DraftBoard.js -- pick one of N cards, in screen space, with real text.
 // Attach to a manager actor and tag it "Draft".
 //
-// Between rounds a roguelite stops and asks a question. The contract makes
-// that awkward twice over: there is no viewport, so a card cannot be pinned to
-// the screen, and there is no font, so a card cannot be labelled with words.
+// Between rounds a roguelite stops and asks a question, and the answer has to be
+// readable or it is not a question at all -- it is a guess.
 //
-// Both are answered the same way. The cards are laid out in world space in
-// front of the actor they follow -- correct at any resolution, on a phone, and
-// wherever the camera happens to be -- and a card says what it is in colour and
-// in a row of pips, which is a number you can read at a glance without a font.
+// This used to be world-space sprites labelled with a colour and a row of pips,
+// because the scripting contract had no viewport and no font. It has both now,
+// so a card says what it is in words. Anything that was clever about the old
+// version was a workaround, and workarounds should not outlive the problem.
 //
 // The board knows nothing about what is on the cards. The caller opens it,
-// dresses each slot, and polls for a pick.
+// writes each slot, and polls for a pick.
 //
 //     board.call("open", 3);
-//     board.call("setCard", 0, 255, 200, 80, 2);   // amber, two pips
+//     board.call("setCard", 0, "HEAVY SLUG", "+12% damage", "", "#e24646");
+//     board.call("setFooter", 0, "owned x2");
 //     ...
-//     var picked = board.call("getPicked");        // -1 until something is chosen
+//     var picked = board.call("getPicked");     // -1 until something is chosen
 //     board.call("close");
 
 // ===========================================================================
-// Tuning
+// Tuning -- shape
 // ===========================================================================
-var followTag  = "Player";
-
-var cardW      = 118;
-var cardH      = 150;
-var cardGap    = 26;
-var boardY     = -230;      // how far above the followed actor the row sits
-
-var pipSize    = 13;
-var pipGap     = 5;
-var pipRow     = 5;         // pips per row before wrapping
-var pipTop     = -52;       // pip block offset from the card centre
-
-var walkInRadius = 62;      // walking into a card picks it, for touch and pads
-var walkInDelay  = 0.45;    // ...but not instantly, or you pick on the way in
-
-// Draw order: above everything, including the dark and the status bars.
-var depthCard   = 0.95;
-var depthBorder = 0.94;
-var depthPip    = 0.97;
-
 var maxCards = 6;
+
+var cardW    = 210;
+var cardH    = 168;
+var cardGap  = 18;
+
+var headingY = -150;        // from the middle of the screen
+var cardY    = 0;
+var hintY    = 120;
+
+var titleScale   = 2;
+var bodyScale    = 1;
+var headingScale = 3;
+
+// ===========================================================================
+// Tuning -- palette
+// ===========================================================================
+var cardColour     = "#171a21";
+var cardHover      = "#232833";
+var cardPicked     = "#e8e6e1";
+var stripHeight    = 6;
+var textColour     = "#e8e6e1";
+var dimColour      = "#9a978f";
+var headingColour  = "#e8e6e1";
+
+var heading = "";
+var hint    = "1-9 or click";
 
 // ===========================================================================
 // State
@@ -50,134 +56,126 @@ var maxCards = 6;
 var open01 = 0;
 var count = 0;
 var picked = -1;
-var openTime = 0;
 
-var borders = [], cards = [], cardSprites = [], borderSprites = [];
-var pips = [];              // pips[slot] = array of actors
-var pipCounts = [];
+var slots = [];             // { panel, strip, title, line1, line2, footer, button }
 
-var follow = null;
+var KEYS = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9"];
 
-var KEYS = ["D1", "D2", "D3", "D4", "D5", "D6"];
+var headingLabel = null;
+var hintLabel = null;
 
 // ===========================================================================
 // Lifecycle
 // ===========================================================================
 
 function onStart() {
-    follow = Scene.findFirstByTag(followTag);
     build();
     hideAll();
 }
 
-// Every actor the board will ever need is built once at start and then shown
-// and hidden. Creating them on open would churn the scene at the exact moment
-// the player is looking at it.
+// Every element the board will ever need is built once and then shown and
+// hidden. Creating them on open would allocate at the exact moment the player is
+// looking straight at it.
 function build() {
+    headingLabel = UI.label(0, headingY, "", {
+        anchor: "center", scale: headingScale, tint: headingColour,
+        align: "center", width: 600, visible: false,
+    });
+    hintLabel = UI.label(0, hintY, hint, {
+        anchor: "center", scale: bodyScale, tint: dimColour,
+        align: "center", width: 400, visible: false,
+    });
+
     for (var i = 0; i < maxCards; i++) {
-        var b = Scene.createActor("CardBorder" + i, 0, 0);
-        var c = Scene.createActor("Card" + i, 0, 0);
-        if (!b || !c) { return; }
-        b.tag = "Hud";
-        c.tag = "Hud";
-
-        Scene.addComponent(b, "SpriteRenderer", {
-            Tint: { R: 235, G: 235, B: 245, A: 255 },
-            Size: [cardW + 8, cardH + 8],
-            LayerDepth: depthBorder
+        var panel = UI.panel(0, cardY, cardW, cardH, {
+            anchor: "center", background: cardColour, visible: false,
         });
-        Scene.addComponent(c, "SpriteRenderer", {
-            Tint: { R: 120, G: 120, B: 140, A: 255 },
-            Size: [cardW, cardH],
-            LayerDepth: depthCard
+        var strip = UI.panel(0, cardY, cardW, stripHeight, {
+            anchor: "center", background: "#888888", visible: false,
+        });
+        var title = UI.label(0, cardY, "", {
+            anchor: "center", scale: titleScale, tint: textColour,
+            align: "center", width: cardW, visible: false,
+        });
+        var line1 = UI.label(0, cardY, "", {
+            anchor: "center", scale: bodyScale, tint: dimColour,
+            align: "center", width: cardW, visible: false,
+        });
+        var line2 = UI.label(0, cardY, "", {
+            anchor: "center", scale: bodyScale, tint: dimColour,
+            align: "center", width: cardW, visible: false,
+        });
+        var footer = UI.label(0, cardY, "", {
+            anchor: "center", scale: bodyScale, tint: dimColour,
+            align: "center", width: cardW, visible: false,
         });
 
-        borders.push(b);
-        cards.push(c);
-        borderSprites.push(b.getComponent("SpriteRenderer"));
-        cardSprites.push(c.getComponent("SpriteRenderer"));
+        // The button is the whole card and carries no text of its own: the
+        // labels above it are what the player reads, and this is what they hit.
+        var button = UI.button(0, cardY, cardW, cardH, "", {
+            anchor: "center", background: "#00000000", visible: false,
+        });
 
-        var row = [];
-        for (var p = 0; p < 10; p++) {
-            var pip = Scene.createActor("Pip" + i + "_" + p, 0, 0);
-            if (!pip) { break; }
-            pip.tag = "Hud";
-            Scene.addComponent(pip, "SpriteRenderer", {
-                Tint: { R: 20, G: 20, B: 26, A: 255 },
-                Size: [pipSize, pipSize],
-                LayerDepth: depthPip
-            });
-            row.push(pip);
-        }
-        pips.push(row);
-        pipCounts.push(0);
+        slots.push({
+            panel: panel, strip: strip, title: title,
+            line1: line1, line2: line2, footer: footer, button: button,
+        });
     }
 }
 
 function onUpdate(dt) {
     if (!open01) { return; }
-    openTime += dt;
-
-    if (!follow || follow.active !== true) { follow = Scene.findFirstByTag(followTag); }
 
     layout();
-
     if (picked >= 0) { return; }
 
     for (var i = 0; i < count; i++) {
         if (Input.isKeyPressed(KEYS[i])) { pick(i); return; }
-    }
-
-    if (openTime > walkInDelay && follow) {
-        for (var j = 0; j < count; j++) {
-            var dx = follow.transform.x - cards[j].transform.x;
-            var dy = follow.transform.y - cards[j].transform.y;
-            if (dx * dx + dy * dy < walkInRadius * walkInRadius) { pick(j); return; }
-        }
+        if (slots[i].button && slots[i].button.clicked) { pick(i); return; }
     }
 }
 
 function pick(slot) {
     picked = slot;
-    // The chosen card goes white so the choice is visibly registered before
-    // the caller closes the board.
-    if (borderSprites[slot]) { borderSprites[slot].tint = { R: 255, G: 255, B: 255, A: 255 }; }
+    // The chosen card goes bright before the caller closes the board, so the
+    // choice is visibly registered rather than the row just vanishing.
+    if (slots[slot].panel) { slots[slot].panel.background = cardPicked; }
+    if (slots[slot].title) { slots[slot].title.tint = cardColour; }
 }
 
 // ===========================================================================
-// Layout -- centred on the followed actor, so it is always on screen
+// Layout -- centred on the viewport, which can change size at any moment
 // ===========================================================================
 
 function layout() {
-    var cx = follow ? follow.transform.x : 0;
-    var cy = (follow ? follow.transform.y : 0) + boardY;
-
     var span = count * cardW + (count - 1) * cardGap;
-    var startX = cx - span / 2 + cardW / 2;
+    var startX = -span / 2 + cardW / 2;
 
     for (var i = 0; i < count; i++) {
+        var s = slots[i];
         var x = startX + i * (cardW + cardGap);
-        cards[i].transform.x = x;
-        cards[i].transform.y = cy;
-        borders[i].transform.x = x;
-        borders[i].transform.y = cy;
-        layoutPips(i, x, cy);
-    }
-}
 
-function layoutPips(slot, x, y) {
-    var row = pips[slot];
-    var count2 = pipCounts[slot];
-    for (var p = 0; p < row.length; p++) {
-        if (p >= count2) { row[p].active = false; continue; }
-        row[p].active = true;
-        var s = row[p].getComponent("SpriteRenderer");
-        var col = p % pipRow;
-        var line = Math.floor(p / pipRow);
-        var wide = Math.min(count2, pipRow);
-        row[p].transform.x = x + (col - (wide - 1) / 2) * (pipSize + pipGap);
-        row[p].transform.y = y + pipTop + line * (pipSize + pipGap);
-        if (s) { s.tint = { R: 18, G: 18, B: 24, A: 255 }; }
+        s.panel.x = x;
+        s.panel.y = cardY;
+        s.button.x = x;
+        s.button.y = cardY;
+
+        s.strip.x = x;
+        s.strip.y = cardY - cardH / 2 + stripHeight / 2;
+
+        s.title.x = x;
+        s.title.y = cardY - cardH / 2 + 26;
+        s.line1.x = x;
+        s.line1.y = cardY - 10;
+        s.line2.x = x;
+        s.line2.y = cardY + 6;
+        s.footer.x = x;
+        s.footer.y = cardY + cardH / 2 - 22;
+
+        // Hover is the only thing that says a card is clickable at all.
+        if (picked < 0) {
+            s.panel.background = s.button.hovered ? cardHover : cardColour;
+        }
     }
 }
 
@@ -189,25 +187,62 @@ function open(howMany) {
     count = Math.max(1, Math.min(maxCards, Number(howMany) | 0));
     picked = -1;
     open01 = 1;
-    openTime = 0;
 
-    for (var i = 0; i < count; i++) {
-        setVisible(i, 1);
-        if (borderSprites[i]) { borderSprites[i].tint = { R: 235, G: 235, B: 245, A: 255 }; }
-    }
+    for (var i = 0; i < count; i++) { setVisible(i, 1); }
     for (var j = count; j < maxCards; j++) { setVisible(j, 0); }
+
+    if (headingLabel) { headingLabel.visible = heading !== ""; }
+    if (hintLabel) { hintLabel.visible = true; }
 
     layout();
     return count;
 }
 
-function setCard(slot, r, g, b, pipCount) {
+/** Title, up to two body lines, and the colour of the strip along the top. */
+function setCard(slot, title, line1, line2, colour) {
     var i = Number(slot) | 0;
     if (i < 0 || i >= maxCards) { return 0; }
-    pipCounts[i] = Math.max(0, Math.min(10, Number(pipCount) | 0));
-    if (cardSprites[i]) {
-        cardSprites[i].tint = { R: Number(r) | 0, G: Number(g) | 0, B: Number(b) | 0, A: 255 };
+    var s = slots[i];
+
+    s.title.text = String(title === undefined ? "" : title);
+    s.line1.text = String(line1 === undefined ? "" : line1);
+    s.line2.text = String(line2 === undefined ? "" : line2);
+    s.strip.background = String(colour === undefined ? "#888888" : colour);
+    s.title.tint = textColour;
+    s.panel.background = cardColour;
+    return 1;
+}
+
+/** The bottom line: a price, how many you already own, a warning. */
+function setFooter(slot, text) {
+    var i = Number(slot) | 0;
+    if (i < 0 || i >= maxCards) { return 0; }
+    slots[i].footer.text = String(text === undefined ? "" : text);
+    return 1;
+}
+
+/** Dim a card the player cannot take, without hiding what it is. */
+function setEnabled(slot, on) {
+    var i = Number(slot) | 0;
+    if (i < 0 || i >= maxCards) { return 0; }
+    var live = (Number(on) | 0) ? 1 : 0;
+    slots[i].title.tint = live ? textColour : dimColour;
+    slots[i].footer.tint = live ? dimColour : "#7a4040";
+    return 1;
+}
+
+function setHeading(text) {
+    heading = String(text === undefined ? "" : text);
+    if (headingLabel) {
+        headingLabel.text = heading;
+        headingLabel.visible = open01 ? (heading !== "") : false;
     }
+    return 1;
+}
+
+function setHint(text) {
+    hint = String(text === undefined ? "" : text);
+    if (hintLabel) { hintLabel.text = hint; }
     return 1;
 }
 
@@ -223,23 +258,26 @@ function close() {
 
 function hideAll() {
     for (var i = 0; i < maxCards; i++) { setVisible(i, 0); }
+    if (headingLabel) { headingLabel.visible = false; }
+    if (hintLabel) { hintLabel.visible = false; }
 }
 
-// Shown and hidden by `active`, not by a transparent tint.
-//
-// Alpha 0 hides a sprite in the browser and does NOT reliably hide one in the
-// native renderer, so a board built at start and "hidden" this way left a white
-// card sitting at the world origin, on top of the pilot, for the whole run. It
-// is invisible in every test and in the web build, and it is the first thing you
-// see in a native one. `active` means the same thing to both engines.
+// Shown and hidden by `visible`, which is what a UI element has. The world-space
+// version of this cookie had to use `active` on the actor, because a transparent
+// tint hides a sprite in the browser and not natively.
 function setVisible(i, on) {
-    if (i >= cards.length) { return; }
+    if (i >= slots.length) { return; }
     var live = on ? true : false;
-
-    if (cards[i])   { cards[i].active = live; }
-    if (borders[i]) { borders[i].active = live; }
-
-    var row = pips[i];
-    if (!row) { return; }
-    for (var p = 0; p < row.length; p++) { row[p].active = live; }
+    var s = slots[i];
+    s.panel.visible = live;
+    s.strip.visible = live;
+    s.title.visible = live;
+    s.line1.visible = live;
+    s.line2.visible = live;
+    s.footer.visible = live;
+    s.button.visible = live;
 }
+
+// Drops this script's elements only, so a scene change cannot leave a board on
+// screen and cannot take another script's UI with it.
+function onDestroy() { UI.clear(); }

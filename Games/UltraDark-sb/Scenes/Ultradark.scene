@@ -185,7 +185,64 @@
             {
               "type": "ScriptComponent",
               "properties": {
-                "ScriptPath": "Scripts/FloatingBars.js"
+                "ScriptPath": "Scripts/Hud.js"
+              }
+            }
+          ],
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
+        },
+        {
+          "name": "Effects",
+          "tag": "Effects",
+          "components": [
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/Effects.js"
+              }
+            }
+          ],
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
+        },
+        {
+          "name": "Upgrades",
+          "tag": "Upgrades",
+          "components": [
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/Upgrades.js"
+              }
+            }
+          ],
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
+        },
+        {
+          "name": "Pickups",
+          "tag": "Pickups",
+          "components": [
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/PickupDrops.js"
               }
             }
           ],

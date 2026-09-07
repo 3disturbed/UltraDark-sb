@@ -100,9 +100,10 @@ var depthEffect  = 0.85;     // ABOVE the dark: effects are the light source
 // ===========================================================================
 // The mods -- 24, in six families of four.
 //
-// A card has no text on it, because the contract has no font. Its family is
-// the colour and its member is a row of pips, so "orange, three pips" is a
-// name you can read across the arena. The log carries the words.
+// A card carries its own name and what it does. The family colour is still
+// there, but as a grouping rather than as the identity -- before the UI globals
+// landed a card was a colour and a row of pips, and "orange, three pips" was the
+// closest thing to a name the contract could draw.
 // ===========================================================================
 var MOD_NAME = [
     "RAPID FEED", "HEAVY SLUG", "THRUSTERS", "PLATING",
@@ -113,14 +114,25 @@ var MOD_NAME = [
     "SWIFT RELOAD", "TWIN LINK", "DEAD MAN'S TRIGGER", "CORE TAP"
 ];
 
+// What each one actually does, in the fewest words that are still true. The
+// cards have room for one line of this and the player has about a second.
+var MOD_DESC = [
+    "-8% weapon cooldown",     "+12% damage",             "+9% move speed",
+    "+18 max hull",            "+1 projectile, wider",    "+18% shot speed, range",
+    "+1 pierce",               "2% of damage as hull",    "+1 orbiting blade",
+    "dash deals damage",       "+25% core drops",         "pickups fly to you",
+    "+22% damage under 40%",   "+5% core drops",          "kills explode",
+    "shots slow on hit",       "shots burn on hit",       "being hit grants shield",
+    "+0.6 hull per second",    "+30% damage, -12 hull",   "-12% ability cooldown",
+    "every 5th shot free, x2", "shots explode at range",  "+1 core per 12 kills"
+];
+
 // family: 0 offence 1 rate 2 defence 3 mobility 4 elemental 5 economy
 var MOD_FAMILY = [1, 0, 3, 2, 1, 1, 5, 2, 3, 3, 5, 3, 0, 5, 4, 4, 4, 2, 2, 0, 1, 0, 4, 5];
-var MOD_PIP    = [1, 1, 1, 1, 2, 3, 4, 4, 4, 2, 1, 3, 3, 2, 3, 1, 2, 3, 2, 2, 4, 4, 4, 3];
 var MOD_COST   = [26, 28, 22, 24, 34, 26, 34, 30, 40, 26, 24, 22, 28, 22, 32, 26, 28, 28, 26, 36, 26, 38, 34, 26];
 
-var FAM_R = [226, 255, 110, 90,  190, 255];
-var FAM_G = [70,  160, 210, 220, 110, 205];
-var FAM_B = [70,  60,  120, 255, 245, 80 ];
+var FAM_HEX  = ["#e24646", "#ffa03c", "#6ed278", "#5adcff", "#be6ef5", "#ffcd50"];
+var FAM_NAME = ["OFFENCE", "FIRE RATE", "DEFENCE", "MOBILITY", "ELEMENTAL", "ECONOMY"];
 
 var MOD_COUNT = 24;
 
@@ -152,16 +164,12 @@ var shopIds = [-1, -1, -1, -1];
 var shopTimer = 0;
 
 var swarm = null, bullets = null, pilot = null, player = null;
-var clock = null, board = null, waves = null;
+var clock = null, board = null, waves = null, hud = null, fx = null, pickups = null;
 
 // effect pool
 var fxActor = [], fxSprite = [], fxLife = [], fxMax = [], fxSize = [];
 var fxN = 0;
 var fxPool = [];
-
-// pickups: 0 = core, 1 = consumable
-var puActor = [], puKind = [], puValue = [], puLife = [];
-var puN = 0;
 
 // deployables: 0 = pylon, 1 = turret
 var dpActor = [], dpKind = [], dpLife = [], dpTimer = [], dpDmg = [];
@@ -185,8 +193,9 @@ function onStart() {
     log("  SHIFT          dash");
     log("  SPACE          ability   F    consumable");
     log("  1-8            pick a pilot in the hangar");
-    log("  ENTER          launch");
+    log("  ESC            pause");
     log("=====================================");
+    if (hud) { hud.call("setPaused", true, "HANGAR", "1-8 pick a pilot   ENTER to launch"); }
 }
 
 function resolve() {
@@ -195,14 +204,18 @@ function resolve() {
     if (!clock)   { var c = Scene.findFirstByTag("Clock");   if (c) { clock = c.getComponent("ScriptComponent"); } }
     if (!board)   { var d = Scene.findFirstByTag("Draft");   if (d) { board = d.getComponent("ScriptComponent"); } }
     if (!waves)   { var wv = Scene.findFirstByTag("Waves");  if (wv) { waves = wv.getComponent("ScriptComponent"); } }
+    if (!hud)     { var h = Scene.findFirstByTag("Hud");     if (h) { hud = h.getComponent("ScriptComponent"); } }
+    if (!fx)      { var e = Scene.findFirstByTag("Effects"); if (e) { fx = e.getComponent("ScriptComponent"); } }
+    if (!pickups) { var pk = Scene.findFirstByTag("Pickups"); if (pk) { pickups = pk.getComponent("ScriptComponent"); } }
     if (!player)  { player = Scene.findFirstByTag("Player"); if (player) { pilot = player.getComponent("ScriptComponent"); } }
 }
 
 function onUpdate(dt) {
     resolve();
 
+    if (handlePause()) { return; }
+
     tickEffects(dt);
-    tickPickups(dt);
     tickDeployables(dt);
     driveDark();
 
@@ -211,6 +224,34 @@ function onUpdate(dt) {
     else if (phase === P_DRAFT)  { runDraft(dt); }
     else if (phase === P_SHOP)   { runShop(dt); }
     else                         { runDead(dt); }
+}
+
+// ===========================================================================
+// Pause
+//
+// The HUD draws the overlay; deciding what pauses is this script's job, which
+// is what its AGENT.md says. Escape both ways, and never from the hangar or the
+// game-over screen -- both already own the overlay, and pausing one of those
+// leaves no way back.
+//
+// This owns Time.timeScale while paused. So does screen-effects' hit-stop; the
+// two cannot overlap in practice because nothing is dealing damage while the
+// game is stopped.
+// ===========================================================================
+var paused = 0;
+
+function handlePause() {
+    if (phase === P_HANGAR || phase === P_DEAD) { return 0; }
+
+    if (Input.isKeyPressed("Escape")) {
+        paused = paused ? 0 : 1;
+        Time.timeScale = paused ? 0 : 1;
+        if (hud) {
+            if (paused) { hud.call("setPaused", true, "PAUSED", "Esc to resume"); }
+            else { hud.call("setPaused", false); }
+        }
+    }
+    return paused;
 }
 
 // ===========================================================================
@@ -315,7 +356,12 @@ function launch() {
     score = 0;
     cores = 0;
     mult = 1;
-    if (pilot) { log("LAUNCH -- " + pilot.call("getPilotName")); }
+    if (pilot) {
+        log("LAUNCH -- " + pilot.call("getPilotName"));
+        if (hud) { hud.call("setTitle", pilot.call("getPilotName")); }
+    }
+    if (hud) { hud.call("setPaused", false); hud.call("say", "LAUNCH"); }
+    if (fx) { fx.call("fadeFrom", 0.5); }
     if (waves) { waves.call("begin"); }
 }
 
@@ -360,6 +406,12 @@ function onWaveStart(w, isBoss) {
     phase = P_WAVE;
     if (swarm) { swarm.call("setHunt", 0); }
     log(isBoss ? ("=== WAVE " + wave + " -- BOSS ===") : ("=== WAVE " + wave + " ==="));
+
+    if (hud) { hud.call("say", isBoss ? ("WAVE " + wave + "  --  BOSS") : ("WAVE " + wave)); }
+    if (isBoss && fx) { fx.call("flash", "#ff4030", 0.18); fx.call("shake", 12); }
+
+    // The wave the title arrives on says so, once.
+    if (wave === darkFullWave && hud) { hud.call("say", "THE DARK"); }
     return 1;
 }
 
@@ -497,9 +549,10 @@ function onBossKilled(kind, x, y) {
     score += 2000 * wave;
     log("BOSS DOWN -- +" + reward + " cores");
 
-    for (var i = 0; i < 5; i++) {
-        dropPickup(1, x + rand(-90, 90), y + rand(-90, 90), Math.floor(Math.random() * 5));
-    }
+    if (fx) { fx.call("impact", 24); }
+    if (hud) { hud.call("say", "BOSS DOWN  --  +" + reward + " CORES"); }
+
+    if (pickups) { pickups.call("burst", 1, x, y, Math.floor(Math.random() * 5), 5, 90); }
     return 1;
 }
 
@@ -537,65 +590,27 @@ function addCores(amount) {
 
 // ===========================================================================
 // Pickups
+//
+// The `pickup-drops` cookie owns the drops themselves: the pool, the lifetime,
+// the blink before one expires and the magnet, whose reach comes from the
+// pilot's MAGNETIC stacks. All this end has to do is say what one is worth.
 // ===========================================================================
 
 function dropPickup(kind, x, y, value) {
-    var a = Scene.createActor("Pickup", x, y);
-    if (!a) { return; }
-    a.tag = "Fx";
-    var isCore = (kind === 0);
-    Scene.addComponent(a, "SpriteRenderer", {
-        Tint: isCore ? { R: 255, G: 210, B: 90, A: 255 } : { R: 120, G: 240, B: 200, A: 255 },
-        Size: isCore ? [13, 13] : [17, 17],
-        LayerDepth: depthPickup
-    });
-    puActor[puN] = a;
-    puKind[puN] = kind;
-    puValue[puN] = value;
-    puLife[puN] = 22;
-    puN++;
+    if (!pickups) { return 0; }
+    return pickups.call("drop", kind, x, y, value);
 }
 
-function tickPickups(dt) {
-    if (!player) { return; }
-    var px = player.transform.x, py = player.transform.y;
-    var magnet = pilot ? pilot.call("getMagnet") : 0;
-    var reach = 34 + magnet * 130;
-
-    for (var i = puN - 1; i >= 0; i--) {
-        var a = puActor[i];
-        if (!a || a.active !== true) { removePickup(i); continue; }
-
-        puLife[i] -= dt;
-        if (puLife[i] <= 0) { a.destroy(); removePickup(i); continue; }
-
-        var dx = px - a.transform.x, dy = py - a.transform.y;
-        var d2 = dx * dx + dy * dy;
-
-        if (magnet > 0 && d2 < reach * reach && d2 > 1) {
-            var d = Math.sqrt(d2);
-            a.transform.x += (dx / d) * 420 * dt;
-            a.transform.y += (dy / d) * 420 * dt;
-        }
-
-        if (d2 < 34 * 34) {
-            if (puKind[i] === 0) { addCores(puValue[i]); }
-            else if (pilot) { pilot.call("giveConsumable", puValue[i]); }
-            spawnEffect(a.transform.x, a.transform.y, 26, 255, 240, 180, 0.12);
-            a.destroy();
-            removePickup(i);
-        }
+// The one call the cookie makes back, once per pickup collected.
+function onPickup(kind, value) {
+    if (kind === 0) {
+        addCores(value);
+    } else if (pilot) {
+        pilot.call("giveConsumable", value);
     }
-}
-
-function removePickup(i) {
-    var last = puN - 1;
-    if (i !== last) {
-        puActor[i] = puActor[last]; puKind[i] = puKind[last];
-        puValue[i] = puValue[last]; puLife[i] = puLife[last];
-    }
-    puN--;
-    puActor[puN] = null;
+    spawnEffect(player ? player.transform.x : 0, player ? player.transform.y : 0,
+                26, 255, 240, 180, 0.12);
+    return 1;
 }
 
 // ===========================================================================
@@ -769,17 +784,22 @@ function openDraft() {
     draftIds[2] = randomMod(draftIds[0], draftIds[1]);
 
     if (board) {
+        board.call("setHeading", "DRAFT");
+        board.call("setHint", "1 2 3, or click a card");
         board.call("open", 3);
         for (var i = 0; i < 3; i++) {
             var id = draftIds[i];
             var f = MOD_FAMILY[id];
-            board.call("setCard", i, FAM_R[f], FAM_G[f], FAM_B[f], MOD_PIP[id]);
+            board.call("setCard", i, MOD_NAME[id], MOD_DESC[id], FAM_NAME[f], FAM_HEX[f]);
+            board.call("setFooter", i, ownedLabel(id));
+            board.call("setEnabled", i, 1);
         }
     }
 
     for (var k = 0; k < grantPerIntermission; k++) { grantMod(); }
 
-    log("--- DRAFT --- 1/2/3, or walk into one");
+    if (hud) { hud.call("say", "DRAFT  --  pick one"); }
+    log("--- DRAFT --- 1/2/3, or click one");
     for (var j = 0; j < 3; j++) { log("   " + (j + 1) + ": " + MOD_NAME[draftIds[j]]); }
 }
 
@@ -789,7 +809,15 @@ function grantMod() {
     var id = randomMod(-1, -1);
     if (pilot) { pilot.call("addMod", id); }
     log("SALVAGE: " + MOD_NAME[id]);
+    if (hud) { hud.call("say", "SALVAGE  " + MOD_NAME[id]); }
     return id;
+}
+
+// Stacking is the whole design, so a card says what taking it again would mean.
+function ownedLabel(id) {
+    if (!pilot) { return ""; }
+    var owned = pilot.call("countMod", id);
+    return owned > 0 ? ("owned x" + owned) : "";
 }
 
 function randomMod(notA, notB) {
@@ -807,6 +835,7 @@ function runDraft(dt) {
         var id = draftIds[picked];
         if (pilot) { pilot.call("addMod", id); }
         log("TAKEN: " + MOD_NAME[id]);
+        if (hud) { hud.call("say", MOD_NAME[id]); }
         if (board) { board.call("close"); }
         nextWave();
         return;
@@ -831,6 +860,7 @@ function openShop() {
     phase = P_SHOP;
     shopTimer = shopSeconds;
     rollShop();
+    if (hud) { hud.call("say", "CORE SHOP  --  ENTER to leave"); }
     log("--- CORE SHOP --- " + cores + " cores. 1-4 to buy, ENTER to leave.");
 }
 
@@ -839,16 +869,16 @@ function rollShop() {
         shopIds[i] = randomMod(shopIds[(i + 1) % 4], shopIds[(i + 2) % 4]);
     }
     if (board) {
+        board.call("setHeading", "CORE SHOP  --  " + cores);
+        board.call("setHint", "1-4 to buy, ENTER to leave");
         board.call("open", 4);
         for (var j = 0; j < 4; j++) {
             var id = shopIds[j];
             var f = MOD_FAMILY[id];
-            var affordable = cores >= MOD_COST[id];
-            board.call("setCard", j,
-                       affordable ? FAM_R[f] : Math.floor(FAM_R[f] * 0.35),
-                       affordable ? FAM_G[f] : Math.floor(FAM_G[f] * 0.35),
-                       affordable ? FAM_B[f] : Math.floor(FAM_B[f] * 0.35),
-                       MOD_PIP[id]);
+            var affordable = cores >= MOD_COST[id] ? 1 : 0;
+            board.call("setCard", j, MOD_NAME[id], MOD_DESC[id], FAM_NAME[f], FAM_HEX[f]);
+            board.call("setFooter", j, MOD_COST[id] + " cores   " + ownedLabel(id));
+            board.call("setEnabled", j, affordable);
         }
     }
     for (var k = 0; k < 4; k++) {
@@ -875,12 +905,14 @@ function buy(slot) {
     var id = shopIds[slot];
     if (cores < MOD_COST[id]) {
         log("Not enough cores for " + MOD_NAME[id] + " (" + MOD_COST[id] + ")");
+        if (hud) { hud.call("say", "NOT ENOUGH CORES"); }
         rollShop();
         return;
     }
     cores -= MOD_COST[id];
     if (pilot) { pilot.call("addMod", id); }
     log("BOUGHT: " + MOD_NAME[id] + "  --  " + cores + " cores left");
+    if (hud) { hud.call("say", "BOUGHT " + MOD_NAME[id]); }
     rollShop();
 }
 
@@ -901,6 +933,12 @@ function notePlayerDead() {
     log("  best  " + best);
     log("  R to fly again");
     log("=====================================");
+
+    if (fx) { fx.call("impact", 30); }
+    if (hud) {
+        hud.call("setPaused", true, "RUN OVER",
+                 "wave " + wave + "   score " + score + "   R to fly again");
+    }
     return 1;
 }
 
@@ -913,7 +951,7 @@ function runDead(dt) {
     if (waves)   { waves.call("stop"); }
     if (bossActor) { bossActor.destroy(); bossActor = null; }
 
-    for (var i = puN - 1; i >= 0; i--) { if (puActor[i]) { puActor[i].destroy(); } removePickup(i); }
+    if (pickups) { pickups.call("clearAll"); }
     for (var j = dpN - 1; j >= 0; j--) { if (dpActor[j]) { dpActor[j].destroy(); } removeDeploy(j); }
 
     darkOverride = -1;
@@ -922,10 +960,13 @@ function runDead(dt) {
     if (pilot) { pilot.call("resetRun"); }
 
     phase = P_HANGAR;
+    paused = 0;
+    Time.timeScale = 1;
     wave = 0;
     score = 0;
     cores = 0;
     buildHangar();
+    if (hud) { hud.call("setPaused", true, "HANGAR", "1-8 pick a pilot   ENTER to launch"); }
     log("--- HANGAR --- 1-8 to pick a pilot, ENTER to launch");
 }
 

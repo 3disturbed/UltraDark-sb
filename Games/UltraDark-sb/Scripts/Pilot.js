@@ -27,22 +27,17 @@ var hitIFrames    = 0.55;   // grace after taking a hit
 // ===========================================================================
 // Tuning -- aiming
 //
-// The scripting contract exposes no viewport, so a script cannot convert a
-// screen pixel into a world position. Auto-aim is therefore the primary aim:
-// it is exact at every resolution, works with a pad and works on a phone.
+// Mouse aim is exact now. `UI.width`/`UI.height` are the viewport the contract
+// went years without, so a screen pixel converts to a world position properly
+// instead of against a hardcoded 1280x720 that drifted the moment anyone
+// resized the window.
 //
-// Mouse aim is offered as a refinement and needs one assumption -- that the
-// canvas is DESIGN_W x DESIGN_H at zoom 1, which is what ProjectSettings asks
-// for on both engines. Resize the window and it drifts, which is why TAB
-// switches back and why auto is the default.
+// Auto-aim stays as the default anyway, because it is what makes the game
+// playable on a pad and on a phone, and TAB switches. Auto also refuses to
+// target a phased ghost, which a mouse cannot know.
 // ===========================================================================
 var aimMode       = 0;      // 0 = auto (nearest), 1 = mouse
-// Wider than the longest enemy range (the sniper's 640), so auto-aim can always
-// answer whatever is shooting at you. Under that, a sniper outranges the pilot's
-// own aim and there is nothing the player can do about it.
-var aimRange      = 700;
-var DESIGN_W      = 1280;
-var DESIGN_H      = 720;
+var aimRange      = 700;    // wider than the sniper's 640, so auto can answer one
 
 // ===========================================================================
 // Tuning -- the eight pilots
@@ -108,7 +103,6 @@ var shotCount = 0;
 var dashTimer = 0, dashCdTimer = 0, iFrames = 0;
 var abilityTimer = 0, abilityActive = 0;
 
-var mods = [];              // ids, duplicates kept
 var consumables = [];       // up to 3 ids
 
 // Derived stats, recomputed by computeStats() whenever mods change.
@@ -116,6 +110,7 @@ var sDmg = 1, sCd = 1, sSpeed = 1, sProjSpd = 1, sPierce = 0, sPellets = 0;
 var sLifesteal = 0, sRegen = 0, sAbilityCdr = 1, sCoreBonus = 1;
 var sBlades = 0, sShockwave = 0, sChill = 0, sBurn = 0, sDeadMan = 0;
 var sKineticDash = 0, sReactive = 0, sAdrenaline = 0, sCoreTap = 0, sMagnet = 0;
+var sTwinLink = 0;
 
 var bladeActors = [];
 var bladeAngle = 0;
@@ -129,7 +124,8 @@ var lastMouseX = 0, lastMouseY = 0;
 var regenCarry = 0;
 var killsForCoreTap = 0;
 
-var bullets = null, swarm = null, director = null, camera = null;
+var bullets = null, swarm = null, director = null, camera = null, fx = null;
+var upgrades = null;
 
 var burnTint = 0;
 
@@ -138,6 +134,7 @@ var burnTint = 0;
 // ===========================================================================
 
 function onStart() {
+    resolveManagers();
     hullSprite = actor.getComponent("SpriteRenderer");
 
     // A square hull makes rotation invisible. The nose is a second, smaller
@@ -161,6 +158,11 @@ function resolveManagers() {
     if (!swarm)    { var s = Scene.findFirstByTag("Swarm");    if (s) { swarm    = s.getComponent("ScriptComponent"); } }
     if (!director) { var d = Scene.findFirstByTag("Director"); if (d) { director = d.getComponent("ScriptComponent"); } }
     if (!camera)   { var c = Scene.findFirstByTag("MainCamera"); if (c) { camera = c; } }
+    if (!fx)       { var e = Scene.findFirstByTag("Effects"); if (e) { fx = e.getComponent("ScriptComponent"); } }
+    if (!upgrades) {
+        var u = Scene.findFirstByTag("Upgrades");
+        if (u) { upgrades = u.getComponent("ScriptComponent"); computeStats(); }
+    }
 }
 
 function onUpdate(dt) {
@@ -306,9 +308,11 @@ function readAim(dt) {
     lastMouseY = my;
 
     if (aimMode === 1 && mouseIdle < 2.5 && camera) {
-        // Screen to world, under the design-resolution assumption above.
-        var wx = camera.transform.x + (mx - DESIGN_W / 2);
-        var wy = camera.transform.y + (my - DESIGN_H / 2);
+        // Screen to world: the camera sits at the middle of the viewport, and a
+        // pixel is 1/zoom world units away from it.
+        var zoom = cameraZoom();
+        var wx = camera.transform.x + (mx - UI.width / 2) / zoom;
+        var wy = camera.transform.y + (my - UI.height / 2) / zoom;
         aimAngle = Math.atan2(wy - actor.transform.y, wx - actor.transform.x);
         return;
     }
@@ -325,6 +329,13 @@ function readAim(dt) {
 
     // Nothing to shoot: face the way we are going, so the ship never reads dead.
     if (vx * vx + vy * vy > 400) { aimAngle = Math.atan2(vy, vx); }
+}
+
+function cameraZoom() {
+    if (!camera) { return 1; }
+    var cam = camera.getComponent("Camera2D");
+    var z = cam ? Number(cam.zoom) : 1;
+    return (z > 0) ? z : 1;
 }
 
 function faceNose() {
@@ -353,7 +364,7 @@ function fire() {
 
     // TWIN LINK: every fifth shot is free and doubled.
     var twin = 0;
-    if (sPellets >= 0 && hasMod(21) && shotCount % 5 === 0) { twin = 1; shotTimer = 0; }
+    if (sTwinLink > 0 && shotCount % 5 === 0) { twin = 1; shotTimer = 0; }
 
     var dmgMul = sDmg * (twin ? 2 : 1);
     if (sAdrenaline > 0 && hp < hpMax * 0.4) { dmgMul *= 1 + 0.22 * sAdrenaline; }
@@ -538,6 +549,13 @@ function hurt(amount) {
         iFrames = hitIFrames;
         if (sReactive > 0) { shield = Math.min(shieldMax, shield + 12 * sReactive); }
         if (director) { director.call("onPlayerHit"); }
+
+        // Scaled by what it cost: a scratch is a nudge, a big hit is a jolt, and
+        // dropping below a quarter health flashes red rather than white.
+        if (fx) {
+            fx.call("shake", Math.min(18, 4 + dmg * 0.4));
+            fx.call("flash", hp < hpMax * 0.25 ? "#ff3020" : "#ffffff", 0.09);
+        }
     }
 
     if (hp <= 0) { hp = 0; die(); }
@@ -570,6 +588,7 @@ function die() {
     if (!alive) { return; }
     alive = 0;
     log("PILOT DOWN");
+    if (fx) { fx.call("impact", 26); }
     if (director) { director.call("notePlayerDead"); }
 }
 
@@ -614,67 +633,62 @@ function spinBlades(dt) {
 // ===========================================================================
 
 function addMod(id) {
-    mods.push(Number(id) | 0);       // duplicates kept: stacking IS the design
+    if (!upgrades) { return 0; }
+    upgrades.call("add", id);        // duplicates kept: stacking IS the design
     computeStats();
-    return mods.length;
+    return upgrades.call("total");
 }
 
-function hasMod(id) {
-    for (var i = 0; i < mods.length; i++) { if (mods[i] === id) { return 1; } }
-    return 0;
+function hasMod(id)   { return upgrades ? upgrades.call("has", id) : 0; }
+function countMod(id) { return upgrades ? upgrades.call("count", id) : 0; }
+function modCount()   { return upgrades ? upgrades.call("total") : 0; }
+
+// Every stat is read from the `stacking-upgrades` cookie, which recomputes them
+// from the list of taken mods whenever it changes. Nothing is accumulated here,
+// so a stack is always exactly N applications and nothing can drift.
+// A cross-script call to a script that has not initialised yet returns
+// undefined, and script start order between two actors in the same scene is not
+// something to rely on. Without a default here the pilot's very first
+// computeStats -- which runs the moment the Upgrades actor is *found*, not the
+// moment it is ready -- writes undefined into every stat and leaves it there
+// until the next mod is taken.
+function num(value, fallback) {
+    var v = Number(value);
+    return (v === v) ? v : fallback;
 }
 
-function countMod(id) {
-    var n = 0;
-    for (var i = 0; i < mods.length; i++) { if (mods[i] === id) { n++; } }
-    return n;
-}
-
-function modCount() { return mods.length; }
-
-// Every stat is derived here, from the mod list, every time it changes. Nothing
-// mutates a stat anywhere else, so a stack is always exactly N applications.
 function computeStats() {
-    sDmg = 1; sCd = 1; sSpeed = 1; sProjSpd = 1; sPierce = 0; sPellets = 0;
-    sLifesteal = 0; sRegen = 0; sAbilityCdr = 1; sCoreBonus = 1;
-    sBlades = 0; sShockwave = 0; sChill = 0; sBurn = 0; sDeadMan = 0;
-    sKineticDash = 0; sReactive = 0; sAdrenaline = 0; sCoreTap = 0; sMagnet = 0;
+    if (!upgrades) { return; }
 
-    var bonusHp = 0;
+    sDmg        = num(upgrades.call("mul",  "damage"),     1);
+    sCd         = num(upgrades.call("mul",  "cooldown"),   1);
+    sSpeed      = num(upgrades.call("mul",  "speed"),      1);
+    sProjSpd    = num(upgrades.call("mul",  "projSpeed"),  1);
+    sCoreBonus  = num(upgrades.call("mul",  "coreBonus"),  1);
+    sAbilityCdr = num(upgrades.call("mul",  "abilityCdr"), 1);
 
-    for (var i = 0; i < mods.length; i++) {
-        var m = mods[i];
-        if      (m === 0)  { sCd *= 0.92; }
-        else if (m === 1)  { sDmg *= 1.12; }
-        else if (m === 2)  { sSpeed *= 1.09; }
-        else if (m === 3)  { bonusHp += 18; }
-        else if (m === 4)  { sPellets += 1; }
-        else if (m === 5)  { sProjSpd *= 1.18; }
-        else if (m === 6)  { sPierce += 1; }
-        else if (m === 7)  { sLifesteal += 1; }
-        else if (m === 8)  { sBlades += 1; }
-        else if (m === 9)  { sKineticDash += 1; }
-        else if (m === 10) { sCoreBonus *= 1.25; }
-        else if (m === 11) { sMagnet += 1; }
-        else if (m === 12) { sAdrenaline += 1; }
-        else if (m === 13) { sCoreBonus *= 1.05; }
-        else if (m === 14) { sShockwave += 1; }
-        else if (m === 15) { sChill += 1; }
-        else if (m === 16) { sBurn += 1; }
-        else if (m === 17) { sReactive += 1; }
-        else if (m === 18) { sRegen += 0.6; }
-        else if (m === 19) { sDmg *= 1.30; bonusHp -= 12; }
-        else if (m === 20) { sAbilityCdr *= 0.88; }
-        else if (m === 22) { sDeadMan += 1; }
-        else if (m === 23) { sCoreTap += 1; }
-    }
+    sPierce      = num(upgrades.call("stat", "pierce"),     0);
+    sPellets     = num(upgrades.call("stat", "pellets"),    0);
+    sLifesteal   = num(upgrades.call("stat", "lifesteal"),  0);
+    sRegen       = num(upgrades.call("stat", "regen"),      0);
+    sBlades      = num(upgrades.call("stat", "blades"),     0);
+    sShockwave   = num(upgrades.call("stat", "shockwave"),  0);
+    sChill       = num(upgrades.call("stat", "chill"),      0);
+    sBurn        = num(upgrades.call("stat", "burn"),       0);
+    sDeadMan     = num(upgrades.call("stat", "deadMan"),    0);
+    sKineticDash = num(upgrades.call("stat", "kinetic"),    0);
+    sReactive    = num(upgrades.call("stat", "reactive"),   0);
+    sAdrenaline  = num(upgrades.call("stat", "adrenaline"), 0);
+    sCoreTap     = num(upgrades.call("stat", "coreTap"),    0);
+    sMagnet      = num(upgrades.call("stat", "magnet"),     0);
+    sTwinLink    = num(upgrades.call("stat", "twinLink"),   0);
 
-    var newMax = Math.max(20, PILOT_HP[pilot] + bonusHp);
+    // Max health is the one that has to be re-derived rather than read: gaining
+    // it should also grant it, or PLATING is a bar that got longer and emptier.
+    var newMax = Math.max(20, PILOT_HP[pilot] + num(upgrades.call("stat", "maxHp"), 0));
     if (newMax > hpMax) { hp += newMax - hpMax; }
     hpMax = newMax;
     if (hp > hpMax) { hp = hpMax; }
-
-    if (sCd < 0.25) { sCd = 0.25; }      // a floor, so cooldown stacking cannot reach zero
 }
 
 // ===========================================================================
@@ -699,7 +713,7 @@ function getPilotName() { return PILOT_NAME[pilot]; }
 
 // Full reset between runs, without reloading the scene.
 function resetRun() {
-    mods = [];
+    if (upgrades) { upgrades.call("clearAll"); }
     consumables = [];
     shotCount = 0;
     shield = 0;
@@ -730,8 +744,3 @@ function getCoreBonus()   { return sCoreBonus; }
 function getMagnet()      { return sMagnet; }
 function getDamageMul()   { return sDmg; }
 
-// Forwarded from the Director so one FloatingBars can show the whole HUD: the
-// cookie reads every bar off a single target script, and the pilot is the
-// actor the bars follow.
-function getMult01()      { return director ? director.call("getMult01") : 0; }
-function getCores01()     { return director ? director.call("getCores01") : 0; }
