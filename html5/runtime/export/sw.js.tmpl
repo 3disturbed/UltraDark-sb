@@ -19,7 +19,47 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-    if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) return;
+    const request = event.request;
+    if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
+
+    // The PAGE is network-first, everything else is cache-first.
+    //
+    // Cache-first for a navigation is how a player ends up running a build that
+    // does not exist: the old worker serves the old index.html and the old
+    // engine out of its cache, while any file whose path is NEW -- a script
+    // added since that build -- misses the cache and is fetched fresh. The
+    // result is one generation's engine running another generation's scripts,
+    // which fails in ways neither build has ever failed in.
+    //
+    // Going to the network for the page first means a deploy is picked up on
+    // the next load, and the falling-back-to-cache keeps it working offline,
+    // which is the only reason any of this is here.
+    if (request.mode === "navigate") {
+        event.respondWith(
+            fetch(request)
+                .then((response) => {
+                    const copy = response.clone();
+                    caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+                    return response;
+                })
+                .catch(() => caches.match(request, { ignoreSearch: true })
+                    .then((cached) => cached ?? caches.match("./index.html"))));
+        return;
+    }
+
+    // A cache miss on a same-origin file means this cache is not the build the
+    // page came from. Serving it from the network anyway is what mixes the two,
+    // so the response is put into the cache under this generation's name and the
+    // two stay together.
     event.respondWith(
-        caches.match(event.request, { ignoreSearch: true }).then((cached) => cached ?? fetch(event.request)));
+        caches.match(request, { ignoreSearch: true }).then((cached) => {
+            if (cached) return cached;
+            return fetch(request).then((response) => {
+                if (response.ok) {
+                    const copy = response.clone();
+                    caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+                }
+                return response;
+            });
+        }));
 });
