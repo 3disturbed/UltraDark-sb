@@ -8,7 +8,7 @@ Install one from the editor's Cookie Jar panel, or ask the assistant — `search
 
 ## What is in the jar
 
-Fifteen cookies. **The `engines` field is the first thing to check** — a `csharp` cookie is no use
+Eighteen cookies. **The `engines` field is the first thing to check** — a `csharp` cookie is no use
 in a phase 1 HTML5 prototype, which is where every game starts, and a `js` cookie is not drawn in
 a native build.
 
@@ -30,6 +30,9 @@ unchanged in the browser and under Jint. Nothing to compile.
 | **`hud-kit`** | The HUD in screen space, with real text: a panel of labelled bars and formatted stats that read themselves off your scripts, a message line, a pause/game-over overlay, and boss bars that appear and vanish with the actor they are measuring. What used to be five coloured rectangles floating over the player's head. |
 | **`screen-effects`** | Shake, flash, fade and hit-stop — the four cheapest things that change how a hit feels. Runs in `onLateUpdate` so it offsets the camera-follow instead of fighting it, and takes back last frame's offset before adding this one's, which is the difference between a shake and a slow drift away from the thing you are following. |
 | **`draft-picker`** | Stop the round and ask a question: one of N cards, chosen by number key or by walking into one. In world space because there is no viewport, and said in colour and pips because there is no font. The board knows nothing about what is on the cards. |
+| **`depth-2-5d`** | A top-down world with a near side and a far side. Flat things keep a fixed band; standing things sort by where their **feet** are, which is the one rule that lets a player walk behind the far wall of a room and in front of the near one. Height is a pivot trick — one sprite hung upward from its footprint — so the picture rises and the collider never moves. |
+| **`breakable-walls`** | Chop a hole through a wall without paying thirty actors per wall for destructibility nobody has used yet. A wall is one actor until it is hit, then a grid of chunks that each keep a collider, under a hard ceiling — a mechanic with no upper bound degrades over twenty minutes and looks like a memory leak. |
+| **`top-down-driving`** | Get in, drive, run things over, get out — without any other system learning that cars exist. The rider stays the player, so camera follow, targeting and noise are untouched. Steering scales with speed, which is the single line separating driving from sliding a box; the engine noise is what stops a car being a free upgrade. |
 
 ### C# — for the native engine
 

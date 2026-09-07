@@ -189,14 +189,23 @@ export class Quaternion {
         if (f.lengthSquared < 1e-12) return Quaternion.identity;
 
         let u = Vector3.from(up).normalize();
-        let r = Vector3.cross(u, f);
+        let r = Vector3.cross(f, u);
         if (r.lengthSquared < 1e-9) {
             // forward and up are parallel; pick any perpendicular axis.
             u = Math.abs(f.y) > 0.99 ? Vector3.unitZ : Vector3.unitY;
-            r = Vector3.cross(u, f);
+            r = Vector3.cross(f, u);
         }
         r.normalize();
-        u = Vector3.cross(f, r).normalize();
+        u = Vector3.cross(r, f).normalize();
+
+        // The order of both crosses is load-bearing, and getting either the
+        // wrong way round is silent. The rows below have to form a RIGHT-handed
+        // basis -- det(r, u, -f) = +1. With `u = cross(f, r)` the determinant is
+        // -1 for every input, whichever way `r` is taken: the matrix is a
+        // reflection, the extraction below reads a non-unit quaternion out of it,
+        // and what comes back is a 180-degree roll that ignores `forward`
+        // entirely. A camera asked to look down at the ground kept staring at
+        // the horizon, and nothing anywhere threw.
 
         // Build from the rotation matrix whose columns are (right, up, -forward),
         // matching MonoGame's -Z forward convention.

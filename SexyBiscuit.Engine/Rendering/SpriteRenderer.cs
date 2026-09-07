@@ -70,24 +70,33 @@ public class SpriteRenderer : Component
     public SpriteEffects Effects { get; set; } = SpriteEffects.None;
 
     /// <summary>
-    /// Draw order within the batch. In the browser engine, higher is nearer the
-    /// camera: 0 = back, 1 = front.
+    /// Draw order within the batch. Higher is nearer the camera: 0 = back,
+    /// 1 = front, on both engines.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The browser sorts on this; <b>this engine currently does not</b>. Measured
-    /// with <c>Games/DepthProbe</c>, three runs whose depths and creation order
-    /// disagree in every combination: the sprite created last is in front every
-    /// time, whatever the depths say. The batch is opened with
-    /// <see cref="SpriteSortMode.BackToFront"/> in <c>RenderSystem2D.Begin</c>, so
-    /// why the sort does not take is not yet understood — do not treat this
-    /// summary as describing native behaviour until it is.
+    /// This was not always true, and the note that said so outlived the fix. The
+    /// batch used to open with <see cref="SpriteSortMode.BackToFront"/>, which in
+    /// MonoGame draws the <i>highest</i> depth first and therefore puts it at the
+    /// back — the exact inverse of the browser, whose painter's-order pass draws
+    /// ascending and leaves the highest depth on top. Worse, the 2D pass went
+    /// through a bare <c>SpriteBatch.Begin()</c>, so no sort ran at all and the
+    /// sprite created last simply won.
     /// </para>
     /// <para>
-    /// Until then a project that must look the same on both engines has to create
-    /// its actors back-to-front as well as depth them back-to-front. Whichever way
-    /// it is settled, both engines have to move together: a picture is the one
-    /// thing neither the validator nor a headless test can check.
+    /// Both are fixed: the scene is drawn through <c>RenderSystem2D</c>, whose
+    /// <c>SortMode</c> is <see cref="SpriteSortMode.FrontToBack"/> — ascending by
+    /// depth, highest drawn last, matching the browser. Re-measured with
+    /// <c>Games/DepthProbe</c> on 2026-09-07: a red sprite created <i>first</i> at
+    /// depth 0.90 fills the window over a blue one created after it at 0.10.
+    /// </para>
+    /// <para>
+    /// This matters more than it looks. A game that sorts by position — anything
+    /// top-down where a character walks in front of one wall and behind the next —
+    /// cannot express that in creation order, because the character is created
+    /// once and the relationship changes every step. It needs the depth to be
+    /// honoured, and now it is. <c>SpriteSortModeTests</c> pins the direction;
+    /// both engines have to move together if it is ever changed again.
     /// </para>
     /// </remarks>
     public float LayerDepth { get; set; } = 0f;
@@ -186,6 +195,11 @@ public class SpriteRenderer : Component
 
     public override void Draw(SpriteBatch sb)
     {
+        // Off screen: nothing to submit. A pass with no camera does not cull at
+        // all, so a tool or a test that draws with an identity transform still
+        // gets every sprite.
+        if (!RenderSystem2D.IsVisible(Actor.Transform.Position, CullRadius())) return;
+
         // No art yet: a tinted box, which is what the browser engine has always
         // drawn here. Every bundled template relies on it — their actors carry a
         // SpriteRenderer with nothing but a Tint — so returning early was why a
@@ -210,6 +224,37 @@ public class SpriteRenderer : Component
             DrawSliced(sb, position, rotation, scale);
         else
             DrawNormal(sb, position, rotation, scale);
+    }
+
+    /// <summary>
+    /// A radius around the actor's position that this sprite cannot draw outside.
+    /// Public so a game with its own culling or spatial index can use the same
+    /// bound the renderer does, rather than a second guess at it.
+    /// </summary>
+    /// <remarks>
+    /// It has to be the distance to the FURTHEST corner, not half the size, and
+    /// that depends on the pivot: a pivot of (0.5, 1) hangs the whole sprite
+    /// above the actor, which is exactly how the 2.5D games extrude a wall out of
+    /// one rectangle. Measuring from the centre would cull those the moment their
+    /// footprint left the screen and take the visible half of the wall with it.
+    /// Rotation is covered by taking the corner distance rather than the extents.
+    /// </remarks>
+    public float CullRadius()
+    {
+        Vector2 size = Texture == null
+            ? Size
+            : new Vector2((SourceRect ?? Texture.Bounds).Width, (SourceRect ?? Texture.Bounds).Height);
+
+        Vector2 scale = Actor.Transform.Scale;
+        float w = MathF.Abs(size.X * scale.X);
+        float h = MathF.Abs(size.Y * scale.Y);
+
+        // The pivot splits each axis; whichever side is longer is the one that
+        // can reach off screen.
+        float reachX = w * MathF.Max(Pivot.X, 1f - Pivot.X);
+        float reachY = h * MathF.Max(Pivot.Y, 1f - Pivot.Y);
+
+        return MathF.Sqrt(reachX * reachX + reachY * reachY);
     }
 
     private void DrawNormal(SpriteBatch sb, Vector2 position, float rotation, Vector2 scale)

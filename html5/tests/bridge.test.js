@@ -207,3 +207,45 @@ test('an invoke made before the script has loaded runs once it has, before onSta
     assert.equal(script.invoke('configure', 9), undefined);
     assert.equal(script.invoke('get')[1], 9, 'once loaded, invoke is immediate');
 });
+
+test('a destroyed actor is not active', () => {
+    // `active` is the ONLY liveness signal a script has: the contract has no
+    // `isDestroyed`. So it has to be honest about both halves of what the engine
+    // itself checks, which is `isActive && !destroyed` everywhere internally.
+    //
+    // It was not. `isActive` is a plain field and destroy() never cleared it, so
+    // a script holding a reference to something long gone read `active === true`
+    // forever. The shape that breaks is the common one:
+    //
+    //     if (!thing || thing.active !== true) { thing = Scene.findFirstByTag(...); }
+    //
+    // The guard never fires and the script goes on talking to a corpse. In
+    // UltraDark-sb that made every boss after the first immune to the player's
+    // gun, because the projectile pool's cached boss script belonged to the
+    // previous one. It read exactly like a balance problem.
+    const scene = new Scene('liveness');
+    const actor = scene.addActor(new Actor('Boss'));
+    scene.flushPendingActors();
+
+    try {
+        const proxy = wrapActor(actor);
+        assert.equal(proxy.active, true, 'a live actor is active');
+
+        actor.destroy();
+        scene.flushPendingActors();
+
+        assert.equal(proxy.active, false,
+            'a reference held across a destroy must report inactive, not stale truth');
+
+        // Switched off is a different thing from gone, and both read false.
+        const other = scene.addActor(new Actor('Switched'));
+        scene.flushPendingActors();
+        const off = wrapActor(other);
+        other.isActive = false;
+        assert.equal(off.active, false, 'a deactivated actor is inactive');
+        other.isActive = true;
+        assert.equal(off.active, true, 'and can be switched back on');
+    } finally {
+        scene.destroy();
+    }
+});

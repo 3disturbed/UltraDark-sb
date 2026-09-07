@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "id": "depth-2-5d",
+  "name": "Depth 2.5D",
+  "version": "1.0.0",
+  "summary": "A top-down world with a near side and a far side: one depth rule, and walls whose picture has height while their collider does not.",
+  "description": "A flat top-down game gives each kind of thing a fixed depth, so a wall is always behind the player or always in front, and it reads as a diagram. This replaces that with one rule -- flat things keep a band, standing things sort by where their feet are -- and the extrusion that goes with it. Height is a pivot trick: one sprite sized [w, h + height] and hung upward from the footprint, so the picture rises and the collider never moves. Comes with the flat bands, cap tracking so a demolished wall takes its roof with it, and the four failures that are invisible to every gate: orphaned top faces, overlays parked inside the standing band, footprints read off the extruded sprite, and extruded things that rotate.",
+  "tags": ["2.5d", "top-down", "depth", "sorting", "rendering", "height", "gta"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["Depth25D.js", "StandUpright.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put Depth25D.js on a manager actor and tag it Depth.",
+    "Set worldSize to your map's tallest coordinate -- everything else is a ratio of it.",
+    "Build scenery through standing() and floors through flat(), instead of creating sprites directly.",
+    "Put StandUpright.js on anything that moves; static things are depthed once when built.",
+    "Move any full-screen overlay to overlayBand() -- 0.8 is now the middle of the world.",
+    "Destroy standing actors with demolish(), or their top faces stay in the air."
+  ]
+}

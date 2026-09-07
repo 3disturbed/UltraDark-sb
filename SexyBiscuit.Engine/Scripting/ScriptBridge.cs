@@ -195,8 +195,10 @@ public sealed class ScriptBridge
             _engine);
 
         // actor.active (get/set)
+        // `IsActive && !IsDestroyed`, which is what every internal check in the
+        // engine already uses. See WrapActorAsProxy for why.
         Accessor(obj, "active",
-            getter: (_, _) => Bool(_actor.IsActive),
+            getter: (_, _) => Bool(_actor.IsActive && !_actor.IsDestroyed),
             setter: (_, args) => { _actor.IsActive = TypeConverter.ToBoolean(args.At(0)); return JsValue.Undefined; },
             _engine);
 
@@ -334,11 +336,38 @@ public sealed class ScriptBridge
             setter: (_, args) => { var e = t.EulerAngles; t.EulerAngles = new Vector3(e.X, e.Y, Num(args.At(0))); return JsValue.Undefined; },
             _engine);
 
+        // Scale, which the 2D transform has had all along and this one did not.
+        // Without it a script can place a primitive but not size one, and every
+        // mesh in the contract is a UNIT cube, sphere or cylinder -- so a world
+        // built from script was a field of one-metre boxes and no way to make a
+        // wall out of them.
+        Accessor(obj, "scaleX",
+            getter: (_, _) => new JsNumber(t.LocalScale.X),
+            setter: (_, args) => { var v = t.LocalScale; t.LocalScale = new Vector3(Num(args.At(0)), v.Y, v.Z); return JsValue.Undefined; },
+            _engine);
+        Accessor(obj, "scaleY",
+            getter: (_, _) => new JsNumber(t.LocalScale.Y),
+            setter: (_, args) => { var v = t.LocalScale; t.LocalScale = new Vector3(v.X, Num(args.At(0)), v.Z); return JsValue.Undefined; },
+            _engine);
+        Accessor(obj, "scaleZ",
+            getter: (_, _) => new JsNumber(t.LocalScale.Z),
+            setter: (_, args) => { var v = t.LocalScale; t.LocalScale = new Vector3(v.X, v.Y, Num(args.At(0))); return JsValue.Undefined; },
+            _engine);
+
         obj.Set("lookAt", Fn("lookAt", (_, args) =>
         {
             t.LookAt(new Vector3(Num(args.At(0)), Num(args.At(1)), Num(args.At(2))));
             return JsValue.Undefined;
         }, length: 3));
+
+        // Everything at once, which is what building a world actually does. Three
+        // separate setters each rebuild the world matrix; this rebuilds it once.
+        obj.Set("set", Fn("set", (_, args) =>
+        {
+            t.Position   = new Vector3(Num(args.At(0)), Num(args.At(1)), Num(args.At(2)));
+            t.LocalScale = new Vector3(Num(args.At(3), 1f), Num(args.At(4), 1f), Num(args.At(5), 1f));
+            return JsValue.Undefined;
+        }, length: 6));
 
         return obj;
     }
@@ -1101,10 +1130,48 @@ public sealed class ScriptBridge
             setter: (_, args) => { actor.Tag = args.At(0).ToString(); return JsValue.Undefined; },
             _engine);
 
+        // A DESTROYED actor is not active, whatever its IsActive flag still says.
+        //
+        // `IsActive` is an ordinary field and Destroy() does not clear it, so a
+        // script holding a reference to something that has since been destroyed
+        // read `active === true` forever. Every internal check in the engine is
+        // `!IsActive || _destroyed`; the script API exposed only half of that,
+        // and `active` is the ONLY liveness signal a script has -- there is no
+        // `isDestroyed` in the contract.
+        //
+        // What that costs is not a crash. A script caches a reference, guards it
+        // with `if (!thing || thing.active !== true) refresh()`, and the guard
+        // never fires: it keeps talking to a corpse. In UltraDark-sb every boss
+        // after the first took no damage from the player's gun, because the
+        // projectile pool's cached boss script belonged to the boss before it.
+        // It read exactly like a balance problem.
         Accessor(obj, "active",
-            getter: (_, _) => Bool(actor.IsActive),
+            getter: (_, _) => Bool(actor.IsActive && !actor.IsDestroyed),
             setter: (_, args) => { actor.IsActive = TypeConverter.ToBoolean(args.At(0)); return JsValue.Undefined; },
             _engine);
+
+        // actor.transform3d, exactly as the script's OWN actor has had it.
+        //
+        // Without this a script could move itself in 3D but not anything it
+        // created, so a world built from script -- which is how any world worth
+        // tuning is built -- could not be placed in 3D at all. The proxy is
+        // cached per actor rather than per call, because setting x, y and z
+        // reads this property three times.
+        Transform3D? cached3D = null;
+        ObjectInstance? cached3DProxy = null;
+        Accessor(obj, "transform3d",
+            getter: (_, _) =>
+            {
+                var t3 = actor.GetComponent<Transform3D>();
+                if (t3 == null) return JsValue.Null;
+                if (!ReferenceEquals(t3, cached3D) || cached3DProxy == null)
+                {
+                    cached3D = t3;
+                    cached3DProxy = BuildTransform3DProxy(t3);
+                }
+                return cached3DProxy;
+            },
+            setter: null, _engine);
 
         // Nested transform sub-object with x/y/rotation accessors
         var tfObj = NewObj();

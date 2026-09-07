@@ -98,6 +98,22 @@
       "lookAt": {
         "kind": "fn",
         "shared": true
+      },
+      "scaleX": {
+        "kind": "prop",
+        "shared": true
+      },
+      "scaleY": {
+        "kind": "prop",
+        "shared": true
+      },
+      "scaleZ": {
+        "kind": "prop",
+        "shared": true
+      },
+      "set": {
+        "kind": "fn",
+        "shared": true
       }
     },
     "Input": {
@@ -443,6 +459,10 @@
       "shared": true
     },
     "transform": {
+      "kind": "prop",
+      "shared": true
+    },
+    "transform3d": {
       "kind": "prop",
       "shared": true
     },

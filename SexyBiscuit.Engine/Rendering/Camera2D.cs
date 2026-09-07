@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using SexyBiscuit.Engine.Core;
+using SexyBiscuit.Engine.UI;   // RectangleF
 
 namespace SexyBiscuit.Engine.Rendering;
 
@@ -155,6 +156,31 @@ public class Camera2D : Component
              * Matrix.CreateRotationZ(-camRot)
              * Matrix.CreateScale(_zoom, _zoom, 1f)
              * Matrix.CreateTranslation(viewport.X * 0.5f, viewport.Y * 0.5f, 0f);
+    }
+
+    /// <summary>
+    /// The world-space rectangle this camera can currently see, with a margin.
+    /// </summary>
+    /// <remarks>
+    /// Conservative on purpose, and in three ways: the half-extent is the
+    /// viewport's own diagonal rather than its width and height, so any camera
+    /// rotation or shake angle is already covered; the zoom divides it; and a
+    /// margin is added on top. Nothing that could appear on screen may ever fall
+    /// outside this rectangle — a cull that is slightly too generous costs a few
+    /// sprites, and one that is slightly too tight makes the world flicker at the
+    /// edge of the window, which is far harder to recognise as a culling bug.
+    /// </remarks>
+    /// <param name="gd">The device whose viewport is being drawn into.</param>
+    /// <param name="margin">Extra world units on every side.</param>
+    public RectangleF VisibleWorldBounds(GraphicsDevice gd, float margin = 64f)
+    {
+        Vector2 camPos = Actor.Transform.Position + _shakeOffset;
+
+        float halfW = gd.Viewport.Width * 0.5f;
+        float halfH = gd.Viewport.Height * 0.5f;
+        float reach = MathF.Sqrt(halfW * halfW + halfH * halfH) / MathF.Max(_zoom, 0.0001f) + margin;
+
+        return new RectangleF(camPos.X - reach, camPos.Y - reach, reach * 2f, reach * 2f);
     }
 
     // -------------------------------------------------------------------------

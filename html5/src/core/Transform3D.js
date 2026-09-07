@@ -11,11 +11,23 @@
 // -----------------------------------------------------------------------------
 
 import { Component } from './Component.js';
+import { registerComponent } from './TypeRegistry.js';
+import { PropertyType as P } from './PropertyTypes.js';
 import { Vector3, Quaternion, Matrix4 } from '../math/index.js';
 
 /** Position, rotation and scale in 3D, with a parent/child hierarchy. */
 export class Transform3D extends Component {
-    static schema = {};
+    // The native Transform3D is serialised by reflection over its public
+    // properties, so a `.scene` there could always author a 3D transform. Here
+    // the schema was empty, so it could not: a scene file's Transform3D loaded
+    // as a component with nothing in it, and every 3D scene had to script its
+    // own camera into place on the first frame. Same names as the C# side, which
+    // matches property keys case-insensitively, so one scene file feeds both.
+    static schema = {
+        localPosition:    { type: P.Vector3, default: [0, 0, 0] },
+        localEulerAngles: { type: P.Vector3, default: [0, 0, 0] },
+        localScale:       { type: P.Vector3, default: [1, 1, 1] },
+    };
 
     constructor() {
         super();
@@ -222,3 +234,16 @@ export class Transform3D extends Component {
         return `Transform3D(pos=${this._localPosition}, euler=${this.localEulerAngles})`;
     }
 }
+
+// Registered, unlike the 2D Transform, because unlike the 2D Transform this one
+// is OPTIONAL: an actor has it only if something 3D put it there. That makes it
+// a component a scene file or a script can ask for by name — and the native
+// engine, which resolves component types by reflection, always could. The
+// browser could not, so `Scene.addComponent(a, 'Transform3D', {})` worked in a
+// native build and failed silently in the browser: the actor got no transform,
+// MeshRenderer made its own during awake(), and the script's attempt to place
+// the thing wrote to null. A whole world in a heap at the origin.
+registerComponent(Transform3D, {
+    category: 'Core',
+    summary: 'Position, rotation and scale in three dimensions.',
+});
