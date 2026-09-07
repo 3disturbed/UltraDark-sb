@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "id": "wave-director",
+  "name": "Wave Director",
+  "version": "1.0.0",
+  "summary": "Endless escalating waves, a boss on a cadence, and the stall-breaker that stops a wave being unfinishable.",
+  "description": "Owns the shape of a run and nothing about its content: how much a wave is worth, when to spend it, when it is over, when a boss is due, and what to do when a wave will not end. A wave is a budget rather than a headcount, so content prices its own spawns and a wave gets harder without simply getting longer; the budget converts into spawns no faster than they are cleared, which turns a late wave from one unaffordable blob into sustained pressure and doubles as a frame-cost ceiling. It stops between waves rather than rolling on, because between waves is where a draft, a shop or a breather goes. There is no last wave: bosses cycle and the budget keeps climbing, so a run ends when the player does.",
+  "tags": ["waves", "spawner", "roguelite", "endless", "pacing", "difficulty", "boss"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["WaveDirector.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put WaveDirector.js on one manager actor and tag it Waves.",
+    "Set contentTag to the script that will do the spawning.",
+    "Implement spawnOne(wave, budgetLeft) returning what the spawn cost, and aliveCount().",
+    "Implement onWaveCleared(wave, isBoss) and call resume() when the player has finished choosing -- nothing starts the next wave for you."
+  ]
+}
