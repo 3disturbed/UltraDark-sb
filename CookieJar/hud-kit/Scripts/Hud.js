@@ -160,6 +160,16 @@ function build() {
 // ---------------------------------------------------------------------------
 
 function onUpdate(dt) {
+    // The viewport can change at any moment -- a resize, a rotation, entering
+    // fullscreen -- and a "full screen" panel is only full screen at the size it
+    // was made at. Without this the overlay keeps whatever it was born with and
+    // hangs off the edge, which is invisible until somebody plays in a window
+    // that is not the one it was built in.
+    if (overlay) {
+        overlay.width = UI.width;
+        overlay.height = UI.height;
+    }
+
     for (var si = 0; si < statRows.length; si++) {
         var stat = statRows[si];
         if (!stat.script) {
