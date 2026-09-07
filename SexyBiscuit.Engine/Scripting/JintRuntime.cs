@@ -236,6 +236,7 @@ public sealed class JintRuntime
         _engine.SetValue("Physics",   Bridge.PhysicsProxy);
         _engine.SetValue("Time",      Bridge.TimeProxy);
         _engine.SetValue("Network",   Bridge.NetworkProxy);
+        _engine.SetValue("UI",        Bridge.UiProxy);
 
         // The bundled scripts call log() with no namespace.
         _engine.SetValue("log",   Bridge.DebugProxy.Get("log"));

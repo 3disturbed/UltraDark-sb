@@ -14,6 +14,8 @@ using SexyBiscuit.Engine.Physics;
 
 using JintEngine = Jint.Engine;
 
+using SexyBiscuit.Engine.UI;
+
 namespace SexyBiscuit.Engine.Scripting;
 
 /// <summary>
@@ -69,6 +71,7 @@ public sealed class ScriptBridge
     public ObjectInstance PhysicsProxy   { get; }
     public ObjectInstance TimeProxy      { get; }
     public ObjectInstance NetworkProxy   { get; }
+    public ObjectInstance UiProxy        { get; }
 
     /// <summary>The engine every proxy allocates on. Used by <see cref="ComponentProxy"/>.</summary>
     internal JintEngine JsEngine => _engine;
@@ -96,6 +99,7 @@ public sealed class ScriptBridge
         PhysicsProxy   = BuildPhysicsProxy();
         TimeProxy      = BuildTimeProxy();
         NetworkProxy   = BuildNetworkProxy();
+        UiProxy        = BuildUiProxy();
 
         // The `actor` global is a proxy too: Scene.destroy(actor) must find its way back.
         _proxyToActor.Add(ActorProxy, _actor);
@@ -619,6 +623,20 @@ public sealed class ScriptBridge
         return obj;
     }
 
+    /// <summary>
+    /// A string as a script means it, not as JSON means it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Stringify"/> exists for diagnostics and JSON-encodes, so a label
+    /// set to <c>Hello</c> came back as <c>"Hello"</c> — quote marks and all — and
+    /// would have rendered that way in every native build. The browser does no such
+    /// thing, so this is the conversion anything script-facing wants.
+    /// </remarks>
+    private static string Text(JsValue value)
+        => value.IsUndefined() || value.IsNull() ? string.Empty
+         : value.IsString() ? value.AsString()
+         : value.ToString();
+
     private static string Stringify(JsValue value)
     {
         try { return JsValueConverter.ToJsonNode(value)?.ToJsonString() ?? "null"; }
@@ -774,6 +792,191 @@ public sealed class ScriptBridge
 
         return obj;
     }
+
+    // =========================================================================
+    // UI proxy — screen space, which every other global here cannot reach
+    // =========================================================================
+
+    /// <summary>Elements this script made, so UI.clear() cannot wipe another script's HUD.</summary>
+    private readonly List<UiElement> _ownedUi = new();
+
+    /// <summary>Drops this script's elements. Called when the component goes away.</summary>
+    internal void DisposeUi()
+    {
+        foreach (UiElement element in _ownedUi) ScriptUi.Instance.Remove(element);
+        _ownedUi.Clear();
+    }
+
+    private ObjectInstance BuildUiProxy()
+    {
+        var obj = NewObj();
+
+        Accessor(obj, "width",  getter: (_, _) => new JsNumber(ScriptUi.Instance.Width),  setter: null, _engine);
+        Accessor(obj, "height", getter: (_, _) => new JsNumber(ScriptUi.Instance.Height), setter: null, _engine);
+
+        obj.Set("panel",  Fn("panel",  (_, a) => MakeUi(UiKind.Panel,  a, width: 2, height: 3, options: 4), 5));
+        obj.Set("bar",    Fn("bar",    (_, a) => MakeUi(UiKind.Bar,    a, width: 2, height: 3, options: 5, value: 4), 6));
+        obj.Set("button", Fn("button", (_, a) => MakeUi(UiKind.Button, a, width: 2, height: 3, options: 5, text: 4), 6));
+        obj.Set("image",  Fn("image",  (_, a) => MakeUi(UiKind.Image,  a, width: 2, height: 3, options: 5, texture: 4), 6));
+        obj.Set("label",  Fn("label",  (_, a) => MakeUi(UiKind.Label,  a, options: 3, text: 2), 4));
+
+        obj.Set("clear", Fn("clear", (_, _) => { DisposeUi(); return JsValue.Undefined; }));
+
+        obj.Set("measure", Fn("measure", (_, a) =>
+            new JsNumber(BitmapFont.MeasureWidest(Text(a.At(0)), Num(a.At(1), 1f))), 2));
+
+        return obj;
+    }
+
+    /// <summary>Creates one element from the argument shape its factory uses.</summary>
+    private JsValue MakeUi(UiKind kind, JsValue[] args, int options,
+                           int width = -1, int height = -1, int text = -1, int value = -1, int texture = -1)
+    {
+        var element = new UiElement
+        {
+            Kind   = kind,
+            X      = Num(args.At(0)),
+            Y      = Num(args.At(1)),
+            Width  = width  >= 0 ? Num(args.At(width))  : 0f,
+            Height = height >= 0 ? Num(args.At(height)) : 0f,
+        };
+        if (text    >= 0) element.Text        = Text(args.At(text));
+        if (value   >= 0) element.Value       = Num(args.At(value), 1f);
+        if (texture >= 0) element.TexturePath = Text(args.At(texture));
+
+        ApplyUiOptions(element, args.At(options));
+
+        ScriptUi.Instance.Add(element);
+        _ownedUi.Add(element);
+        return WrapUiElement(element);
+    }
+
+    /// <summary>The optional trailing options object, which mirrors the element's own members.</summary>
+    private void ApplyUiOptions(UiElement element, JsValue options)
+    {
+        if (options is not ObjectInstance source) return;
+
+        foreach (var key in source.GetOwnPropertyKeys())
+        {
+            string name = key.ToString();
+            JsValue v = source.Get(name);
+
+            switch (name)
+            {
+                case "x": element.X = Num(v); break;
+                case "y": element.Y = Num(v); break;
+                case "width": element.Width = Num(v); break;
+                case "height": element.Height = Num(v); break;
+                case "text": element.Text = Text(v); break;
+                case "value": element.Value = Num(v, 1f); break;
+                case "visible": element.Visible = v.AsBoolean(); break;
+                case "scale": element.Scale = Num(v, 1f); break;
+                case "anchor": element.Anchor = ParseAnchor(Text(v)); break;
+                case "align": element.Align = Text(v); break;
+                case "padding": element.Padding = Num(v, 6f); break;
+                case "texturePath": element.TexturePath = Text(v); break;
+                case "tint": element.Tint = ParseColour(v) ?? element.Tint; break;
+                case "background": element.Background = ParseColour(v); break;
+                default: break;
+            }
+        }
+    }
+
+    /// <summary>"bottomright" and "bottom-right" both mean the same corner.</summary>
+    private static UiAnchor ParseAnchor(string name)
+    {
+        string key = name.Replace("-", string.Empty).Replace("_", string.Empty).Trim();
+        return Enum.TryParse(key, ignoreCase: true, out UiAnchor anchor) ? anchor : UiAnchor.TopLeft;
+    }
+
+    /// <summary>
+    /// A colour a script wrote. Scene files already accept "#ff8040", [r,g,b] and
+    /// {R,G,B,A}, so UI takes the same forms rather than inventing another spelling.
+    /// </summary>
+    private static Color? ParseColour(JsValue value)
+    {
+        if (value.IsNull() || value.IsUndefined()) return null;
+
+        if (value.IsString())
+        {
+            string text = value.AsString().Trim();
+            if (text.StartsWith("#", StringComparison.Ordinal))
+            {
+                string body = text[1..];
+                if (body.Length == 3)
+                    body = string.Concat(body[0], body[0], body[1], body[1], body[2], body[2]);
+                if (body.Length is 6 or 8
+                    && int.TryParse(body[..2], System.Globalization.NumberStyles.HexNumber, null, out int r)
+                    && int.TryParse(body.Substring(2, 2), System.Globalization.NumberStyles.HexNumber, null, out int g)
+                    && int.TryParse(body.Substring(4, 2), System.Globalization.NumberStyles.HexNumber, null, out int b))
+                {
+                    int a = 255;
+                    if (body.Length == 8)
+                        int.TryParse(body.Substring(6, 2), System.Globalization.NumberStyles.HexNumber, null, out a);
+                    return new Color(r, g, b, a);
+                }
+            }
+            return null;
+        }
+
+        if (value is ObjectInstance obj)
+        {
+            float Channel(string upper, string lower)
+            {
+                JsValue found = obj.Get(upper);
+                if (found.IsUndefined()) found = obj.Get(lower);
+                return Num(found);
+            }
+            var alpha = obj.Get("A").IsUndefined() ? obj.Get("a") : obj.Get("A");
+            return new Color(
+                (int)Channel("R", "r"), (int)Channel("G", "g"), (int)Channel("B", "b"),
+                alpha.IsUndefined() ? 255 : (int)Num(alpha, 255f));
+        }
+
+        return null;
+    }
+
+    /// <summary>The handle a script holds. Mirrors the browser's element proxy member for member.</summary>
+    private ObjectInstance WrapUiElement(UiElement element)
+    {
+        var obj = NewObj();
+
+        void Prop(string name, Func<JsValue> get, Action<JsValue>? set)
+            => Accessor(obj, name,
+                getter: (_, _) => get(),
+                setter: set == null ? null : (_, a) => { set(a.At(0)); return JsValue.Undefined; },
+                _engine);
+
+        Prop("x",           () => new JsNumber(element.X),       v => element.X = Num(v));
+        Prop("y",           () => new JsNumber(element.Y),       v => element.Y = Num(v));
+        Prop("width",       () => new JsNumber(element.Width),   v => element.Width = Num(v));
+        Prop("height",      () => new JsNumber(element.Height),  v => element.Height = Num(v));
+        Prop("text",        () => new JsString(element.Text),    v => element.Text = Text(v));
+        Prop("value",       () => new JsNumber(element.Value),   v => element.Value = Num(v));
+        Prop("visible",     () => element.Visible ? JsBoolean.True : JsBoolean.False, v => element.Visible = v.AsBoolean());
+        Prop("scale",       () => new JsNumber(element.Scale),   v => element.Scale = Num(v, 1f));
+        Prop("anchor",      () => new JsString(element.Anchor.ToString().ToLowerInvariant()),
+                             v => element.Anchor = ParseAnchor(Text(v)));
+        Prop("align",       () => new JsString(element.Align),   v => element.Align = Text(v));
+        Prop("padding",     () => new JsNumber(element.Padding), v => element.Padding = Num(v, 6f));
+        Prop("texturePath", () => new JsString(element.TexturePath), v => element.TexturePath = Text(v));
+        Prop("tint",        () => new JsString(ToHex(element.Tint)), v => element.Tint = ParseColour(v) ?? element.Tint);
+        Prop("background",  () => element.Background is Color c ? new JsString(ToHex(c)) : JsValue.Null,
+                             v => element.Background = ParseColour(v));
+        Prop("hovered",     () => element.Hovered ? JsBoolean.True : JsBoolean.False, null);
+        Prop("clicked",     () => element.Clicked ? JsBoolean.True : JsBoolean.False, null);
+
+        obj.Set("destroy", Fn("destroy", (_, _) =>
+        {
+            _ownedUi.Remove(element);
+            ScriptUi.Instance.Remove(element);
+            return JsValue.Undefined;
+        }));
+
+        return obj;
+    }
+
+    private static string ToHex(Color c) => $"#{c.R:x2}{c.G:x2}{c.B:x2}";
 
     // =========================================================================
     // Network proxy — a stub that lets a multiplayer script run solo
