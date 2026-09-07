@@ -10,7 +10,7 @@
 // exports are one build. It exists separately so the prototype phase — an agent
 // working on a machine with no .NET — can publish a playtest build.
 //
-//     node html5/tools/export.js <projectDir> [--out <dir>] [--pwa] [--icon <png>]
+//     node html5/tools/export.js <projectDir> [--out <dir>] [--pwa] [--icon <png>] [--dg <slug>] [--gated]
 //                                [--version <v>] [--config Release|Development|Debug]
 //                                [--no-zip] [--quiet]
 //
@@ -45,7 +45,7 @@ const THEME_COLOUR = '#12141a';
  * @param {(line: string) => void} [options.log]
  * @returns {{ outDir: string, files: string[], archive: string|null, archiveBytes: number, appName: string, version: string, report: string }}
  */
-export function exportWeb({ projectDir, out, pwa = false, icon, version, configuration = 'Release', zip = true, log = () => {} }) {
+export function exportWeb({ projectDir, out, pwa = false, icon, version, configuration = 'Release', zip = true, dg, gated = false, log = () => {} }) {
     const project = path.resolve(projectDir);
     const settingsFile = path.join(project, 'ProjectSettings.json');
     if (!fs.existsSync(settingsFile)) throw new Error(`${projectDir} has no ProjectSettings.json`);
@@ -99,6 +99,14 @@ export function exportWeb({ projectDir, out, pwa = false, icon, version, configu
     // new ones.
     const buildId = `${slug}-${version}-${gitSha ? gitSha.slice(0, 8) : 'local'}`;
 
+    // ---- Darks Games ------------------------------------------------------------
+    // The slug comes from the command line or from ProjectSettings, and its presence
+    // is the whole switch: a build with one carries the account and social layer, and
+    // a build without one is unchanged.
+    const dgSlug = dg ?? readDarksGamesSlug(settings);
+    const { head: dgHead, boot: dgBoot } = darksGamesTags(dgSlug);
+    if (dgSlug) log(`  Staged: Darks Games SDKs for '${dgSlug}'`);
+
     let pwaHead = '';
     let pwaBoot = '';
     if (pwa) {
@@ -126,6 +134,8 @@ export function exportWeb({ projectDir, out, pwa = false, icon, version, configu
         build: escapeHtml(buildId),
         pwaHead,
         pwaBoot,
+        dgHead,
+        dgBoot,
     }));
 
     fs.writeFileSync(path.join(outDir, 'HOW-TO-RUN.txt'), [
@@ -150,6 +160,12 @@ export function exportWeb({ projectDir, out, pwa = false, icon, version, configu
             precache: JSON.stringify(precache.map((f) => `./${f}`), null, 2),
         }));
         log('  Written: sw.js');
+    }
+
+    // ---- Closed testing ----------------------------------------------------------
+    if (gated) {
+        if (!dgSlug) throw new Error('--gated needs a Darks Games slug: pass --dg <slug>.');
+        writeGatedHost(outDir, { slug: dgSlug, title: appName, log });
     }
 
     const files = listFiles(outDir);
@@ -177,6 +193,132 @@ export function exportWeb({ projectDir, out, pwa = false, icon, version, configu
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
+
+/**
+ * The catalogue slug, from ProjectSettings.
+ *
+ * Accepted as `darksGames: "slug"` or `darksGames: { slug }`, and case-insensitively,
+ * because ProjectSettings is hand-edited as often as it is written by a tool.
+ */
+export function readDarksGamesSlug(settings) {
+    const lookup = new Map(Object.entries(settings ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
+    const value = lookup.get('darksgames') ?? lookup.get('dg');
+
+    if (typeof value === 'string') return value.trim().toLowerCase() || null;
+    if (value && typeof value === 'object') {
+        const slug = value.slug ?? value.Slug ?? value.app ?? value.App;
+        if (typeof slug === 'string') return slug.trim().toLowerCase() || null;
+    }
+    return null;
+}
+
+/**
+ * The two script tags and the boot line a Darks Games build carries.
+ *
+ * Order is not cosmetic. `dg-overlay.v1.js` strips `?dg_party` and `?dg_launch` out
+ * of the URL the moment it executes, so it has to run before any game code reads
+ * `location` — which, with `defer`, means before the module script. The account SDK
+ * precedes it because the overlay asks it for a token.
+ *
+ * A page with no slug gets neither tag, so a game that never ships to DarksGames
+ * loads nothing from it.
+ */
+export function darksGamesTags(slug, { origin = 'https://darksgames.app' } = {}) {
+    if (!slug) return { head: '', boot: '' };
+
+    const head = [
+        `<script src="${origin}/sdk/dg-account.v1.js" crossorigin="anonymous" defer></script>`,
+        `<script src="${origin}/sdk/dg-overlay.v1.js" crossorigin="anonymous" defer></script>`,
+        '',
+    ].join('\n');
+
+    // The join handler is the one piece a game must own, so the export wires the
+    // default: put the code in the URL and reload, which re-runs whatever deep-link
+    // path the game already has. A game that can join in place overrides
+    // `window.sbJoinRoom` and returns true.
+    const boot = `
+// ---- Darks Games ----
+// Identity, friends, presence and Join, wired to this build. A player who is signed
+// out, offline or blocked from the hub sees none of it and the game is unaffected.
+import { DarksGames } from './engine/src/dg/index.js';
+
+const dg = new DarksGames();
+window.DG = dg;
+await dg.init({
+    game: ${JSON.stringify(slug)},
+    onJoin: (code) => (window.sbJoinRoom ? window.sbJoinRoom(code) : false),
+}).catch((err) => console.warn('[DarksGames]', err.message));
+`;
+
+    return { head, boot };
+}
+
+/**
+ * Rearranges the build into the layout a gated Darks Games host needs, and writes
+ * the host.
+ *
+ * The build moves into `game/` and `public/` holds only the gate. That is not
+ * tidiness: nginx's `try_files $uri $uri/index.html @node` serves anything under
+ * `public/` straight off disk without touching Node, so a build left there would be
+ * ungated and the lock would be decoration. `/play/*` exists nowhere on disk, so
+ * every request for it falls through to the host, which is where the session is
+ * checked.
+ */
+function writeGatedHost(outDir, { slug, title, log }) {
+    const gameDir = path.join(outDir, 'game');
+    fs.mkdirSync(gameDir, { recursive: true });
+
+    for (const entry of fs.readdirSync(outDir)) {
+        if (entry === 'game') continue;
+        fs.renameSync(path.join(outDir, entry), path.join(gameDir, entry));
+    }
+
+    const publicDir = path.join(outDir, 'public');
+    const authDir = path.join(outDir, 'server', 'auth');
+    fs.mkdirSync(publicDir, { recursive: true });
+    fs.mkdirSync(authDir, { recursive: true });
+
+    const values = { slug, slugJson: JSON.stringify(slug), title: escapeHtml(title) };
+
+    fs.writeFileSync(path.join(publicDir, 'index.html'), fill(gatedTemplate('gate.html.tmpl'), values));
+    fs.writeFileSync(path.join(authDir, 'dgVerify.js'), fill(gatedTemplate('dgVerify.js.tmpl'), values));
+    fs.writeFileSync(path.join(outDir, 'server', 'social.js'), fill(gatedTemplate('social.js.tmpl'), values));
+    fs.writeFileSync(path.join(outDir, 'server.js'), fill(gatedTemplate('server.js.tmpl'), values));
+
+    // node needs to be told these are modules, and the host is one.
+    fs.writeFileSync(path.join(outDir, 'package.json'),
+        JSON.stringify({ name: slug, private: true, type: 'module', main: 'server.js' }, null, 2) + '\n');
+
+    fs.writeFileSync(path.join(outDir, 'DEPLOY.txt'), [
+        `${title} — closed testing on DarksGames`,
+        '',
+        'This is a gated build. The game is in game/, not public/, on purpose:',
+        "nginx serves public/ off disk without touching Node, so a build there would",
+        'be ungated. /play/* falls through to server.js, which checks the session.',
+        '',
+        'On the server, as root:',
+        `    mkdir -p /srv/darksgames/games/${slug}`,
+        `    rsync -a --delete ./ /srv/darksgames/games/${slug}/`,
+        `    printf 'SESSION_SECRET=%s\\n' "$(openssl rand -hex 32)" > /srv/darksgames/games/${slug}/.env`,
+        `    chmod 600 /srv/darksgames/games/${slug}/.env`,
+        `    chown -R darks:darks /srv/darksgames/games/${slug}`,
+        `    add-game ${slug}.darksgames.app ${slug}`,
+        '',
+        'Then, in dg-accounts:',
+        '  * seed the apps row      sudo -u darks node scripts/seed-apps.js',
+        `  * add the catalogue entry for "${slug}" in social/catalog.json`,
+        '  * grant testers the flag  Admin -> Users -> Grant playtester',
+        '',
+        'The listing flag hides the tile; this host is the lock. Ship both.',
+        '',
+    ].join('\n'));
+
+    log('  Written: server.js, public/index.html, server/auth/dgVerify.js, server/social.js');
+}
+
+function gatedTemplate(name) {
+    return fs.readFileSync(path.join(html5Root, 'runtime', 'export', 'gated', name), 'utf8');
+}
 
 function template(name) {
     return fs.readFileSync(path.join(templatesDir, name), 'utf8');
@@ -303,10 +445,10 @@ function formatBytes(bytes) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const args = process.argv.slice(2);
     const take = (flag) => { const i = args.indexOf(flag); return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined; };
-    const projectDir = args.find((a, i) => !a.startsWith('--') && !['--out', '--icon', '--version', '--config'].includes(args[i - 1]));
+    const projectDir = args.find((a, i) => !a.startsWith('--') && !['--out', '--icon', '--version', '--config', '--dg'].includes(args[i - 1]));
 
     if (!projectDir) {
-        console.error('usage: node html5/tools/export.js <projectDir> [--out <dir>] [--pwa] [--icon <png>] [--version <v>] [--config <c>] [--no-zip] [--quiet]');
+        console.error('usage: node html5/tools/export.js <projectDir> [--out <dir>] [--pwa] [--icon <png>] [--dg <slug>] [--gated] [--version <v>] [--config <c>] [--no-zip] [--quiet]');
         process.exit(2);
     }
 
@@ -317,6 +459,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
             out: take('--out'),
             pwa: args.includes('--pwa'),
             icon: take('--icon'),
+            dg: take('--dg'),
+            gated: args.includes('--gated'),
             version: take('--version'),
             configuration: take('--config') ?? 'Release',
             zip: !args.includes('--no-zip'),

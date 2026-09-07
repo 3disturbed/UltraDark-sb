@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>{{title}}</title>
 {{pwaHead}}<link rel="stylesheet" href="engine/runtime/runtime.css">
-</head>
+{{dgHead}}</head>
 <body>
 
 <!-- The project's own files sit at the root of the export, so the runtime's
@@ -30,6 +30,7 @@ import { boot } from './engine/runtime/Runtime.js';
 console.log('%cSexyBiscuit build%c {{build}}', 'font-weight:bold', '');
 
 const runtime = await boot();
+{{dgBoot}}
 
 const button = document.getElementById('fullscreen');
 button.addEventListener('click', () => {

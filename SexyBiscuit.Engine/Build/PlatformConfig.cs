@@ -132,6 +132,18 @@ public class PlatformConfig
     /// <summary>A PNG for the app icon, relative to the project root. Empty: a flat square in the theme colour.</summary>
     public string WebIconPath { get; set; } = "";
 
+    /// <summary>
+    /// The Darks Games catalogue slug. Set it and the web build carries the account and social
+    /// layer — identity, friends, presence and Join; leave it empty and the build loads nothing
+    /// from the hub.
+    /// </summary>
+    /// <remarks>
+    /// The slug is also the token audience the hub enforces, so it has to match the catalogue
+    /// entry exactly. Getting it wrong shows up as <c>presence_app_mismatch</c> on every
+    /// presence update rather than as a failure to sign in.
+    /// </remarks>
+    public string DarksGamesSlug { get; set; } = "";
+
     // -------------------------------------------------------------------------
     // Upload
     // -------------------------------------------------------------------------

@@ -1,0 +1,174 @@
+// {{title}} — the closed-testing host.
+//
+// Written by the engine's export pipeline. Two things it does and one thing it
+// deliberately does not:
+//
+//   * public/ holds the gate and nothing else. nginx's `try_files $uri
+//     $uri/index.html @node` serves anything under public/ straight off disk,
+//     never touching this process — so a build placed there would be ungated,
+//     and the lock would be decoration. The build lives in game/ instead.
+//   * /play/* exists nowhere on disk under public/, so every request for it
+//     falls through to here, where the session cookie is checked. That is the
+//     whole mechanism.
+//   * it does not verify the playtester claim itself twice. /api/session does
+//     it once, at sign-in, and mints the cookie; /play/* only checks the cookie.
+//     Revocation takes effect within one session lifetime, which is the trade
+//     the hub's own guidance makes.
+//
+// Environment: PORT, SESSION_SECRET (required, mode 600), DG_APP_SECRET (optional,
+// for server-to-server achievements).
+
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+import { makeVerifier } from './server/auth/dgVerify.js';
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+
+// A .env loader small enough not to be a dependency: KEY=VALUE lines only.
+const envFile = path.join(root, '.env');
+if (fs.existsSync(envFile)) {
+    for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
+        const match = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+        if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2];
+    }
+}
+
+const PORT = Number(process.env.PORT || 3000);
+const SECRET = process.env.SESSION_SECRET;
+const SESSION_HOURS = 12;
+
+if (!SECRET) {
+    console.error('SESSION_SECRET is not set. Generate one with: openssl rand -hex 32');
+    process.exit(1);
+}
+
+const verifyToken = makeVerifier();
+
+// ---- Sessions ---------------------------------------------------------------
+// A signed cookie, not a stored one: there is no database here, and a signature
+// over "who + until when" is all the gate needs. HMAC comparison is
+// constant-time, because a timing oracle on a session cookie is a forgery oracle.
+
+function mintSession(userId) {
+    const expires = Date.now() + SESSION_HOURS * 3600_000;
+    const body = Buffer.from(JSON.stringify({ sub: userId, exp: expires })).toString('base64url');
+    return `${body}.${sign(body)}`;
+}
+
+function readSession(cookie) {
+    const [body, signature] = String(cookie ?? '').split('.');
+    if (!body || !signature) return null;
+
+    const expected = Buffer.from(sign(body));
+    const given = Buffer.from(signature);
+    if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return null;
+
+    try {
+        const session = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+        return session.exp > Date.now() ? session : null;
+    } catch { return null; }
+}
+
+const sign = (body) => crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
+
+const cookieFrom = (header) => Object.fromEntries(
+    String(header ?? '').split(';').map((part) => {
+        const i = part.indexOf('=');
+        return i < 0 ? [part.trim(), ''] : [part.slice(0, i).trim(), part.slice(i + 1).trim()];
+    }));
+
+// ---- Static -----------------------------------------------------------------
+
+const TYPES = {
+    '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
+    '.scene': 'application/json; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8',
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
+    '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.glb': 'model/gltf-binary', '.ttf': 'font/ttf',
+};
+
+function serve(response, base, relative) {
+    const file = path.join(base, relative || 'index.html');
+
+    // Never serve outside the base, however many ../ segments the path carries.
+    if (!file.startsWith(base)) { response.writeHead(403).end('forbidden'); return; }
+
+    fs.stat(file, (err, stats) => {
+        const target = !err && stats.isDirectory() ? path.join(file, 'index.html') : file;
+        fs.readFile(target, (readErr, body) => {
+            if (readErr) { response.writeHead(404).end('not found'); return; }
+            response.writeHead(200, {
+                'content-type': TYPES[path.extname(target).toLowerCase()] ?? 'application/octet-stream',
+                'content-length': body.length,
+            });
+            response.end(body);
+        });
+    });
+}
+
+// ---- Routes -----------------------------------------------------------------
+
+const server = http.createServer(async (request, response) => {
+    const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`);
+
+    if (request.method === 'POST' && url.pathname === '/api/session') {
+        const chunks = [];
+        let size = 0;
+        for await (const chunk of request) {
+            size += chunk.length;
+            if (size > 8192) { response.writeHead(413).end(); return; }
+            chunks.push(chunk);
+        }
+
+        let account;
+        try {
+            const { token } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+            account = await verifyToken(token);
+        } catch {
+            response.writeHead(401, { 'content-type': 'application/json' })
+                .end('{"error":"invalid_token"}');
+            return;
+        }
+
+        if (!account.playtester) {
+            response.writeHead(403, { 'content-type': 'application/json' })
+                .end('{"error":"not_a_playtester"}');
+            return;
+        }
+
+        response.writeHead(204, {
+            'set-cookie': `sb_session=${mintSession(account.sub)}; HttpOnly; Secure; SameSite=Lax; `
+                + `Path=/; Max-Age=${SESSION_HOURS * 3600}`,
+        });
+        response.end();
+        return;
+    }
+
+    if (url.pathname === '/api/health') {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: true, app: {{slugJson}} }));
+        return;
+    }
+
+    if (url.pathname === '/play' || url.pathname.startsWith('/play/')) {
+        if (!readSession(cookieFrom(request.headers.cookie).sb_session)) {
+            // Back to the gate. A 302 rather than a 403: a tester whose cookie lapsed
+            // mid-session should be offered the sign-in, not an error page.
+            response.writeHead(302, { location: '/' }).end();
+            return;
+        }
+        serve(response, path.join(root, 'game'),
+            decodeURIComponent(url.pathname.replace(/^\/play\/?/, '')));
+        return;
+    }
+
+    serve(response, path.join(root, 'public'), decodeURIComponent(url.pathname).replace(/^\/+/, ''));
+});
+
+server.listen(PORT, '127.0.0.1', () => {
+    console.log(`{{title}} listening on 127.0.0.1:${PORT}`);
+});

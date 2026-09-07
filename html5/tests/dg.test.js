@@ -339,3 +339,41 @@ test('a signed-out user still answers every question', () => {
     assert.equal(user.displayName, 'Player');
     assert.deepEqual(user.entitlements, []);
 });
+
+// ---- The exported build -----------------------------------------------------
+
+test('a build with no slug carries nothing from the hub', async () => {
+    // A game that never ships to DarksGames must not load a byte from it.
+    const { darksGamesTags, readDarksGamesSlug } = await import('../tools/export.js');
+
+    assert.equal(readDarksGamesSlug({}), null);
+    assert.deepEqual(darksGamesTags(null), { head: '', boot: '' });
+});
+
+test('the slug is read from ProjectSettings in either spelling', async () => {
+    // ProjectSettings is hand-edited as often as it is written by a tool, and the
+    // file's own keys are PascalCase.
+    const { readDarksGamesSlug } = await import('../tools/export.js');
+
+    assert.equal(readDarksGamesSlug({ darksGames: 'My-Game' }), 'my-game');
+    assert.equal(readDarksGamesSlug({ DarksGames: { slug: 'my-game' } }), 'my-game');
+    assert.equal(readDarksGamesSlug({ dg: '  my-game  ' }), 'my-game');
+    assert.equal(readDarksGamesSlug({ darksGames: '' }), null);
+});
+
+test('the SDK tags go in the order the overlay needs', async () => {
+    // dg-overlay.v1.js strips ?dg_party and ?dg_launch out of the URL the moment it
+    // executes, so it has to run before any game code reads `location` — with defer,
+    // that means before the module script. The account SDK precedes it because the
+    // overlay asks it for a token.
+    const { darksGamesTags } = await import('../tools/export.js');
+    const { head, boot } = darksGamesTags('my-game');
+
+    const account = head.indexOf('dg-account.v1.js');
+    const overlay = head.indexOf('dg-overlay.v1.js');
+
+    assert.ok(account >= 0 && overlay >= 0, 'both SDKs are requested');
+    assert.ok(account < overlay, 'the account SDK comes first');
+    assert.ok(head.includes('defer'), 'defer is what preserves the order');
+    assert.ok(boot.includes('"my-game"'), 'the slug reaches init');
+});
