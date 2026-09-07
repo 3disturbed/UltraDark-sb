@@ -373,3 +373,44 @@ test('the usage meter sums one API call once and attributes results to tools', a
 
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// -----------------------------------------------------------------------------
+// Two ways the web export could quietly disagree with the native one.
+// -----------------------------------------------------------------------------
+
+test('the web export takes its version from BuildSettings.json, as sbengine does', async () => {
+    const { buildSettingsVersion } = await import('../tools/export.js');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-version-'));
+    fs.writeFileSync(path.join(dir, 'BuildSettings.json'), JSON.stringify({ appName: 'X', version: '2.3.4' }));
+    assert.equal(buildSettingsVersion(dir), '2.3.4');
+
+    // No file, and a malformed one, both fall back rather than failing an export.
+    assert.equal(buildSettingsVersion(fs.mkdtempSync(path.join(os.tmpdir(), 'sb-version-'))), null);
+    const broken = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-version-'));
+    fs.writeFileSync(path.join(broken, 'BuildSettings.json'), '{ not json');
+    assert.equal(buildSettingsVersion(broken), null);
+});
+
+test('readGitSha finds the ref from inside a worktree, not just a normal checkout', async () => {
+    const { readGitSha } = await import('../tools/export.js');
+
+    // A worktree's gitdir has HEAD but no refs/: those live in the common dir it
+    // points at. Missing that returned null, the service worker's cache name fell
+    // back to "local", and every export from a worktree produced a worker whose
+    // name never changed — so a redeploy left existing players on the old build.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-worktree-'));
+    const common = path.join(root, 'common.git');
+    const wt = path.join(root, 'wt.git');
+    const project = path.join(root, 'project');
+    fs.mkdirSync(path.join(common, 'refs', 'heads'), { recursive: true });
+    fs.mkdirSync(wt, { recursive: true });
+    fs.mkdirSync(project, { recursive: true });
+
+    fs.writeFileSync(path.join(common, 'refs', 'heads', 'main'), 'a'.repeat(40) + '\n');
+    fs.writeFileSync(path.join(wt, 'HEAD'), 'ref: refs/heads/main\n');
+    fs.writeFileSync(path.join(wt, 'commondir'), '../common.git\n');
+    fs.writeFileSync(path.join(project, '.git'), `gitdir: ${wt}\n`);
+
+    assert.equal(readGitSha(project), 'a'.repeat(40));
+});
