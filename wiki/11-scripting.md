@@ -36,7 +36,15 @@ actor.transform          // the same object as the `transform` global
 actor.transform3d        // Transform3D proxy, or null in a 2D scene
 actor.getComponent("Rigidbody2D")   // a component proxy, or null
 actor.addComponent("BoxCollider2D") // adds and returns a component proxy
-actor.destroy()          // queue removal at end of frame
+actor.destroy()          // queue removal at end of frame (takes its children with it)
+
+actor.parent             // the actor it is attached to, or null
+actor.children           // an array of actor proxies, a fresh copy each read
+actor.attachTo(other)             // keeps its world position
+actor.attachTo(other, false)      // treats its transform as a local offset
+actor.detach()                    // back to the scene root
+actor.findChild("Muzzle")         // direct children
+actor.findChild("Muzzle", true)   // the whole subtree
 ```
 
 ### `transform` and `transform3d`

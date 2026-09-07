@@ -62,10 +62,24 @@ public class Scene
     // -------------------------------------------------------------------------
     // Actor shortcuts (operate on "default" layer)
     // -------------------------------------------------------------------------
+    /// <summary>Adds an actor, and everything attached to it, to a layer.</summary>
+    /// <remarks>
+    /// A child is an actor in its own right: it needs a place in a layer to be started,
+    /// updated and drawn. Adding the subtree here rather than at each call site is what stops
+    /// the scene loader, prefabs and duplicate from each having to remember to walk it --
+    /// forgetting produced a turret that followed its tank perfectly and never drew. A
+    /// descendant that already belongs to a layer is left where it is, so adding a parent
+    /// twice cannot list a child twice.
+    /// </remarks>
     public Actor AddActor(Actor actor, string layerName = "default")
     {
         var layer = GetOrCreateLayer(layerName);
-        return layer.AddActor(actor);
+        layer.AddActor(actor);
+
+        foreach (var descendant in actor.Descendants())
+            if (descendant.Layer_ == null) layer.AddActor(descendant);
+
+        return actor;
     }
 
     public T AddActor<T>(string layerName = "default") where T : Actor, new()
@@ -108,6 +122,15 @@ public class Scene
 
         actor.Layer_?.DetachActor(actor);
         target.AddActor(actor);
+
+        // The subtree moves with it. Leaving a turret drawing in the layer its tank just left
+        // is never what the drag meant, and the two would then sort against each other.
+        foreach (var descendant in actor.Descendants())
+        {
+            if (ReferenceEquals(descendant.Layer_, target)) continue;
+            descendant.Layer_?.DetachActor(descendant);
+            target.AddActor(descendant);
+        }
     }
 
     /// <summary>

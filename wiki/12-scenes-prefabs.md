@@ -64,6 +64,37 @@ Field by field:
 | `actors[].lifeSpan` | float? | `Actor.LifeSpan`; absent when the actor lives indefinitely |
 | `components[].type` | string | a type name, short by default — see below |
 | `components[].properties` | object | property name → value |
+| `actors[].children` | array | actors attached to this one, same shape, written last |
+
+### Attachment
+
+A child is nested inside its parent, after `components`, and a layer's `actors` list holds
+**only roots** — an actor appears in the file exactly once:
+
+```json
+{
+  "name": "Tank",
+  "position": [100.0, 0.0],
+  "components": [],
+  "children": [
+    {
+      "name": "Turret",
+      "position": [0.0, 10.0],
+      "components": [],
+      "children": [
+        { "name": "Muzzle", "position": [0.0, 15.0], "components": [] }
+      ]
+    }
+  ]
+}
+```
+
+Every transform in the file is already **local**, so loading attaches with
+`keepWorldTransform: false`: the offsets are applied exactly as written rather than rebased,
+and `Muzzle` above ends up at world `[100, 25]`. Adding the root to a scene adds the whole
+subtree, so nothing has to walk it — see [Attachment](02-core-architecture.md#attachment).
+
+A prefab is one entry from this array, so a prefab carries its subtree too.
 
 Property names are matched **case-insensitively**
 (`PropertyNameCaseInsensitive = true`).

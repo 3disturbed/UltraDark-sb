@@ -298,14 +298,8 @@ public static class SceneSerializer
 
             foreach (var actorDto in layerDto.Actors ?? Enumerable.Empty<ActorDto>())
             {
-                var actor = BuildActor(actorDto);
-                scene.AddActor(actor, layer.Name);
-
-                // A child is an actor in its own right: it needs its own place in a layer
-                // to be started, updated and drawn. It goes in the parent's layer, which is
-                // the one it was written under.
-                foreach (var descendant in actor.Descendants())
-                    scene.AddActor(descendant, layer.Name);
+                // AddActor takes the whole subtree, into the layer it was written under.
+                scene.AddActor(BuildActor(actorDto), layer.Name);
             }
         }
 

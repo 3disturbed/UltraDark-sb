@@ -24,9 +24,12 @@ public sealed class BatchTools
         "set_transform", "translate", "rotate", "look_at",
         "set_properties", "set_property", "add_component", "remove_component", "set_material",
         "rename_actor", "set_actor", "move_to_layer", "destroy_actor",
+        "attach_actor", "detach_actor",
     };
 
-    private static readonly string[] ActorArguments = { "actor", "targetActor", "lookAtActor", "target" };
+    // "parent" is attach_actor's second actor: without it here, attaching to something spawned
+    // earlier in the same batch could not be written as "$0".
+    private static readonly string[] ActorArguments = { "actor", "targetActor", "lookAtActor", "target", "parent" };
 
     private readonly IMcpSceneHost   _host;
     private readonly McpToolRegistry _registry;
@@ -41,7 +44,8 @@ public sealed class BatchTools
         "Run several scene edits in one call and one undo step. ops is a JSON array; each op is a tool's arguments plus " +
         "\"op\": spawn_actor, spawn_primitive, place_actor, duplicate_actor, set_transform, translate, rotate, look_at, " +
         "set_properties, set_property, add_component, remove_component, set_material, rename_actor, set_actor, " +
-        "move_to_layer or destroy_actor. An actor argument may be \"$n\": the id spawned by op n (0-based).",
+        "move_to_layer, destroy_actor, attach_actor or detach_actor. An actor argument may be \"$n\": the id " +
+        "spawned by op n (0-based).",
         Mutating = true, Label = "Apply scene edits")]
     public McpToolResult ApplySceneEdits(
         McpCallContext context,

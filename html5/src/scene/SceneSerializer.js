@@ -59,13 +59,8 @@ export function deserialize(json, options = {}) {
     for (const layerDto of dto?.layers ?? []) {
         const layer = scene.getOrCreateLayer(layerDto?.name ?? 'default', layerDto?.order ?? 0);
         for (const actorDto of layerDto?.actors ?? []) {
-            const actor = buildActor(actorDto, warn);
-            scene.addActor(actor, layer.name);
-
-            // A child is an actor in its own right: it needs its own place in a layer
-            // to be started, updated and drawn. It goes in the parent's layer, which
-            // is the one it was written under.
-            for (const descendant of actor.descendants()) scene.addActor(descendant, layer.name);
+            // addActor takes the whole subtree, into the layer it was written under.
+            scene.addActor(buildActor(actorDto, warn), layer.name);
         }
     }
 
