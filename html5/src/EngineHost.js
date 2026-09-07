@@ -226,7 +226,14 @@ export class EngineHost {
 
         // Screen-space UI, drawn after the world and outside the camera
         // transform. Scripts reach it through the `UI` global.
-        this.ui = new UiCanvas({ width: this.canvas2D.width, height: this.canvas2D.height });
+        // Sized from the config rather than from the canvas: this runs BEFORE the
+        // first resize(), and a freshly created <canvas> with no width/height
+        // attributes is 300x150. Taking that would leave UI.width at 300 for the
+        // life of the page. resize() is what keeps it right from here on.
+        this.ui = new UiCanvas({
+            width: this.config.windowWidth,
+            height: this.config.windowHeight,
+        });
 
         // Input listens on the top canvas: it is the one the pointer actually hits.
         this.input.attach(this.canvas2D);
@@ -262,6 +269,14 @@ export class EngineHost {
 
         this.input.touch.setScreenSize(width, height);
         for (const camera of Camera2D.all) camera.setViewport(width, height);
+
+        // The UI is laid out against its own viewport, so it has to be told too.
+        // Without this every anchor is measured against whatever size the canvas
+        // happened to be when the host was built -- so `center` resolves near the
+        // top-left corner and a panel sized UI.width x UI.height covers a
+        // fraction of the screen. Nothing throws; it just looks wrong, and only
+        // once a game puts something on screen.
+        this.ui?.setViewport(width, height);
     }
 
     _watchResize() {

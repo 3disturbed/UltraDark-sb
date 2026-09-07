@@ -259,3 +259,44 @@ public class ScriptUiTests
         }
     }
 }
+
+/// <summary>
+/// The 2D renderer composites straight alpha, because that is what the engine
+/// hands it and what the browser does.
+/// </summary>
+/// <remarks>
+/// MonoGame's <c>BlendState.AlphaBlend</c> expects premultiplied colours. Scene
+/// files and scripts write straight ones, so under AlphaBlend a translucent
+/// sprite added its whole colour and only attenuated the destination: a night
+/// overlay of (6, 8, 20) at alpha ZERO lifted every pixel in the game by exactly
+/// (6, 8, 20). It reads as "the palette looks a bit off", never as a bug, which
+/// is why it lasted. The browser uses ctx.globalAlpha — straight alpha — so this
+/// is also what keeps a prototype and its native build looking the same.
+/// </remarks>
+public class BlendModeTests
+{
+    [Fact]
+    public void TheSceneBatchUsesStraightAlphaRatherThanPremultiplied()
+    {
+        var renderer = new SexyBiscuit.Engine.Rendering.RenderSystem2D();
+        Assert.Equal(Microsoft.Xna.Framework.Graphics.BlendState.NonPremultiplied, renderer.BlendState);
+    }
+
+    [Fact]
+    public void TheHostDrawsTheScriptUiWithTheSameBlendMode()
+    {
+        // Read from source: constructing a host needs a graphics device, and the
+        // question is only which constant the call site names.
+        var repo = EngineRepoLocator.Find();
+        Assert.NotNull(repo);
+
+        string host = File.ReadAllText(Path.Combine(repo!.Root, "SexyBiscuit.Engine/Core/EngineHost.cs"));
+        int at = host.IndexOf("DrawScriptUi", StringComparison.Ordinal);
+        Assert.True(at > 0, "EngineHost should still draw the script UI");
+
+        string tail = host[at..];
+        int begin = tail.IndexOf("SpriteBatch.Begin", StringComparison.Ordinal);
+        Assert.True(begin > 0, "the UI should still open its own batch");
+        Assert.Contains("BlendState.NonPremultiplied", tail[begin..(begin + 200)]);
+    }
+}
