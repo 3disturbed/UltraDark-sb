@@ -12,6 +12,16 @@ public enum GizmoMode
     Scale,
 }
 
+/// <summary>Which frame of reference the 3D transform gizmo uses for its axis handles.</summary>
+public enum GizmoTransformSpace
+{
+    /// <summary>Align handles to the scene's global X, Y, and Z axes.</summary>
+    World,
+
+    /// <summary>Align handles to the selected actor's rotation.</summary>
+    Local,
+}
+
 /// <summary>A project the user has opened before, shown on the launcher.</summary>
 public sealed class RecentProject
 {
@@ -69,6 +79,13 @@ public static class EditorState
 
     /// <summary>Which transform handle the viewport shows.</summary>
     public static GizmoMode GizmoMode { get; set; } = GizmoMode.Translate;
+
+    /// <summary>
+    /// The frame of reference used by the 3D transform gizmo. Local is the historical
+    /// native-editor behaviour, so opening an existing project does not change how its
+    /// transform handles behave.
+    /// </summary>
+    public static GizmoTransformSpace GizmoTransformSpace { get; set; } = GizmoTransformSpace.Local;
 
     /// <summary>
     /// Renders the scene through the 3D pipeline instead of the 2D sprite pass.

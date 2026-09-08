@@ -94,13 +94,17 @@ public sealed class Gizmo3D
             return false;
         }
 
-        // Local axes, so the gizmo follows the object's own orientation.
-        var axes = new[]
-        {
-            XnaVector3.Transform(XnaVector3.Right,   transform.Rotation),
-            XnaVector3.Transform(XnaVector3.Up,      transform.Rotation),
-            XnaVector3.Transform(XnaVector3.Forward, transform.Rotation),
-        };
+        // Local is the legacy behaviour. World deliberately uses the scene's fixed
+        // cardinal axes, including for the rotation ring, so moving a rotated actor
+        // can be constrained against the level rather than its own orientation.
+        var axes = EditorState.GizmoTransformSpace == GizmoTransformSpace.World
+            ? new[] { XnaVector3.Right, XnaVector3.Up, XnaVector3.Forward }
+            : new[]
+            {
+                XnaVector3.Transform(XnaVector3.Right,   transform.Rotation),
+                XnaVector3.Transform(XnaVector3.Up,      transform.Rotation),
+                XnaVector3.Transform(XnaVector3.Forward, transform.Rotation),
+            };
 
         // Work out each axis's screen direction and how many world units one pixel is
         // along it, by projecting a probe point one world unit out.

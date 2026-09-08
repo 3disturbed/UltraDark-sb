@@ -34,6 +34,22 @@ public class WorkbenchContractTests
     }
 
     [Fact]
+    public void NativeGizmoOffersTheContractCoordinateSpaces()
+    {
+        using var contract = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepoRoot, "editor-workbench.json")));
+        var spaces = contract.RootElement.GetProperty("transform").GetProperty("spaces")
+            .EnumerateArray().Select(space => space.GetString()).ToArray();
+
+        Assert.Contains("world", spaces);
+        Assert.Contains("local", spaces);
+        Assert.Equal(GizmoTransformSpace.Local, EditorState.GizmoTransformSpace);
+
+        string gizmo = File.ReadAllText(Path.Combine(RepoRoot, "SexyBiscuit.Editor", "Gizmo3D.cs"));
+        Assert.Contains("GizmoTransformSpace.World", gizmo);
+        Assert.Contains("XnaVector3.Right, XnaVector3.Up, XnaVector3.Forward", gizmo);
+    }
+
+    [Fact]
     public void ContractMakesUnsupportedPropertyEditorsVisible()
     {
         using var contract = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepoRoot, "editor-workbench.json")));

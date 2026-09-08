@@ -29,6 +29,21 @@ import { Camera3D } from '../src/rendering/Camera3D.js';
 import { Transform3D } from '../src/core/Transform3D.js';
 import { Vector3 } from '../src/math/index.js';
 
+const LayoutStorageKey = 'sexybiscuit.editor.layout.v1';
+const DefaultLayout = Object.freeze({ left: 240, right: 320, bottom: 210 });
+
+/** Accepts only bounded pixel sizes from persisted browser layout state. */
+export function normaliseEditorLayout(value) {
+    const layout = {};
+    for (const [key, fallback] of Object.entries(DefaultLayout)) {
+        const candidate = Number(value?.[key]);
+        layout[key] = Number.isFinite(candidate) && candidate >= 120 && candidate <= 640
+            ? Math.round(candidate)
+            : fallback;
+    }
+    return layout;
+}
+
 /** The SexyBiscuit HTML5 editor. */
 export class Editor {
     constructor({ mount = null, projectRoot = '' } = {}) {
@@ -100,6 +115,8 @@ export class Editor {
 
     _buildLayout() {
         clear(this.mount);
+        this._layout = this._loadLayout();
+        this._applyLayout();
 
         this.viewport = new ViewportPanel(this.state, this);
         this.hierarchy = new HierarchyPanel(this.state, this);
@@ -111,28 +128,84 @@ export class Editor {
 
         this._status = el('span.sb-status-text');
 
+        const centre = el('div.sb-centre', {},
+            this.viewport.root,
+            this._resizeHandle('bottom', 'horizontal'),
+            this._dock('bottom', [
+                ['Console', this.console.root],
+                ['Assets', this.assets.root],
+            ]));
+        const body = el('div.sb-body', {},
+            this._dock('left', [
+                ['Place actors', this.palette.root],
+                ['Hierarchy', this.hierarchy.root],
+                ['MakeChibi', this.chibi.root],
+            ]),
+            this._resizeHandle('left', 'vertical'),
+            centre,
+            this._resizeHandle('right', 'vertical'),
+            this._dock('right', [
+                ['Inspector', this.inspector.root],
+            ]));
+
         this.mount.append(
             this._toolbar(),
-            el('div.sb-body', {},
-                this._dock('left', [
-                    ['Place actors', this.palette.root],
-                    ['Hierarchy', this.hierarchy.root],
-                    ['MakeChibi', this.chibi.root],
-                ]),
-                el('div.sb-centre', {},
-                    this.viewport.root,
-                    this._dock('bottom', [
-                        ['Console', this.console.root],
-                        ['Assets', this.assets.root],
-                    ])),
-                this._dock('right', [
-                    ['Inspector', this.inspector.root],
-                ])),
+            body,
             el('footer.sb-statusbar', {}, this._status));
 
         this._buildCommandPalette();
 
         this._installDropTarget();
+    }
+
+    _loadLayout() {
+        try {
+            return normaliseEditorLayout(JSON.parse(globalThis.localStorage?.getItem(LayoutStorageKey) ?? 'null'));
+        } catch {
+            return { ...DefaultLayout };
+        }
+    }
+
+    _applyLayout() {
+        for (const [key, pixels] of Object.entries(this._layout)) {
+            this.mount.style.setProperty(`--dock-${key}`, `${pixels}px`);
+        }
+    }
+
+    _saveLayout() {
+        try { globalThis.localStorage?.setItem(LayoutStorageKey, JSON.stringify(this._layout)); } catch { /* privacy mode */ }
+    }
+
+    _resizeHandle(key, orientation) {
+        const handle = el(`div.sb-resize.sb-resize-${orientation}`, {
+            role: 'separator', tabindex: 0,
+            'aria-orientation': orientation === 'vertical' ? 'vertical' : 'horizontal',
+            title: `Resize ${key} dock`,
+        });
+        handle.addEventListener('pointerdown', (event) => this._beginLayoutResize(event, key, orientation));
+        return handle;
+    }
+
+    _beginLayoutResize(event, key, orientation) {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        const start = { x: event.clientX, y: event.clientY, size: this._layout[key] };
+        const onMove = (move) => {
+            const delta = orientation === 'vertical' ? move.clientX - start.x : move.clientY - start.y;
+            const signed = key === 'right' || key === 'bottom' ? -delta : delta;
+            const viewport = orientation === 'vertical' ? window.innerWidth : window.innerHeight;
+            const min = key === 'bottom' ? 120 : 180;
+            const max = Math.min(640, Math.max(min, viewport * 0.6));
+            this._layout[key] = Math.round(Math.min(max, Math.max(min, start.size + signed)));
+            this._applyLayout();
+        };
+        const onEnd = () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onEnd);
+            this._saveLayout();
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onEnd, { once: true });
     }
 
     /**

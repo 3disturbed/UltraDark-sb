@@ -1019,6 +1019,9 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         GizmoButton("Scale",  GizmoMode.Scale,     "Scale (R)");
 
         ImGui.SameLine();
+        GizmoTransformSpaceButton();
+
+        ImGui.SameLine();
         ImGui.TextDisabled("|");
         ImGui.SameLine();
 
@@ -1114,6 +1117,18 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         if (ImGui.Button(label)) EditorState.GizmoMode = mode;
         if (active) ImGui.PopStyleColor();
         Tooltip(tooltip);
+    }
+
+    private static void GizmoTransformSpaceButton()
+    {
+        bool world = EditorState.GizmoTransformSpace == GizmoTransformSpace.World;
+        if (world) ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.30f, 0.45f, 0.65f, 1f));
+        if (ImGui.Button(world ? "World" : "Local"))
+            EditorState.GizmoTransformSpace = world ? GizmoTransformSpace.Local : GizmoTransformSpace.World;
+        if (world) ImGui.PopStyleColor();
+        Tooltip(world
+            ? "World coordinates: align gizmo axes to the scene. Click for local coordinates."
+            : "Local coordinates: align gizmo axes to the selected actor. Click for world coordinates.");
     }
 
     private static void Tooltip(string text)

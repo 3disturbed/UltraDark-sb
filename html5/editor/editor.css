@@ -163,15 +163,23 @@ html, body {
 
 .sb-body {
     display: grid;
-    grid-template-columns: var(--dock-left) minmax(0, 1fr) var(--dock-right);
+    grid-template-columns: var(--dock-left) 6px minmax(0, 1fr) 6px var(--dock-right);
     min-height: 0;
 }
 
 .sb-centre {
     display: grid;
-    grid-template-rows: minmax(0, 1fr) var(--dock-bottom);
+    grid-template-rows: minmax(0, 1fr) 6px var(--dock-bottom);
     min-width: 0;
 }
+
+.sb-resize { background: var(--bg); position: relative; z-index: 2; touch-action: none; }
+.sb-resize::after { content: ''; position: absolute; background: transparent; }
+.sb-resize-vertical { cursor: col-resize; }
+.sb-resize-vertical::after { inset: 0 -3px; }
+.sb-resize-horizontal { cursor: row-resize; }
+.sb-resize-horizontal::after { inset: -3px 0; }
+.sb-resize:hover, .sb-resize:focus-visible { background: var(--accent); outline: 0; }
 
 .sb-dock {
     display: grid;
@@ -641,6 +649,7 @@ html, body {
     }
 
     .sb-centre { grid-template-rows: minmax(240px, 1fr) var(--dock-bottom); }
+    .sb-resize { display: none; }
     .sb-dock-left, .sb-dock-right {
         border: 0;
         border-top: 1px solid var(--line);

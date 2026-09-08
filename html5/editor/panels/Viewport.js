@@ -41,6 +41,7 @@ export class ViewportPanel {
         this._pointerStart = null;
         this._pinchStart = null;
         this._gizmoDrag = null;
+        this._boxSelect = null;
     }
 
     /** The camera the renderer draws through while editing. */
@@ -144,17 +145,30 @@ export class ViewportPanel {
             surface.setPointerCapture(e.pointerId);
             this._pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() };
 
+            // Shift + primary drag is an explicit marquee gesture. It gets
+            // priority over a gizmo so a selection box never transforms an
+            // actor just because it began near the centre handle.
+            if (e.shiftKey && e.button === 0 && this.state.viewport3D) {
+                this._startBoxSelection(e);
+                return;
+            }
+
             // Transform handles get first refusal. Without this guard a handle
             // drag also begins an orbit, which makes the object appear to run
             // away from the cursor rather than move with it.
             if (this._startGizmo(e)) return;
 
-            // Middle button or Shift pans; anything else orbits. A touch drag
-            // orbits, and two fingers pinch to zoom.
-            this._dragging = (e.button === 1 || e.shiftKey) ? 'pan' : 'orbit';
+            // Middle mouse or Alt+primary pans; anything else orbits. Shift is
+            // reserved for the marquee above. A touch drag orbits, and two
+            // fingers pinch to zoom.
+            this._dragging = (e.button === 1 || e.altKey) ? 'pan' : 'orbit';
         });
 
         surface.addEventListener('pointermove', (e) => {
+            if (this._boxSelect) {
+                this._updateBoxSelection(e);
+                return;
+            }
             if (this._gizmoDrag) {
                 this._updateGizmo(e);
                 return;
@@ -169,6 +183,11 @@ export class ViewportPanel {
 
         surface.addEventListener('pointerup', (e) => {
             const start = this._pointerStart;
+            if (this._boxSelect) {
+                this._finishBoxSelection();
+                this._pointerStart = null;
+                return;
+            }
             if (this._gizmoDrag) {
                 this._finishGizmo();
                 this._pointerStart = null;
@@ -185,6 +204,7 @@ export class ViewportPanel {
 
         surface.addEventListener('pointercancel', () => {
             this._dragging = null;
+            this._finishBoxSelection(true);
             this._finishGizmo(true);
         });
 
@@ -318,6 +338,7 @@ export class ViewportPanel {
         if (!this.state.viewport3D) return;
 
         for (const actor of this.state.selectedActors) this._drawSelectionBounds(ctx, actor);
+        this._drawBoxSelection(ctx);
 
         const primary = this.state.selectedActor;
         const transform = primary?.getComponent(Transform3D);
@@ -365,6 +386,92 @@ export class ViewportPanel {
         ctx.strokeRect(
             minX - padding, minY - padding,
             (maxX - minX) + padding * 2, (maxY - minY) + padding * 2);
+        ctx.restore();
+    }
+
+    /** Begins a Shift + primary-button 3D marquee. */
+    _startBoxSelection(event) {
+        const point = this._canvasPoint(event);
+        this._boxSelect = {
+            start: point,
+            current: point,
+            // Ctrl/Cmd keeps the original selection and adds marquee hits to
+            // it. This mirrors click-toggle without making a Shift-drag remove
+            // an actor merely because it was already selected.
+            additive: event.ctrlKey || event.metaKey,
+            baseSelection: this.state.selectedActors,
+        };
+        this.surface.classList.add('sb-box-selecting');
+    }
+
+    _updateBoxSelection(event) {
+        if (!this._boxSelect) return;
+        this._boxSelect.current = this._canvasPoint(event);
+    }
+
+    _finishBoxSelection(cancel = false) {
+        const marquee = this._boxSelect;
+        if (!marquee) return;
+        this._boxSelect = null;
+        this.surface.classList.remove('sb-box-selecting');
+        if (cancel) return;
+
+        const rect = screenRect(marquee.start, marquee.current);
+        // Treat a short Shift press as an uncommitted marquee rather than a
+        // hidden alternate click gesture. It avoids changing selection while
+        // users begin a box from an empty part of the scene.
+        if (rect.width < 4 && rect.height < 4) return;
+
+        const matches = this._boxSelectionActors(rect);
+        const selection = marquee.additive
+            ? uniqueActors([...marquee.baseSelection, ...matches])
+            : matches;
+        this.state.selectActors(selection);
+    }
+
+    /** Returns live 3D actors whose projected selection bounds meet `rect`. */
+    _boxSelectionActors(rect) {
+        const scene = this.editor.scene;
+        if (!scene || !this._camera) return [];
+
+        return scene.allActors.filter((actor) => {
+            if (!actor || actor.isDestroyed || actor.isActive === false) return false;
+            const bounds = this._projectedSelectionBounds(actor);
+            return bounds && screenRectsIntersect(bounds, rect);
+        });
+    }
+
+    _projectedSelectionBounds(actor) {
+        const transform = actor.getComponent(Transform3D);
+        if (!transform) return null;
+
+        const renderer = actor.getComponent(MeshRenderer);
+        const width = this.engine.canvas2D.width;
+        const height = this.engine.canvas2D.height;
+        const points = renderer?.worldBounds
+            ? boxCorners(renderer.worldBounds).map((corner) => this._camera.worldToScreen(corner, width, height))
+            : [this._camera.worldToScreen(transform.position, width, height)];
+        const visible = points.filter(Boolean);
+        if (visible.length === 0) return null;
+
+        const rect = screenRectFromPoints(visible);
+        // Rendered actors get their actual projected bounds. Non-rendered
+        // actors remain selectable through the same 28px visual handle used by
+        // the selection overlay.
+        return expandScreenRect(rect, renderer?.worldBounds ? 3 : 14);
+    }
+
+    _drawBoxSelection(ctx) {
+        if (!this._boxSelect) return;
+        const rect = screenRect(this._boxSelect.start, this._boxSelect.current);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = 'rgba(91, 141, 217, 0.16)';
+        ctx.strokeStyle = '#8eb6ff';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.strokeRect(rect.left + 0.5, rect.top + 0.5, rect.width, rect.height);
         ctx.restore();
     }
 
