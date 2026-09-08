@@ -15,13 +15,32 @@ import { Component } from '../core/Component.js';
 import { PropertyType as P } from '../core/PropertyTypes.js';
 import { registerComponent } from '../core/TypeRegistry.js';
 import { UiNode } from './UiNode.js';
-import { UiKind, UiScaleMode, SafeAreaMode } from './UiEnums.js';
+import { UiKind, UiScaleMode, SafeAreaMode, UiSpace, UiFacing, PositionMode, canonical } from './UiEnums.js';
+import { Vector3 } from '../math/Vector3.js';
+import { Transform3D } from '../core/Transform3D.js';
+import { Camera3D } from '../rendering/Camera3D.js';
+import { build as buildBasis, rayToCanvas } from './UiWorld.js';
 import { measure as measureLayout, arrange, hitTest as hitTestLayout, deflate } from './UiLayout.js';
 import { UiInput } from './UiInput.js';
-import { fromJson } from './UiDocument.js';
+import { fromJson, fromObject, apply as uiApply, read as uiRead, WRITABLE_KEYS } from './UiDocument.js';
 
 /** Every canvas that currently exists, for the host's screen-space pass. */
 const all = [];
+
+/**
+ * Properties of the root that belong to the canvas, not to the document it adopts.
+ *
+ * A document's root is a box like any other and may well have been authored with a size and a
+ * position; the canvas root is neither, it is the whole surface. Copying a width onto it would
+ * shrink the UI to whatever the author happened to be looking at when they saved. Everything
+ * else is copied -- by walking the codec's own key list rather than a hand-written one, so a
+ * property added to the format is not quietly lost by a list nobody remembered to extend.
+ */
+const ROOT_OWNED_KEYS = new Set([
+    'width', 'height', 'minwidth', 'minheight', 'maxwidth', 'maxheight',
+    'grow', 'shrink', 'margin', 'positioning', 'anchor', 'anchormin', 'anchormax',
+    'pivot', 'offset', 'offsetmax', 'worldfollow', 'worldanchor', 'worldfollowdistance',
+]);
 
 export class UiCanvas extends Component {
     /**
@@ -39,6 +58,14 @@ export class UiCanvas extends Component {
         safeAreaMode:        { type: P.Enum, values: ['Ignore', 'Inset', 'InsetX', 'InsetY'], default: 'Ignore' },
         interactive:         { type: P.Bool, default: true },
         playerIndex:         { type: P.Int, default: -1 },
+        space:               { type: P.Enum, values: ['Screen', 'World'], default: 'Screen' },
+        facing:              { type: P.Enum, values: ['Billboard', 'VerticalBillboard', 'Plane'], default: 'Billboard' },
+        worldPosition:       { type: P.Vector3, default: [0, 0, 0] },
+        worldOffset:         { type: P.Vector3, default: [0, 0, 0] },
+        pixelsPerUnit:       { type: P.Number, default: 100 },
+        maxDrawDistance:     { type: P.Number, default: 0 },
+        doubleSided:         { type: P.Bool, default: false },
+        depthTest:           { type: P.Bool, default: true },
     };
 
     constructor() {
@@ -64,6 +91,44 @@ export class UiCanvas extends Component {
         /** Which player drives this canvas, or -1 for anybody's input. */
         this.playerIndex = -1;
 
+        // --- world space ---
+
+        /** Whether this canvas is a surface on the screen or a plane in the world. */
+        this.space = UiSpace.Screen;
+
+        /** How a world-space canvas is turned to face the player. */
+        this.facing = UiFacing.Billboard;
+
+        /** Where a world canvas stands when its actor has no Transform3D -- or no actor. */
+        this.worldPosition = { x: 0, y: 0, z: 0 };
+
+        /** Shifts a world canvas off its anchor, in world units. */
+        this.worldOffset = { x: 0, y: 0, z: 0 };
+
+        /** Canvas units per world unit: the size dial for a world canvas. */
+        this.pixelsPerUnit = 100;
+
+        /** Stop drawing a world canvas past this distance. Zero never stops. */
+        this.maxDrawDistance = 0;
+
+        /** Whether a world canvas is legible from behind as well as in front. */
+        this.doubleSided = false;
+
+        /** Whether geometry in front of a world canvas hides it. */
+        this.depthTest = true;
+
+        /** The last canvas point a pointer ray found, held across a drag that leaves the plane. */
+        this._lastWorldPoint = null;
+
+        /**
+         * Whether any node in this tree has ever asked to follow a world point.
+         *
+         * Latched rather than counted. A count would have to be kept correct across every
+         * add, remove, reparent and property write, and getting that wrong shows up as a
+         * marker that silently stops moving; a latch can only cost a walk that finds nothing.
+         */
+        this._hasWorldFollowers = false;
+
         /** The tree. Always present; an empty root paints nothing. */
         this.root = new UiNode({ name: 'Root', kind: UiKind.Panel });
         this.root.canvas = this;
@@ -78,6 +143,15 @@ export class UiCanvas extends Component {
 
         all.push(this);
     }
+
+    /**
+     * A point far enough outside any canvas that every rectangle test rejects it.
+     *
+     * Finite on purpose. An infinity or a NaN would propagate through the slider arithmetic
+     * in UiInput instead of simply missing, and "missing" is exactly what a pointer ray that
+     * does not meet a canvas's plane should mean.
+     */
+    static NOWHERE = Object.freeze({ x: -1000000, y: -1000000 });
 
     /** Every live canvas, in creation order. */
     static get all() { return all; }
@@ -127,6 +201,20 @@ export class UiCanvas extends Component {
     }
 
     _resolveScale() {
+        // A world canvas is not fitted to anything: it is a fixed sheet standing in the scene,
+        // so its size is what it was authored at and its transform is the identity. That one
+        // branch is why every other thing in the UI -- layout, painting, clipping, focus,
+        // navigation, hit testing -- keeps working in world space without being told about it.
+        if (this.space === UiSpace.World) {
+            this.scale = { x: 1, y: 1 };
+            this.canvasOffset = { x: 0, y: 0 };
+            this.canvasSize = {
+                x: Math.max(1, this.referenceResolution.x),
+                y: Math.max(1, this.referenceResolution.y),
+            };
+            return;
+        }
+
         const vw = this._viewport.x;
         const vh = this._viewport.y;
         const rw = Math.max(1, this.referenceResolution.x);
@@ -169,12 +257,89 @@ export class UiCanvas extends Component {
     // Coordinates
     // -------------------------------------------------------------------------
 
-    /** Device pixels to canvas units. Every hit test starts here. */
+    /**
+     * Device pixels to canvas units. Every hit test starts here.
+     *
+     * The single seam between the two spaces, which is why world canvases cost the input
+     * router nothing: it still asks one question and still gets canvas units back.
+     */
     screenToCanvas(point) {
+        if (this.space === UiSpace.World) return this._worldScreenToCanvas(point);
+
         return {
             x: (point.x - this.canvasOffset.x) / this.scale.x,
             y: (point.y - this.canvasOffset.y) / this.scale.y,
         };
+    }
+
+    _worldScreenToCanvas(point) {
+        const basis = this.worldBasis();
+        const camera = Camera3D.main;
+
+        if (basis && camera) {
+            const ray = camera.screenToWorldRay(point, this._viewport.x, this._viewport.y);
+            const hit = rayToCanvas(basis, ray.origin, ray.direction, this.canvasSize);
+            if (hit) {
+                this._lastWorldPoint = hit;
+                return hit;
+            }
+        }
+
+        // A drag holds its last good point rather than reporting a miss. Swinging the camera
+        // until the ray leaves the plane would otherwise snap the slider you are dragging to
+        // its minimum, which is a worse answer than "wherever you last had it".
+        if (this._input?.isDragging && this._lastWorldPoint) return this._lastWorldPoint;
+
+        return { ...UiCanvas.NOWHERE };
+    }
+
+    // -------------------------------------------------------------------------
+    // World space
+    // -------------------------------------------------------------------------
+
+    /** The actor's 3D transform when it has one; a script's canvas has no actor at all. */
+    get transform3D() { return this.actor?.getComponent(Transform3D) ?? null; }
+
+    /** The centre of a world canvas: its actor's position plus the offset. */
+    get worldAnchor() {
+        const t = this.transform3D;
+        const origin = t ? t.position : this.worldPosition;
+        return Vector3.add(Vector3.from(origin), Vector3.from(this.worldOffset));
+    }
+
+    /** The canvas's extent in world units: its size in canvas units, scaled down. */
+    get worldSize() {
+        const ppu = Math.max(0.0001, this.pixelsPerUnit);
+        return { x: this.canvasSize.x / ppu, y: this.canvasSize.y / ppu };
+    }
+
+    /** The plane this canvas occupies, or null when it is not in the world or has no camera. */
+    worldBasis() {
+        if (this.space !== UiSpace.World) return null;
+
+        const camera = Camera3D.main;
+        if (!camera) return null;
+
+        const t = this.transform3D;
+
+        return buildBasis(
+            this.worldAnchor,
+            this.facing,
+            t ? t.rotation : { x: 0, y: 0, z: 0, w: 1 },
+            camera.getViewMatrix(),
+            camera.getTransform3D().position,
+            this.worldSize);
+    }
+
+    /** Whether a world canvas is close enough to the camera to be worth drawing. */
+    get isWithinDrawDistance() {
+        if (this.maxDrawDistance <= 0) return true;
+
+        const camera = Camera3D.main;
+        if (!camera) return true;
+
+        const away = Vector3.subtract(camera.getTransform3D().position, this.worldAnchor);
+        return away.lengthSquared <= this.maxDrawDistance * this.maxDrawDistance;
     }
 
     /** Canvas units to device pixels. Clip rectangles must go through this. */
@@ -223,11 +388,61 @@ export class UiCanvas extends Component {
      */
     layout() {
         this._resolveScale();
+        this._resolveWorldFollowers();
         if (!this.root.measureDirty && !this.root.arrangeDirty) return;
 
         const area = this.safeRect;
         measureLayout(this.root, { x: area.width, y: area.height });
         arrange(this.root, area, { x: 0, y: 0, width: this.canvasSize.x, height: this.canvasSize.y });
+    }
+
+    /** Tells this canvas one of its nodes wants to follow a world point. */
+    noteWorldFollower() { this._hasWorldFollowers = true; }
+
+    /**
+     * Moves every following node to wherever its world anchor is on screen this frame.
+     *
+     * Runs before the dirty check rather than after it, because a node that follows a moving
+     * actor is dirty by definition and would otherwise be laid out once and left. A canvas
+     * with no followers pays one boolean.
+     *
+     * Nodes behind the camera are hidden rather than placed: the perspective divide flips a
+     * point behind the viewer to the opposite side of the screen, which is why worldToScreen
+     * returns null there instead of a coordinate.
+     */
+    _resolveWorldFollowers() {
+        if (!this._hasWorldFollowers) return;
+
+        const camera = Camera3D.main;
+        const eye = camera ? camera.getTransform3D().position : null;
+
+        for (const node of this.root.descendants()) {
+            if (!node.worldFollow) continue;
+
+            node.positioning = PositionMode.Absolute;
+
+            if (!camera) {
+                node.visible = false;
+                continue;
+            }
+
+            if (node.worldFollowDistance > 0) {
+                const away = Vector3.subtract(Vector3.from(eye), Vector3.from(node.worldAnchor));
+                if (away.lengthSquared > node.worldFollowDistance * node.worldFollowDistance) {
+                    node.visible = false;
+                    continue;
+                }
+            }
+
+            const screen = camera.worldToScreen(node.worldAnchor, this._viewport.x, this._viewport.y);
+            if (!screen) {
+                node.visible = false;
+                continue;
+            }
+
+            node.visible = true;
+            node.offset = this.screenToCanvas(screen);
+        }
     }
 
     /** Forces a full pass next frame, whatever the dirty flags say. */
@@ -250,6 +465,30 @@ export class UiCanvas extends Component {
     // Documents
     // -------------------------------------------------------------------------
 
+    /**
+     * Loads the `.ui` document named by `document`, if there is one.
+     *
+     * Asynchronous, and the one real asymmetry with the C# side, which reads the file inside
+     * a synchronous Awake. A browser cannot; so the canvas paints empty for the frame or two
+     * the fetch takes and then fills in. Before this existed the browser never loaded the
+     * property at all -- it round-tripped through a `.scene` file and did nothing -- so a UI
+     * saved in the editor appeared natively and nowhere else.
+     */
+    awake() {
+        super.awake?.();
+        if (!this.document) return;
+
+        // The same route SpriteRenderer takes to its texture, rather than a second one.
+        const assets = this.actor?.scene?.engine?.assets;
+        if (!assets) return;
+
+        assets.loadJson(this.document)
+            .then((spec) => { if (spec) this.adopt(fromObject(spec)); })
+            .catch((error) => {
+                console.warn(`[UiCanvas] could not load document '${this.document}': ${error.message}`);
+            });
+    }
+
     /** Parses a `.ui` document and adopts it. */
     loadDocument(source) { this.adopt(fromJson(source)); }
 
@@ -265,19 +504,10 @@ export class UiCanvas extends Component {
             this.root.remove(this.root.children[i]);
         }
 
-        this.root.name = document.name;
-        this.root.layout = document.layout;
-        this.root.gap = document.gap;
-        this.root.wrap = document.wrap;
-        this.root.padding = document.padding;
-        this.root.mainAlign = document.mainAlign;
-        this.root.crossAlign = document.crossAlign;
-        this.root.columns = document.columns;
-        this.root.cellSize = document.cellSize;
-        this.root.background = document.background;
-        this.root.clip = document.clip;
-        this.root.scroll = document.scroll;
-        this.root.scrollOffset = document.scrollOffset;
+        for (const key of WRITABLE_KEYS) {
+            if (ROOT_OWNED_KEYS.has(canonical(key))) continue;
+            uiApply(this.root, key, uiRead(document, key));
+        }
 
         for (const child of [...document.children]) this.root.add(child);
         this.invalidateLayout();

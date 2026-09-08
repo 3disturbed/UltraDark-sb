@@ -174,6 +174,7 @@ public class AssetCooker
             case ".json":
             case ".scene":
             case ".prefab":
+            case ".ui":
             case ".ttf":
             case ".otf":
                 CopyFile(srcFile, dstFile, relPath);

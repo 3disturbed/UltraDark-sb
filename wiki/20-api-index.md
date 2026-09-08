@@ -212,6 +212,7 @@ For the "how do I use this" version, follow the per-system pages linked from the
 | `UiNode` | class | [`UiNode.cs`](../SexyBiscuit.Engine/UI/UiNode.cs) |
 | `UiDocument` | static class | [`UiDocument.cs`](../SexyBiscuit.Engine/UI/UiDocument.cs) |
 | `UiDocumentException` | class | [`UiDocument.cs`](../SexyBiscuit.Engine/UI/UiDocument.cs) |
+| `UiWorld` | static class | [`UiWorld.cs`](../SexyBiscuit.Engine/UI/UiWorld.cs) |
 | `UiPainter` | static class | [`UiPainter.cs`](../SexyBiscuit.Engine/UI/UiPainter.cs) |
 | `UiInput` | class | [`UiInput.cs`](../SexyBiscuit.Engine/UI/UiInput.cs) |
 | `UiInputFrame` | struct | [`UiInput.cs`](../SexyBiscuit.Engine/UI/UiInput.cs) |
@@ -424,7 +425,7 @@ Every non-abstract `Component` subclass, i.e. everything valid in
 | `BoxCollider3D`, `SphereCollider3D`, `CapsuleCollider3D` | `Physics` | shape registered in `Awake` |
 | `CharacterController2D` / `CharacterController3D` | `Physics` | `[RequireComponent]` adds the rigidbody |
 | `AudioSource` | `Audio` | listener is an actor tagged `"Camera"` |
-| `UiCanvas` | `UI` | the host paints it, not `Component.Draw` |
+| `UiCanvas` | `UI` | the host paints it, not `Component.Draw`; `Space = World` puts it on a quad in the 3D pass |
 | `SpriteAnimator` | `Animation` | `[RequireComponent(SpriteRenderer)]` |
 | `AnimatorController` | `Animation` | `[RequireComponent(SpriteAnimator)]` |
 | `SkeletalAnimator` | `Animation` | produces a bone palette |

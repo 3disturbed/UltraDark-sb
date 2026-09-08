@@ -1,0 +1,23 @@
+{
+  "$comment": "One widget document, adopted by two canvases in Scenes/World.scene: one standing on a plane in the scene and one stretched over the screen. Nothing in this file says which. That is the point of it -- the space belongs to the canvas, so a widget is authored, saved and reviewed once.",
+  "name": "terminal",
+  "layout": "column",
+  "padding": 14,
+  "gap": 10,
+  "background": "#161920e6",
+  "borderColour": "#3d8b7a",
+  "borderWidth": 2,
+  "children": [
+    { "name": "title", "kind": "label", "text": "REACTOR", "scale": 3, "tint": "#e8e6e1" },
+    { "name": "status", "kind": "label", "text": "coolant nominal", "tint": "#9a978f" },
+    {
+      "name": "gauge", "layout": "row", "gap": 8, "crossAlign": "center",
+      "children": [
+        { "kind": "label", "text": "PWR", "width": 34, "tint": "#9a978f" },
+        { "name": "power", "kind": "bar", "grow": 1, "height": 10, "value": 0.62,
+          "tint": "#3d8b7a", "background": "#2a2d34" }
+      ]
+    },
+    { "name": "engage", "kind": "button", "text": "Engage", "width": "*", "height": 34 }
+  ]
+}

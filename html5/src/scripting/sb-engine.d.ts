@@ -76,9 +76,8 @@ declare interface CollisionData {
 }
 
 /**
- * One node in the screen-space tree, as UI.build returns it. The members are generated from
- * UiDocument's own key list on both engines, so this and the contract cannot describe
- * different things.
+ * One node in the tree, as UI.build returns it. The members are generated from UiDocument's
+ * own key list on both engines, so this and the contract cannot describe different things.
  */
 declare interface UiNode {
     name: string;
@@ -129,6 +128,15 @@ declare interface UiNode {
     scroll: string;
     scrollOffset: number[];
     ignoreSafeArea: boolean;
+    /**
+     * Whether this node chases worldAnchor across the screen. Following owns the node's
+     * positioning, offset and visibility.
+     */
+    worldFollow: boolean;
+    /** The point in the world a following node tracks, as [x, y, z]. */
+    worldAnchor: number[];
+    /** Stop showing a following node past this distance. Zero never stops. */
+    worldFollowDistance: number;
     focusable: string;
     modal: boolean;
     navUp: string;
@@ -427,7 +435,7 @@ declare const Network: {
 };
 
 // -----------------------------------------------------------------------------
-// UI — Screen space: the only global that knows how big the window is, and the tree a script builds in it.
+// UI — The screen, and the tree a script builds on it -- or a plane standing in the world, when `space` says so. The only global that knows how big the window is.
 // -----------------------------------------------------------------------------
 declare const UI: {
     /** The viewport in canvas units. */
@@ -458,6 +466,16 @@ declare const UI: {
     navigate(direction: "up" | "down" | "left" | "right"): boolean;
     /** Which class of device the player is driving with. */
     readonly inputMode: "pointer" | "directional" | "touch";
+    /** Whether this script's canvas is a surface on the screen or a plane in the world. */
+    space: "screen" | "world";
+    /** How a world-space canvas turns to face the player. */
+    facing: "billboard" | "verticalBillboard" | "plane";
+    /** Where a world canvas stands, when the script's actor has no 3D transform. */
+    worldX: number;
+    worldY: number;
+    worldZ: number;
+    /** Canvas units per world unit: the size dial for a world canvas. */
+    pixelsPerUnit: number;
 };
 
 // -----------------------------------------------------------------------------

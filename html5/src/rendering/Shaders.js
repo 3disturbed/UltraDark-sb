@@ -262,3 +262,43 @@ out vec4 fragColor;
 
 void main() { fragColor = uColor; }
 `;
+
+/**
+ * Unlit textured shading, used for world-space UI canvases.
+ *
+ * A canvas is painted into a 2D texture and hung on a quad, and it must arrive on screen
+ * the colour it was authored -- no lighting, no tone mapping, no ambient. Straight alpha
+ * comes out of the painter, so the blend mode is the caller's business and the shader
+ * simply hands the sample through.
+ */
+export const UNLIT_TEXTURED_VERTEX = `#version 300 es
+precision highp float;
+
+in vec3 aPosition;
+in vec2 aTexCoord;
+
+uniform mat4 uWorld;
+uniform mat4 uViewProjection;
+
+out vec2 vTexCoord;
+
+void main() {
+    vTexCoord = aTexCoord;
+    gl_Position = uViewProjection * uWorld * vec4(aPosition, 1.0);
+}
+`;
+
+export const UNLIT_TEXTURED_FRAGMENT = `#version 300 es
+precision highp float;
+
+in vec2 vTexCoord;
+
+uniform sampler2D uTexture;
+uniform vec4 uColor;
+
+out vec4 fragColor;
+
+void main() {
+    fragColor = texture(uTexture, vTexCoord) * uColor;
+}
+`;

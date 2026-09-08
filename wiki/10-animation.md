@@ -435,8 +435,11 @@ void SpawnDamageNumber(UiCanvas canvas, Vector2 screenPos, int amount)
 }
 ```
 
-`Camera2D.WorldToScreen` turns a world position into the screen one this wants. There is no
-world-space canvas: a number that follows an actor is a node whose offset you write each frame.
+`Camera2D.WorldToScreen` turns a world position into the screen one this wants. In 3D, set
+`WorldFollow` and `WorldAnchor` on the node and the canvas does the projection itself — see
+[9. UI](09-ui.md#following-a-world-point-without-a-world-canvas). Either way the number stays
+in screen space, where it is crisp and upright; a canvas that genuinely belongs to a surface in
+the scene is `UiCanvas.Space = World` instead.
 
 ### Fade a scene in
 

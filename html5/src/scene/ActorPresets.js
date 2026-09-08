@@ -24,6 +24,7 @@ import { ChibiCharacter } from '../chibi/ChibiCharacter.js';
 import { ChibiAnimator } from '../chibi/ChibiAnimator.js';
 import { GameMode } from '../gameplay/GameMode.js';
 import { UiCanvas } from '../ui/UiCanvas.js';
+import { UiSpace } from '../ui/UiEnums.js';
 
 /** One entry in the Place Actors palette. */
 export class ActorPreset {
@@ -254,6 +255,17 @@ export const ActorPresets = [
     // ---- UI -----------------------------------------------------------------
     new ActorPreset('UI', 'Canvas', 'Screen-space UI root: a tree of nodes, laid out and navigable.',
         () => { const a = new Actor('Canvas'); a.addComponent(UiCanvas); return a; }),
+
+    new ActorPreset('UI', 'World Canvas',
+        'The same UI tree, standing on a plane in the scene: nameplates, terminals, signs.',
+        () => {
+            const a = new Actor('World Canvas');
+            a.addComponent(Transform3D);
+            const canvas = a.addComponent(UiCanvas);
+            canvas.space = UiSpace.World;
+            canvas.referenceResolution = { x: 400, y: 200 };
+            return a;
+        }),
 ];
 
 /** Finds a preset by name — exactly first, then case-insensitively. */

@@ -1,0 +1,90 @@
+{
+  "$comment": "Golden world-space UI geometry, read by BOTH engines: SexyBiscuit.Tests/UiWorldTests.cs and html5/tests/uiWorld.test.js. Every expectation here was derived by hand rather than recorded from a run, so the fixture pins the arithmetic and not whatever the code happened to do on the day. This is the only check that can see the two engines' trigonometry drifting apart: a canvas on a wall is all basis vectors and ray intersections, and no regex over the other engine's source could ever compare them. Each case builds a basis from `canvas` and `camera`, then either asserts the basis vectors, or fires `ray` at it and asserts the canvas point it lands on -- or that it misses.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "a ray down the plane's normal lands in the middle of the canvas",
+      "why": "The simplest true statement about the whole system. If this is wrong nothing else can be right.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "Plane", "planeRotation": [0, 0, 0, 1], "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [0, 0, 10], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "ray": { "origin": [0, 0, 5], "direction": [0, 0, -1] },
+      "expect": { "canvas": [200, 100], "distance": 5 }
+    },
+    {
+      "name": "world up is canvas up, so a hit above centre reads as a smaller canvas Y",
+      "why": "The one axis flip in the whole feature. Canvas Y grows downwards and the quad's Y does not, and getting this backwards would put every world UI upside down while every test that only checked the centre stayed green.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "Plane", "planeRotation": [0, 0, 0, 1], "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [0, 0, 10], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "ray": { "origin": [0.5, 0.25, 5], "direction": [0, 0, -1] },
+      "expect": { "canvas": [300, 50], "distance": 5 }
+    },
+    {
+      "name": "a canvas point put back into the world is where the ray came from",
+      "why": "canvasToWorld and rayToCanvas are inverses, and a round trip is the cheapest way to say so.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "Plane", "planeRotation": [0, 0, 0, 1], "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [0, 0, 10], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "canvasToWorld": [300, 50],
+      "expect": { "world": [0.5, 0.25, 0] }
+    },
+    {
+      "name": "a ray parallel to the plane misses it",
+      "why": "Dividing by a cosine of zero is an infinity, and an infinite canvas coordinate would poison every rectangle test downstream instead of simply missing.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "Plane", "planeRotation": [0, 0, 0, 1], "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [0, 0, 10], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "ray": { "origin": [0, 0, 5], "direction": [1, 0, 0] },
+      "expect": { "miss": true }
+    },
+    {
+      "name": "a plane behind the pointer misses",
+      "why": "Without the sign check, a canvas behind the camera takes clicks aimed at the sky in front of it.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "Plane", "planeRotation": [0, 0, 0, 1], "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [0, 0, 10], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "ray": { "origin": [0, 0, 5], "direction": [0, 0, 1] },
+      "expect": { "miss": true }
+    },
+    {
+      "name": "a hit outside the canvas rectangle is a point but not a distance",
+      "why": "The point is still wanted -- the layout rejects it on its own -- but the host's nearest-canvas election must not count a canvas the ray sailed past.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "Plane", "planeRotation": [0, 0, 0, 1], "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [0, 0, 10], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "ray": { "origin": [4, 0, 5], "direction": [0, 0, -1] },
+      "expect": { "canvas": [1000, 100], "distance": null }
+    },
+    {
+      "name": "a billboard in front of the camera faces straight back at it",
+      "why": "The identity case for the inverse-view basis. Camera down -Z, so the canvas normal is +Z and its axes are the world's.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "Billboard", "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [0, 0, 10], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "expectBasis": { "right": [1, 0, 0], "up": [0, 1, 0], "normal": [0, 0, 1] }
+    },
+    {
+      "name": "a billboard turns to a camera standing on the +X axis",
+      "why": "Stand at +X looking towards the origin and your right hand points at -Z. A basis that came out mirrored would still face the camera and would render every label back to front.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "Billboard", "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [10, 0, 0], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "expectBasis": { "right": [0, 0, -1], "up": [0, 1, 0], "normal": [1, 0, 0] }
+    },
+    {
+      "name": "a vertical billboard ignores how high the camera is",
+      "why": "The whole point of the mode. A nameplate over a character must not tip backwards when the player looks down at it, so the up axis stays the world's and only the turn about it follows the camera.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "VerticalBillboard", "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [0, 10, 10], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "expectBasis": { "right": [1, 0, 0], "up": [0, 1, 0], "normal": [0, 0, 1] }
+    },
+    {
+      "name": "a vertical billboard turns about Y towards a camera off to the side",
+      "why": "Same mode, the turn actually happening, and it must agree with the full billboard for a camera at eye level.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "VerticalBillboard", "worldSize": [2, 1], "canvasSize": [400, 200] },
+      "camera": { "position": [10, 4, 0], "target": [0, 0, 0], "up": [0, 1, 0] },
+      "expectBasis": { "right": [0, 0, -1], "up": [0, 1, 0], "normal": [1, 0, 0] }
+    },
+    {
+      "name": "a plane laid flat takes clicks from a camera looking down at it",
+      "why": "A UI on a table, which is the case a billboard can never serve. The quarter turn about X puts canvas up along -Z, so walking round the table changes nothing about where a button is.",
+      "canvas": { "anchor": [0, 0, 0], "facing": "Plane", "planeRotation": [-0.7071068, 0, 0, 0.7071068], "worldSize": [2, 2], "canvasSize": [200, 200] },
+      "camera": { "position": [0, 10, 0], "target": [0, 0, 0], "up": [0, 0, -1] },
+      "ray": { "origin": [0, 5, 0], "direction": [0, -1, 0] },
+      "expect": { "canvas": [100, 100], "distance": 5 }
+    }
+  ]
+}

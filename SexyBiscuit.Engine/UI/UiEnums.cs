@@ -165,3 +165,30 @@ public enum SafeAreaMode
     InsetX,
     InsetY,
 }
+
+/// <summary>Whether a canvas is a surface on the screen or a plane standing in the world.</summary>
+/// <remarks>
+/// One canvas type rather than two, because the tree, the layout, the painter, the focus
+/// ring and the hit test are the same in both. All that differs is where the pixels land:
+/// a screen canvas maps canvas units onto the viewport, a world canvas maps them onto a
+/// quad. That is why the same document can be adopted by either without editing it.
+/// </remarks>
+public enum UiSpace
+{
+    Screen,
+    World,
+}
+
+/// <summary>How a world-space canvas is turned to face the player.</summary>
+/// <remarks>
+/// <see cref="Billboard"/> is right for a nameplate that must stay readable from anywhere.
+/// <see cref="VerticalBillboard"/> keeps the up axis vertical, so a label over a character
+/// does not roll when the camera does. <see cref="Plane"/> hands the orientation to the
+/// actor's own rotation, which is what puts a terminal screen flat on a wall.
+/// </remarks>
+public enum UiFacing
+{
+    Billboard,
+    VerticalBillboard,
+    Plane,
+}

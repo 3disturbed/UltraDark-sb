@@ -6,7 +6,7 @@
       "actors": [
         {
           "name": "Main Camera",
-          "tag": "MainCamera",
+          "tag": "MainCamera3D",
           "components": [
             {
               "type": "Camera3D",

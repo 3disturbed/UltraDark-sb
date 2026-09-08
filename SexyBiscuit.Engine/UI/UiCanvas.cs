@@ -24,7 +24,15 @@ namespace SexyBiscuit.Engine.UI;
 /// </para>
 /// <para>
 /// The canvas may have no Actor: the process-wide canvas behind the script <c>UI</c> global
-/// is constructed directly. Nothing here may dereference <see cref="Component.Actor"/>.
+/// is constructed directly. Nothing here may dereference <see cref="Component.Actor"/>
+/// unguarded — a world canvas reads a <c>Transform3D</c> through <c>Actor?.</c> and falls
+/// back to <see cref="WorldPosition"/>, so a canvas a script made still has a place to stand.
+/// </para>
+/// <para>
+/// <see cref="Space"/> is the whole of the difference between a HUD and a screen bolted to a
+/// wall. The tree, the layout, the painter, the focus ring and the hit test are the same in
+/// both; only the mapping from canvas units to pixels changes. That is what lets one
+/// <c>.ui</c> document be adopted by either without editing a line of it.
 /// </para>
 /// </remarks>
 public class UiCanvas : Component
@@ -47,6 +55,8 @@ public class UiCanvas : Component
     public override void OnDestroy()
     {
         _all.Remove(this);
+        WorldTarget?.Dispose();
+        WorldTarget = null;
         base.OnDestroy();
     }
 
@@ -84,6 +94,44 @@ public class UiCanvas : Component
     /// <summary>Which player drives this canvas, or -1 for anybody's input.</summary>
     public int PlayerIndex { get; set; } = -1;
 
+    /// <summary>Whether this canvas is a surface on the screen or a plane in the world.</summary>
+    public UiSpace Space { get; set; } = UiSpace.Screen;
+
+    /// <summary>How a world-space canvas is turned to face the player.</summary>
+    public UiFacing Facing { get; set; } = UiFacing.Billboard;
+
+    /// <summary>
+    /// Where a world canvas stands when its actor has no <c>Transform3D</c> — or has no actor.
+    /// </summary>
+    public Vector3 WorldPosition { get; set; }
+
+    /// <summary>Shifts a world canvas off its anchor, in world units.</summary>
+    /// <remarks>The usual value is a little way up, so a nameplate clears the head it belongs to.</remarks>
+    public Vector3 WorldOffset { get; set; }
+
+    /// <summary>
+    /// Canvas units per world unit, which is the size dial for a world canvas.
+    /// </summary>
+    /// <remarks>
+    /// A canvas authored at 400x200 with a hundred pixels to the unit is four units wide. Raising
+    /// this shrinks the canvas in the world without re-laying anything out, which is the point:
+    /// the tree is authored in pixels once and scaled here, rather than being re-authored small.
+    /// </remarks>
+    public float PixelsPerUnit { get; set; } = 100f;
+
+    /// <summary>Stop drawing a world canvas past this distance. Zero never stops.</summary>
+    public float MaxDrawDistance { get; set; }
+
+    /// <summary>Whether a world canvas is legible from behind as well as in front.</summary>
+    public bool DoubleSided { get; set; }
+
+    /// <summary>Whether geometry in front of a world canvas hides it.</summary>
+    /// <remarks>
+    /// On for a screen on a wall, which should be behind the pillar in front of it. Off for a
+    /// nameplate, which is wanted through the scenery.
+    /// </remarks>
+    public bool DepthTest { get; set; } = true;
+
     /// <summary>The tree. Always present; an empty root paints nothing.</summary>
     public UiNode Root { get; } = new() { Name = "Root", Kind = UiKind.Panel };
 
@@ -117,6 +165,19 @@ public class UiCanvas : Component
 
     private void ResolveScale()
     {
+        // A world canvas is not fitted to anything: it is a fixed sheet standing in the scene,
+        // so its size is what it was authored at and its transform is the identity. That one
+        // branch is why every other thing in the UI -- layout, painting, clipping, focus,
+        // navigation, hit testing -- keeps working in world space without being told about it.
+        if (Space == UiSpace.World)
+        {
+            Scale        = Vector2.One;
+            CanvasOffset = Vector2.Zero;
+            CanvasSize   = new Vector2(MathF.Max(1f, ReferenceResolution.X),
+                                       MathF.Max(1f, ReferenceResolution.Y));
+            return;
+        }
+
         float vw = _viewport.X, vh = _viewport.Y;
         float rw = MathF.Max(1f, ReferenceResolution.X);
         float rh = MathF.Max(1f, ReferenceResolution.Y);
@@ -161,10 +222,53 @@ public class UiCanvas : Component
     // Coordinates
     // -------------------------------------------------------------------------
 
+    /// <summary>
+    /// A point far enough outside any canvas that every rectangle test rejects it.
+    /// </summary>
+    /// <remarks>
+    /// Finite on purpose. An infinity or a NaN would propagate through the slider arithmetic
+    /// in <see cref="UiInput"/> instead of simply missing, and "missing" is exactly what a
+    /// pointer ray that does not meet a canvas's plane should mean.
+    /// </remarks>
+    public static readonly Vector2 Nowhere = new(-1_000_000f, -1_000_000f);
+
     /// <summary>Device pixels to canvas units. Every hit test starts here.</summary>
-    public Vector2 ScreenToCanvas(Vector2 screen) => new(
-        (screen.X - CanvasOffset.X) / Scale.X,
-        (screen.Y - CanvasOffset.Y) / Scale.Y);
+    /// <remarks>
+    /// The single seam between the two spaces, which is why world canvases cost the input
+    /// router nothing: it still asks one question and still gets canvas units back.
+    /// </remarks>
+    public Vector2 ScreenToCanvas(Vector2 screen)
+    {
+        if (Space == UiSpace.World) return WorldScreenToCanvas(screen);
+
+        return new Vector2(
+            (screen.X - CanvasOffset.X) / Scale.X,
+            (screen.Y - CanvasOffset.Y) / Scale.Y);
+    }
+
+    private Vector2 WorldScreenToCanvas(Vector2 screen)
+    {
+        if (WorldBasis() is { } basis && Rendering.Camera3D.Main is { } camera)
+        {
+            (Vector3 origin, Vector3 direction) =
+                camera.ScreenToWorldRay(screen, _viewport.X, _viewport.Y);
+
+            if (UiWorld.RayToCanvas(basis, origin, direction, CanvasSize) is { } point)
+            {
+                _lastWorldPoint = point;
+                return point;
+            }
+        }
+
+        // A drag holds its last good point rather than reporting a miss. Swinging the camera
+        // until the ray leaves the plane would otherwise snap the slider you are dragging to
+        // its minimum, which is a worse answer than "wherever you last had it".
+        if (_input is { IsDragging: true } && _lastWorldPoint is { } held) return held;
+
+        return Nowhere;
+    }
+
+    private Vector2? _lastWorldPoint;
 
     /// <summary>Canvas units to device pixels. Scissor rectangles must go through this.</summary>
     public Vector2 CanvasToScreen(Vector2 canvas) => new(
@@ -190,6 +294,93 @@ public class UiCanvas : Component
     public Matrix GetTransform()
         => Matrix.CreateScale(Scale.X, Scale.Y, 1f)
          * Matrix.CreateTranslation(CanvasOffset.X, CanvasOffset.Y, 0f);
+
+    // -------------------------------------------------------------------------
+    // World space
+    // -------------------------------------------------------------------------
+
+    /// <summary>The centre of a world canvas, being its actor's position plus the offset.</summary>
+    public Vector3 WorldAnchor
+    {
+        get
+        {
+            Vector3 origin = Transform3D is { } t ? t.Position : WorldPosition;
+            return origin + WorldOffset;
+        }
+    }
+
+    /// <summary>The canvas's extent in world units: its size in canvas units, scaled down.</summary>
+    public Vector2 WorldSize
+    {
+        get
+        {
+            float ppu = MathF.Max(0.0001f, PixelsPerUnit);
+            return new Vector2(CanvasSize.X / ppu, CanvasSize.Y / ppu);
+        }
+    }
+
+    /// <summary>
+    /// The plane this canvas occupies, or null when it is not in the world or there is no
+    /// camera to face.
+    /// </summary>
+    public UiWorld.Basis? WorldBasis()
+    {
+        if (Space != UiSpace.World) return null;
+        if (Rendering.Camera3D.Main is not { } camera) return null;
+
+        return UiWorld.Build(
+            WorldAnchor,
+            Facing,
+            Transform3D is { } t ? t.Rotation : Quaternion.Identity,
+            camera.GetViewMatrix(),
+            camera.GetTransform3D().Position,
+            WorldSize);
+    }
+
+    /// <summary>Whether a world canvas is close enough to the camera to be worth drawing.</summary>
+    public bool IsWithinDrawDistance
+    {
+        get
+        {
+            if (MaxDrawDistance <= 0f) return true;
+            if (Rendering.Camera3D.Main is not { } camera) return true;
+
+            return Vector3.DistanceSquared(camera.GetTransform3D().Position, WorldAnchor)
+                 <= MaxDrawDistance * MaxDrawDistance;
+        }
+    }
+
+    /// <summary>
+    /// The actor's 3D transform when it has one. Read through a null guard, because the
+    /// canvas behind the script <c>UI</c> global has no actor at all.
+    /// </summary>
+    private Transform3D? Transform3D => Actor?.GetComponent<Transform3D>();
+
+    /// <summary>The texture a world canvas is painted into, once it has been painted.</summary>
+    public RenderTarget2D? WorldTarget { get; private set; }
+
+    /// <summary>
+    /// Makes sure the world texture exists and is the size the canvas was authored at.
+    /// </summary>
+    /// <remarks>
+    /// Colour only: the UI paints with depth testing off and always has, so a depth buffer
+    /// here would be a megabyte a canvas bought for nothing. Occlusion against the scene is
+    /// the quad's job, not the texture's.
+    /// </remarks>
+    internal RenderTarget2D? EnsureWorldTarget(GraphicsDevice gd)
+    {
+        int width  = (int)MathF.Round(CanvasSize.X);
+        int height = (int)MathF.Round(CanvasSize.Y);
+
+        if (width <= 0 || height <= 0) return null;
+
+        if (WorldTarget is { } existing && existing.Width == width && existing.Height == height)
+            return existing;
+
+        WorldTarget?.Dispose();
+        WorldTarget = new RenderTarget2D(gd, width, height, false, SurfaceFormat.Color, DepthFormat.None);
+        return WorldTarget;
+    }
 
     // -------------------------------------------------------------------------
     // Layout
@@ -221,12 +412,80 @@ public class UiCanvas : Component
     public void Layout()
     {
         ResolveScale();
+        ResolveWorldFollowers();
         if (!Root.MeasureDirty && !Root.ArrangeDirty) return;
 
         RectangleF area = SafeRect;
         UiLayout.Measure(Root, new Vector2(area.Width, area.Height));
         UiLayout.Arrange(Root, area, new RectangleF(0f, 0f, CanvasSize.X, CanvasSize.Y));
     }
+
+    /// <summary>
+    /// Moves every following node to wherever its world anchor is on screen this frame.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Runs before the dirty check rather than after it, because a node that follows a
+    /// moving actor is dirty by definition and would otherwise be laid out once and left.
+    /// A canvas with no followers pays one boolean.
+    /// </para>
+    /// <para>
+    /// Nodes behind the camera are hidden rather than placed. The perspective divide flips
+    /// a point behind the viewer to the opposite side of the screen, so projecting without
+    /// the check would draw a marker for the thing standing behind you — which is why
+    /// <c>Camera3D.WorldToScreen</c> returns null there instead of a coordinate.
+    /// </para>
+    /// </remarks>
+    private void ResolveWorldFollowers()
+    {
+        if (!_hasWorldFollowers) return;
+
+        Rendering.Camera3D? camera = Rendering.Camera3D.Main;
+        Vector3 eye = camera?.GetTransform3D().Position ?? Vector3.Zero;
+
+        foreach (UiNode node in Root.Descendants())
+        {
+            if (!node.WorldFollow) continue;
+
+            node.Positioning = PositionMode.Absolute;
+
+            if (camera == null)
+            {
+                node.Visible = false;
+                continue;
+            }
+
+            if (node.WorldFollowDistance > 0f &&
+                Vector3.DistanceSquared(eye, node.WorldAnchor) > node.WorldFollowDistance * node.WorldFollowDistance)
+            {
+                node.Visible = false;
+                continue;
+            }
+
+            if (camera.WorldToScreen(node.WorldAnchor, _viewport.X, _viewport.Y) is not { } screen)
+            {
+                node.Visible = false;
+                continue;
+            }
+
+            node.Visible = true;
+            node.Offset  = ScreenToCanvas(screen);
+        }
+    }
+
+    /// <summary>
+    /// Whether any node in this tree has ever asked to follow a world point.
+    /// </summary>
+    /// <remarks>
+    /// Latched rather than counted. A count would have to be kept correct across every add,
+    /// remove, reparent and property write in the tree, and getting that wrong shows up as a
+    /// marker that silently stops moving; a latch can only ever cost a walk that finds
+    /// nothing, and only on a canvas that used the feature at least once.
+    /// </remarks>
+    private bool _hasWorldFollowers;
+
+    /// <summary>Tells this canvas one of its nodes wants to follow a world point.</summary>
+    internal void NoteWorldFollower() => _hasWorldFollowers = true;
 
     /// <summary>Forces a full pass next frame, whatever the dirty flags say.</summary>
     public void InvalidateLayout() => Root.InvalidateMeasure();
@@ -288,31 +547,56 @@ public class UiCanvas : Component
         if (string.IsNullOrWhiteSpace(Document)) return;
 
         string path = Core.ProjectPaths.Resolve(Document);
-        if (!File.Exists(path)) return;
 
-        Adopt(UiDocument.FromJson(File.ReadAllText(path)));
+        if (!File.Exists(path))
+        {
+            // Said out loud. A canvas that silently stays empty because a path is stale is
+            // indistinguishable from a canvas whose layout is wrong, and the two are fixed in
+            // completely different places.
+            Console.Error.WriteLine($"[UiCanvas] document not found: {Document}");
+            return;
+        }
+
+        try
+        {
+            Adopt(UiDocument.FromJson(File.ReadAllText(path)));
+        }
+        catch (UiDocumentException error)
+        {
+            Console.Error.WriteLine($"[UiCanvas] '{Document}' is not a valid UI document: {error.Message}");
+        }
     }
 
     /// <summary>Moves a loaded document's children onto <see cref="Root"/>, replacing what was there.</summary>
+    /// <summary>
+    /// Properties of the root that belong to the canvas, not to the document it adopts.
+    /// </summary>
+    /// <remarks>
+    /// A document's root is a box like any other and may well have been authored with a size
+    /// and a position; the canvas root is neither, it is the whole surface. Copying a width
+    /// onto it would shrink the UI to the size of whatever the author happened to be looking
+    /// at when they saved. Everything else is copied — by walking the codec's own key list
+    /// rather than a hand-written one, so a property added to the format is not quietly lost
+    /// by a list nobody remembered to extend.
+    /// </remarks>
+    private static readonly HashSet<string> RootOwnedKeys = new()
+    {
+        "width", "height", "minwidth", "minheight", "maxwidth", "maxheight",
+        "grow", "shrink", "margin", "positioning", "anchor", "anchormin", "anchormax",
+        "pivot", "offset", "offsetmax", "worldfollow", "worldanchor", "worldfollowdistance",
+    };
+
     public void Adopt(UiNode document)
     {
         ArgumentNullException.ThrowIfNull(document);
 
         for (int i = Root.Children.Count - 1; i >= 0; i--) Root.Remove(Root.Children[i]);
 
-        Root.Name         = document.Name;
-        Root.Layout       = document.Layout;
-        Root.Gap          = document.Gap;
-        Root.Wrap         = document.Wrap;
-        Root.Padding      = document.Padding;
-        Root.MainAlign    = document.MainAlign;
-        Root.CrossAlign   = document.CrossAlign;
-        Root.Columns      = document.Columns;
-        Root.CellSize     = document.CellSize;
-        Root.Background   = document.Background;
-        Root.Clip         = document.Clip;
-        Root.Scroll       = document.Scroll;
-        Root.ScrollOffset = document.ScrollOffset;
+        foreach (string key in UiDocument.WritableKeys)
+        {
+            if (RootOwnedKeys.Contains(UiDocument.Canonical(key))) continue;
+            UiDocument.Apply(Root, key, UiDocument.Read(document, key));
+        }
 
         foreach (UiNode child in new List<UiNode>(document.Children)) Root.Add(child);
         InvalidateLayout();

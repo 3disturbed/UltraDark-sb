@@ -119,6 +119,19 @@ export const SafeAreaMode = Object.freeze({
     InsetY: 'InsetY',
 });
 
+/** Whether a canvas is a surface on the screen or a plane standing in the world. */
+export const UiSpace = Object.freeze({
+    Screen: 'Screen',
+    World: 'World',
+});
+
+/** How a world-space canvas is turned to face the player. */
+export const UiFacing = Object.freeze({
+    Billboard: 'Billboard',
+    VerticalBillboard: 'VerticalBillboard',
+    Plane: 'Plane',
+});
+
 /** The fraction of a parent's box that a named anchor sits at. */
 export function anchorFraction(anchor) {
     switch (canonical(anchor)) {

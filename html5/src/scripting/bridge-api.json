@@ -1308,6 +1308,40 @@
         "type": "\"pointer\" | \"directional\" | \"touch\"",
         "readonly": true,
         "doc": "Which class of device the player is driving with."
+      },
+      "space": {
+        "kind": "prop",
+        "shared": true,
+        "type": "\"screen\" | \"world\"",
+        "doc": "Whether this script's canvas is a surface on the screen or a plane in the world."
+      },
+      "facing": {
+        "kind": "prop",
+        "shared": true,
+        "type": "\"billboard\" | \"verticalBillboard\" | \"plane\"",
+        "doc": "How a world-space canvas turns to face the player."
+      },
+      "worldX": {
+        "kind": "prop",
+        "shared": true,
+        "type": "number",
+        "doc": "Where a world canvas stands, when the script's actor has no 3D transform."
+      },
+      "worldY": {
+        "kind": "prop",
+        "shared": true,
+        "type": "number"
+      },
+      "worldZ": {
+        "kind": "prop",
+        "shared": true,
+        "type": "number"
+      },
+      "pixelsPerUnit": {
+        "kind": "prop",
+        "shared": true,
+        "type": "number",
+        "doc": "Canvas units per world unit: the size dial for a world canvas."
       }
     },
     "DG": {
@@ -2140,6 +2174,24 @@
       "shared": true,
       "type": "boolean"
     },
+    "worldFollow": {
+      "kind": "prop",
+      "shared": true,
+      "type": "boolean",
+      "doc": "Whether this node chases worldAnchor across the screen. Following owns the node's positioning, offset and visibility."
+    },
+    "worldAnchor": {
+      "kind": "prop",
+      "shared": true,
+      "type": "number[]",
+      "doc": "The point in the world a following node tracks, as [x, y, z]."
+    },
+    "worldFollowDistance": {
+      "kind": "prop",
+      "shared": true,
+      "type": "number",
+      "doc": "Stop showing a following node past this distance. Zero never stops."
+    },
     "focusable": {
       "kind": "prop",
       "shared": true,
@@ -2432,7 +2484,7 @@
         "doc": "The multiplayer session. Present in every build so a multiplayer script runs solo; a solo session satisfies every query."
       },
       "UI": {
-        "doc": "Screen space: the only global that knows how big the window is, and the tree a script builds in it."
+        "doc": "The screen, and the tree a script builds on it -- or a plane standing in the world, when `space` says so. The only global that knows how big the window is."
       },
       "DG": {
         "doc": "Darks Games accounts and social: identity, presence, achievements and cloud saves. Every member is safe to call in a build without the layer."
@@ -2456,7 +2508,7 @@
       },
       "uiNode": {
         "interface": "UiNode",
-        "doc": "One node in the screen-space tree, as UI.build returns it. The members are generated from UiDocument's own key list on both engines, so this and the contract cannot describe different things."
+        "doc": "One node in the tree, as UI.build returns it. The members are generated from UiDocument's own key list on both engines, so this and the contract cannot describe different things."
       }
     }
   }

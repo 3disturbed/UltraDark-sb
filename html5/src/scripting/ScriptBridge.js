@@ -20,6 +20,7 @@ import {
     fromObject as uiFromObject, apply as uiApply, read as uiRead,
     isWritable as uiIsWritable, SCRIPT_PROPERTIES,
 } from '../ui/UiDocument.js';
+import { UiSpace, UiFacing, canonical, parseEnum } from '../ui/UiEnums.js';
 import { NavDirection } from '../ui/UiNavigation.js';
 import { width as measureWidest } from '../ui/UiTextMeasure.js';
 import { NetworkManager as NetworkManagerClass } from '../net/NetworkManager.js';
@@ -557,6 +558,9 @@ export function createScriptGlobals(actor, services = {}) {
         left: NavDirection.Left, right: NavDirection.Right,
     };
 
+    /** "VerticalBillboard" as a script writes it: the contract is lower-camel throughout. */
+    const lowerFirst = (name) => String(name).charAt(0).toLowerCase() + String(name).slice(1);
+
     const uiProxy = {
         get width() { return uiCanvas().canvasSize.x; },
         get height() { return uiCanvas().canvasSize.y; },
@@ -590,6 +594,35 @@ export function createScriptGlobals(actor, services = {}) {
         /** Paint order against the canvases other scripts own. Higher is in front. */
         get order() { return uiCanvas().order; },
         set order(v) { uiCanvas().order = Number(v) || 0; },
+
+        // --- world space ---
+        //
+        // The same tree, hung on a plane in the scene instead of stretched over the screen.
+        // Spelled in lower case here and title case in a .ui document because that is the
+        // convention everywhere else in the contract: a script writes "world", a document
+        // writes "World", and the codec treats them as one word.
+
+        get space() { return uiCanvas().space === UiSpace.World ? 'world' : 'screen'; },
+        set space(v) {
+            uiCanvas().space = canonical(v) === 'world' ? UiSpace.World : UiSpace.Screen;
+        },
+
+        get facing() { return lowerFirst(uiCanvas().facing); },
+        set facing(v) { uiCanvas().facing = parseEnum(UiFacing, v, 'facing'); },
+
+        /** Where a world canvas stands, when the script's actor has no 3D transform. */
+        get worldX() { return uiCanvas().worldPosition.x; },
+        set worldX(v) { uiCanvas().worldPosition = { ...uiCanvas().worldPosition, x: Number(v) || 0 }; },
+
+        get worldY() { return uiCanvas().worldPosition.y; },
+        set worldY(v) { uiCanvas().worldPosition = { ...uiCanvas().worldPosition, y: Number(v) || 0 }; },
+
+        get worldZ() { return uiCanvas().worldPosition.z; },
+        set worldZ(v) { uiCanvas().worldPosition = { ...uiCanvas().worldPosition, z: Number(v) || 0 }; },
+
+        /** Canvas units per world unit: the size dial for a world canvas. */
+        get pixelsPerUnit() { return uiCanvas().pixelsPerUnit; },
+        set pixelsPerUnit(v) { uiCanvas().pixelsPerUnit = Number(v) || 100; },
 
         // Focus is what lets a script's menu work on a pad, a D-pad or a TV remote.
         get focused() { return wrapNode(uiCanvas().input.focus.focused); },
