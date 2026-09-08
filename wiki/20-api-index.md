@@ -307,6 +307,7 @@ For the "how do I use this" version, follow the per-system pages linked from the
 | `ScriptBridge` | class | [`ScriptBridge.cs`](../SexyBiscuit.Engine/Scripting/ScriptBridge.cs) |
 | `ScriptComponent` | class | [`ScriptComponent.cs`](../SexyBiscuit.Engine/Scripting/ScriptComponent.cs) |
 | `ScriptHotReload` | class | [`ScriptHotReload.cs`](../SexyBiscuit.Engine/Scripting/ScriptHotReload.cs) |
+| `ScriptContract` | class | [`ScriptContract.cs`](../SexyBiscuit.Engine/Scripting/ScriptContract.cs) |
 | `TypeScriptDefinitions` | class | [`TypeScriptDefinitions.cs`](../SexyBiscuit.Engine/Scripting/TypeScriptDefinitions.cs) |
 
 ### `SexyBiscuit.Engine.Scene`

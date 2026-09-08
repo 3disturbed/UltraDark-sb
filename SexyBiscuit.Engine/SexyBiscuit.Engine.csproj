@@ -142,6 +142,14 @@
     <EmbeddedResource Include="../html5/src/rendering/sky-gradient.json" LogicalName="SexyBiscuit.Engine.sky-gradient.json" />
   </ItemGroup>
 
+  <!-- The scripting contract and the .d.ts generated from it (html5/tools/gen-dts.js): the hooks the
+       Jint runtime dispatches and the API the MCP server shows an agent are read from these, so
+       neither can drift from the list the browser bridge is pinned to. -->
+  <ItemGroup>
+    <EmbeddedResource Include="../html5/src/scripting/bridge-api.json" LogicalName="SexyBiscuit.Engine.bridge-api.json" />
+    <EmbeddedResource Include="../html5/src/scripting/sb-engine.d.ts" LogicalName="SexyBiscuit.Engine.sb-engine.d.ts" />
+  </ItemGroup>
+
   <!-- MakeChibi's parts and clips, for the same reason: one table, so a recipe cannot
        describe a different character on each engine. -->
   <ItemGroup>

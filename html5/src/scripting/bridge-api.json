@@ -1,1049 +1,2463 @@
 {
-  "$comment": "The scripting contract shared by the C# Jint bridge (SexyBiscuit.Engine/Scripting/ScriptBridge.cs) and the browser bridge (html5/src/scripting/ScriptBridge.js). A test on each side pins its bridge to this file, so adding a member here without adding it to both bridges fails both suites. shared=false marks a member one engine has and the other does not; the validator warns when a script uses one. uiNode is the handle UI.build returns: its members are generated from UiDocument's own key list on both engines, so a property added to the codec reaches both script APIs at once.",
-  "version": 1,
+  "$comment": "The scripting contract shared by the C# Jint bridge (SexyBiscuit.Engine/Scripting/ScriptBridge.cs) and the browser bridge (html5/src/scripting/ScriptBridge.js). A test on each side pins its bridge to the member names here, so adding a member without adding it to both bridges fails both suites; shared=false marks a member one engine has and the other does not, and the validator warns when a script uses one. The other fields describe each member for tools: a fn has params (name, type, optional, variadic) and returns; a prop has type and readonly; both may carry doc and since (1 when absent). Types are TypeScript type expressions carried verbatim. `types` declares the helper interfaces those types name; `meta` documents the globals and names the interface each section becomes. html5/tools/gen-dts.js writes sb-engine.d.ts from this file, the C# assembly embeds that, and `npm run lint` fails when the checked-in file is stale. Never edit the .d.ts by hand.",
+  "version": 2,
   "globals": {
     "actor": {
       "id": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "Stable numeric id, unique within the running scene."
       },
       "name": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string",
+        "doc": "Display name of the actor (editable)."
       },
       "tag": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string",
+        "doc": "Tag string used for collision filtering and scene queries."
       },
       "active": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "boolean",
+        "doc": "Whether this actor is active and updated each frame."
       },
       "transform": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "typeof transform",
+        "readonly": true,
+        "doc": "The same object as the `transform` global."
       },
       "transform3d": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "Transform3DProxy | null",
+        "readonly": true,
+        "doc": "The actor's Transform3D, or null in a 2D scene."
       },
       "getComponent": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "type",
+            "type": "string"
+          }
+        ],
+        "returns": "ComponentProxy | null",
+        "doc": "The first component of the named type, or null."
       },
       "addComponent": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "type",
+            "type": "string"
+          }
+        ],
+        "returns": "ComponentProxy | null",
+        "doc": "Adds a component by type name and returns its proxy."
       },
       "destroy": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [],
+        "returns": "void",
+        "doc": "Remove this actor from the scene at the end of the current frame."
       },
       "parent": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "ActorProxy | null",
+        "readonly": true,
+        "doc": "The actor this one is attached to, or null at the root."
       },
       "children": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "ActorProxy[]",
+        "readonly": true,
+        "doc": "A fresh array of the actors attached to this one."
       },
       "attachTo": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "other",
+            "type": "ActorProxy | null"
+          },
+          {
+            "name": "keep",
+            "type": "boolean",
+            "optional": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Parents this actor to another; null detaches. keep (default true) holds the world position, so a pickup follows the player from where it is rather than snapping to the player's origin."
       },
       "detach": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "keep",
+            "type": "boolean",
+            "optional": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Removes this actor from its parent, keeping its world position by default."
       },
       "findChild": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "recursive",
+            "type": "boolean",
+            "optional": true
+          }
+        ],
+        "returns": "ActorProxy | null",
+        "doc": "The first child with this name, or null; recursive searches the whole subtree."
       }
     },
     "transform": {
       "x": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "World-space X position."
       },
       "y": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "World-space Y position."
       },
       "rotation": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "World-space rotation in radians."
       },
       "scaleX": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "World-space horizontal scale."
       },
       "scaleY": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "World-space vertical scale."
       },
       "lookAt": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "x",
+            "type": "number"
+          },
+          {
+            "name": "y",
+            "type": "number"
+          }
+        ],
+        "returns": "void",
+        "doc": "Rotates the actor so it faces the point (x, y) in world space."
       },
       "distanceTo": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "other",
+            "type": "{ x: number; y: number }"
+          }
+        ],
+        "returns": "number",
+        "doc": "The distance from this transform to another {x, y}."
       }
     },
     "transform3d": {
       "x": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number"
       },
       "y": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number"
       },
       "z": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number"
       },
       "rotX": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number"
       },
       "rotY": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number"
       },
       "rotZ": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number"
       },
       "lookAt": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "x",
+            "type": "number"
+          },
+          {
+            "name": "y",
+            "type": "number"
+          },
+          {
+            "name": "z",
+            "type": "number"
+          }
+        ],
+        "returns": "void"
       },
       "scaleX": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "Local scale on X. Every mesh primitive is unit-sized, so scale is how a cube becomes a wall."
       },
       "scaleY": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "Local scale on Y."
       },
       "scaleZ": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "Local scale on Z."
       },
       "set": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "x",
+            "type": "number"
+          },
+          {
+            "name": "y",
+            "type": "number"
+          },
+          {
+            "name": "z",
+            "type": "number"
+          },
+          {
+            "name": "scaleX",
+            "type": "number",
+            "optional": true
+          },
+          {
+            "name": "scaleY",
+            "type": "number",
+            "optional": true
+          },
+          {
+            "name": "scaleZ",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Position and scale in one call: one matrix rebuild instead of six."
       }
     },
     "Input": {
       "isPressed": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "action",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "doc": "True on the frame the named action becomes active."
       },
       "isHeld": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "action",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "doc": "True while the named action is active."
       },
       "isReleased": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "action",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "doc": "True on the frame the named action stops being active."
       },
       "getAxis": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "action",
+            "type": "string"
+          }
+        ],
+        "returns": "number",
+        "doc": "The axis value for the named action, -1..1."
       },
       "mouseX": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "Mouse cursor X in screen pixels."
       },
       "mouseY": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "Mouse cursor Y in screen pixels."
       },
       "mouseDeltaX": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "Mouse movement since the last frame."
       },
       "mouseDeltaY": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "scrollDelta": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "Scroll wheel movement since the last frame, in notches."
       },
       "isKeyDown": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "key",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "doc": "Keys by name: \"A\", \"a\", \"KeyA\", \"Space\", \"ArrowLeft\" and \"Left\" all work."
       },
       "isKeyHeld": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "key",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean"
       },
       "isKeyPressed": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "key",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean"
       },
       "isKeyReleased": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "key",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean"
       },
       "isMouseDown": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "button",
+            "type": "number | string"
+          }
+        ],
+        "returns": "boolean",
+        "doc": "Mouse buttons: 0 left, 1 middle, 2 right, or \"Left\" / \"Middle\" / \"Right\"."
       },
       "isMouseHeld": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "button",
+            "type": "number | string"
+          }
+        ],
+        "returns": "boolean"
       },
       "isMousePressed": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "button",
+            "type": "number | string"
+          }
+        ],
+        "returns": "boolean"
       },
       "isMouseReleased": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "button",
+            "type": "number | string"
+          }
+        ],
+        "returns": "boolean"
       },
       "touchCount": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "Active touches."
       },
       "getTouch": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "index",
+            "type": "number"
+          }
+        ],
+        "returns": "{ id: number; x: number; y: number; phase: string } | null"
       },
       "joystickX": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "The left on-screen joystick, -1..1 on each axis."
       },
       "joystickY": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       }
     },
     "Audio": {
       "play": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "path",
+            "type": "string"
+          },
+          {
+            "name": "loop",
+            "type": "boolean",
+            "optional": true
+          }
+        ],
+        "returns": "AudioHandle",
+        "doc": "Starts playback and returns a handle; id is 0 when nothing could play."
       },
       "playOneShot": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "path",
+            "type": "string"
+          },
+          {
+            "name": "volume",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Plays the file once, fire-and-forget."
       },
       "stop": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "handle",
+            "type": "AudioHandle | number"
+          }
+        ],
+        "returns": "void",
+        "doc": "Stops the voice behind a handle (or a raw id)."
       },
       "setVolume": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "volume",
+            "type": "number"
+          }
+        ],
+        "returns": "void",
+        "doc": "Sets the master volume, 0..1."
       }
     },
     "Scene": {
       "name": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string",
+        "readonly": true,
+        "doc": "The name of the scene this actor is in."
       },
       "find": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "name",
+            "type": "string"
+          }
+        ],
+        "returns": "ActorProxy | null",
+        "doc": "The first actor with the given name, or null."
       },
       "findAll": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "name",
+            "type": "string"
+          }
+        ],
+        "returns": "ActorProxy[]",
+        "doc": "Every actor with the given name."
       },
       "findByTag": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "tag",
+            "type": "string"
+          }
+        ],
+        "returns": "ActorProxy[]",
+        "doc": "Every actor with the given tag. An empty array is still truthy."
       },
       "findFirstByTag": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "tag",
+            "type": "string"
+          }
+        ],
+        "returns": "ActorProxy | null",
+        "doc": "The first actor with the given tag, or null."
       },
       "createActor": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "x",
+            "type": "number",
+            "optional": true
+          },
+          {
+            "name": "y",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "ActorProxy",
+        "doc": "Creates an empty actor in this scene at (x, y)."
       },
       "addComponent": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "actor",
+            "type": "ActorProxy"
+          },
+          {
+            "name": "type",
+            "type": "string"
+          },
+          {
+            "name": "properties",
+            "type": "Record<string, any>",
+            "optional": true
+          }
+        ],
+        "returns": "ComponentProxy | null",
+        "doc": "Adds a component to an actor by type name, applying {Property: value} pairs."
       },
       "destroy": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "actor",
+            "type": "ActorProxy"
+          }
+        ],
+        "returns": "void",
+        "doc": "Removes an actor at the end of the frame."
       },
       "destroyActor": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "actor",
+            "type": "ActorProxy"
+          }
+        ],
+        "returns": "void",
+        "doc": "The same as destroy()."
       },
       "instantiate": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "prefab",
+            "type": "string"
+          },
+          {
+            "name": "x",
+            "type": "number",
+            "optional": true
+          },
+          {
+            "name": "y",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "ActorProxy",
+        "doc": "Instantiates a prefab file at (x, y), or an empty actor named after the path."
       },
       "load": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "scene",
+            "type": "string"
+          }
+        ],
+        "returns": "void",
+        "doc": "Requests a scene transition at the end of the frame."
       }
     },
     "Debug": {
       "log": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "args",
+            "type": "any[]",
+            "variadic": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Writes an informational message. Arguments are joined with spaces."
       },
       "warn": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "args",
+            "type": "any[]",
+            "variadic": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Writes a warning."
       },
       "error": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "args",
+            "type": "any[]",
+            "variadic": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Writes an error."
       }
     },
     "Vector2": {
       "create": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "x",
+            "type": "number"
+          },
+          {
+            "name": "y",
+            "type": "number"
+          }
+        ],
+        "returns": "Vec2"
       },
       "add": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "a",
+            "type": "Vec2"
+          },
+          {
+            "name": "b",
+            "type": "Vec2"
+          }
+        ],
+        "returns": "Vec2"
       },
       "sub": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "a",
+            "type": "Vec2"
+          },
+          {
+            "name": "b",
+            "type": "Vec2"
+          }
+        ],
+        "returns": "Vec2",
+        "doc": "a - b"
       },
       "scale": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "v",
+            "type": "Vec2"
+          },
+          {
+            "name": "s",
+            "type": "number"
+          }
+        ],
+        "returns": "Vec2"
       },
       "normalize": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "v",
+            "type": "Vec2"
+          }
+        ],
+        "returns": "Vec2",
+        "doc": "The unit vector, or {x: 0, y: 0} for a zero vector."
       },
       "dot": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "a",
+            "type": "Vec2"
+          },
+          {
+            "name": "b",
+            "type": "Vec2"
+          }
+        ],
+        "returns": "number"
       },
       "distance": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "a",
+            "type": "Vec2"
+          },
+          {
+            "name": "b",
+            "type": "Vec2"
+          }
+        ],
+        "returns": "number"
       },
       "length": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "v",
+            "type": "Vec2"
+          }
+        ],
+        "returns": "number"
       }
     },
     "Physics": {
       "raycast": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "originX",
+            "type": "number"
+          },
+          {
+            "name": "originY",
+            "type": "number"
+          },
+          {
+            "name": "dirX",
+            "type": "number"
+          },
+          {
+            "name": "dirY",
+            "type": "number"
+          },
+          {
+            "name": "maxDistance",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "{ actor: ActorProxy; x: number; y: number; normalX: number; normalY: number; distance: number } | null",
+        "doc": "The closest hit along a ray, or null."
       },
       "overlapCircle": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "x",
+            "type": "number"
+          },
+          {
+            "name": "y",
+            "type": "number"
+          },
+          {
+            "name": "radius",
+            "type": "number"
+          }
+        ],
+        "returns": "ActorProxy[]",
+        "doc": "Every actor whose collider overlaps the circle."
       },
       "overlapBox": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "x",
+            "type": "number"
+          },
+          {
+            "name": "y",
+            "type": "number"
+          },
+          {
+            "name": "width",
+            "type": "number"
+          },
+          {
+            "name": "height",
+            "type": "number"
+          }
+        ],
+        "returns": "ActorProxy[]",
+        "doc": "Every actor whose collider overlaps the axis-aligned box."
       }
     },
     "Time": {
       "deltaTime": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "unscaledDeltaTime": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "time": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "Scaled seconds since the engine started."
       },
       "frameCount": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "fps": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "timeScale": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "0 pauses gameplay, 0.5 is slow motion, 2 is double speed."
       }
     },
     "Network": {
       "localId": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "isServer": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "boolean",
+        "readonly": true
       },
       "isConnected": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "boolean",
+        "readonly": true
       },
       "isLocalPlayer": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "id",
+            "type": "number"
+          }
+        ],
+        "returns": "boolean"
       },
       "startServer": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "port",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "boolean"
       },
       "connect": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "address",
+            "type": "string",
+            "optional": true
+          },
+          {
+            "name": "portOrRoom",
+            "type": "number | string",
+            "optional": true
+          }
+        ],
+        "returns": "boolean",
+        "doc": "Joins a server by address and port, or a relay by ws:// URL and room code."
       },
       "sendToAll": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "type",
+            "type": "string"
+          },
+          {
+            "name": "data",
+            "type": "any",
+            "optional": true
+          }
+        ],
+        "returns": "void"
       },
       "broadcast": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "type",
+            "type": "string"
+          },
+          {
+            "name": "data",
+            "type": "any",
+            "optional": true
+          }
+        ],
+        "returns": "void"
       },
       "isHost": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "boolean",
+        "readonly": true,
+        "doc": "True when this session hosts the game: the server, or the solo player."
       },
       "ping": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "Round-trip time to the server in milliseconds; 0 when not connected."
       },
       "room": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string",
+        "readonly": true,
+        "doc": "The room code of a session joined through a relay, or an empty string."
       },
       "playerName": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string",
+        "doc": "The name other players see. Set it before connecting."
       },
       "players": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "{ id: number; name: string }[]",
+        "readonly": true,
+        "doc": "A fresh array of the players in the session."
       },
       "startSolo": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [],
+        "returns": "boolean",
+        "doc": "Starts a single-player session that satisfies isHost and isConnected, so a multiplayer script runs alone."
       },
       "disconnect": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [],
+        "returns": "void",
+        "doc": "Leaves the session."
       },
       "sendTo": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "clientId",
+            "type": "number"
+          },
+          {
+            "name": "type",
+            "type": "string"
+          },
+          {
+            "name": "data",
+            "type": "any",
+            "optional": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Sends a message to one player."
       },
       "on": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "event",
+            "type": "\"message\" | \"playerJoined\" | \"playerLeft\" | \"connected\" | \"disconnected\""
+          },
+          {
+            "name": "handler",
+            "type": "(...args: any[]) => void"
+          }
+        ],
+        "returns": "() => void",
+        "doc": "Subscribes to a session event and returns the function that unsubscribes. Needs a running session; the onNetworkMessage hook waits for one instead."
       }
     },
     "UI": {
       "width": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "The viewport in canvas units."
       },
       "height": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "safeLeft": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true,
+        "doc": "What a notch or a television's overscan leaves usable."
       },
       "safeTop": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "safeRight": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "safeBottom": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "readonly": true
       },
       "build": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "spec",
+            "type": "object"
+          }
+        ],
+        "returns": "UiNode",
+        "doc": "Builds a whole tree in one call and returns its root. Building again replaces it."
       },
       "root": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "UiNode",
+        "readonly": true,
+        "doc": "This script's root node."
       },
       "find": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "name",
+            "type": "string"
+          }
+        ],
+        "returns": "UiNode | null",
+        "doc": "The first node with this name, or null."
       },
       "clear": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [],
+        "returns": "void",
+        "doc": "Drops this script's nodes. Another script's HUD is untouched."
       },
       "measure": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "text",
+            "type": "string"
+          },
+          {
+            "name": "scale",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "number",
+        "doc": "The width one line of text will occupy."
       },
       "order": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "number",
+        "doc": "Paint order against the canvases other scripts own. Higher is in front."
       },
       "focused": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "UiNode | null",
+        "readonly": true,
+        "doc": "The node holding focus, or null."
       },
       "setFocus": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "node",
+            "type": "UiNode | string | null"
+          }
+        ],
+        "returns": "boolean",
+        "doc": "Moves focus to a node, or to the node with that name."
       },
       "navigate": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "direction",
+            "type": "\"up\" | \"down\" | \"left\" | \"right\""
+          }
+        ],
+        "returns": "boolean",
+        "doc": "Steps focus one place. Returns whether anything moved."
       },
       "inputMode": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "\"pointer\" | \"directional\" | \"touch\"",
+        "readonly": true,
+        "doc": "Which class of device the player is driving with."
       }
     },
     "DG": {
       "available": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "boolean",
+        "readonly": true,
+        "doc": "True when the build carries the Darks Games account layer. Every DG member is safe to call without it."
       },
       "signedIn": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "boolean",
+        "readonly": true,
+        "doc": "True once the player has signed in."
       },
       "userId": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string | null",
+        "readonly": true,
+        "doc": "The account id, or null when signed out."
       },
       "userName": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string | null",
+        "readonly": true,
+        "doc": "The account name, or null when signed out."
       },
       "handle": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string | null",
+        "readonly": true,
+        "doc": "The public handle, or null when signed out."
       },
       "displayName": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string",
+        "readonly": true,
+        "doc": "The name to show; \"Player\" when signed out."
       },
       "game": {
         "kind": "prop",
-        "shared": true
+        "shared": true,
+        "type": "string",
+        "readonly": true,
+        "doc": "The catalogue slug this build was exported with, or an empty string."
       },
       "presence": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "fields",
+            "type": "object"
+          }
+        ],
+        "returns": "void",
+        "doc": "Publishes what the player is doing, e.g. { state: 'lobby', joinCode: room }."
       },
       "clearPresence": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [],
+        "returns": "void",
+        "doc": "Clears the published presence."
       },
       "achievement": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "key",
+            "type": "string"
+          },
+          {
+            "name": "increment",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Reports an achievement, or adds to a counted one."
       },
       "loadSave": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [],
+        "returns": "void",
+        "doc": "Requests the cloud save. It arrives on the \"save\" event rather than as a return value, because the Jint bridge cannot await."
       },
       "saveCloud": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "data",
+            "type": "any"
+          },
+          {
+            "name": "version",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "void",
+        "doc": "Writes the cloud save."
       },
       "on": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "event",
+            "type": "\"user\" | \"save\" | \"saveConflict\" | \"achievement\""
+          },
+          {
+            "name": "handler",
+            "type": "(...args: any[]) => void"
+          }
+        ],
+        "returns": "() => void",
+        "doc": "Subscribes to an account event and returns the function that unsubscribes. \"user\" reports (signedIn, id, displayName) on both engines."
       }
     },
     "Chibi": {
       "spawn": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "recipePath",
+            "type": "string"
+          },
+          {
+            "name": "x",
+            "type": "number",
+            "optional": true
+          },
+          {
+            "name": "y",
+            "type": "number",
+            "optional": true
+          },
+          {
+            "name": "z",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "ActorProxy | null",
+        "doc": "Spawns a character from a `.chibi` recipe under Assets/. The recipe is read from disk, so the body appears a frame or two later; the actor itself is usable at once."
       },
       "random": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "seed",
+            "type": "number"
+          },
+          {
+            "name": "x",
+            "type": "number",
+            "optional": true
+          },
+          {
+            "name": "y",
+            "type": "number",
+            "optional": true
+          },
+          {
+            "name": "z",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "ActorProxy | null",
+        "doc": "A coordinated random character. The same seed is always the same character."
       },
       "play": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "chibi",
+            "type": "ActorProxy"
+          },
+          {
+            "name": "clip",
+            "type": "string"
+          },
+          {
+            "name": "blend",
+            "type": "number",
+            "optional": true
+          }
+        ],
+        "returns": "boolean",
+        "doc": "Plays a clip, cross-fading over `blend` seconds. Locomotion: \"idle\", \"walk\", \"run\". Keyed: \"wave\", \"hit\", \"jump\", \"cheer\", \"sit\", \"die\". False for a name that is neither."
       },
       "stop": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "chibi",
+            "type": "ActorProxy"
+          }
+        ],
+        "returns": "void",
+        "doc": "Stops whatever is playing, returning the character to rest."
       },
       "setColour": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "chibi",
+            "type": "ActorProxy"
+          },
+          {
+            "name": "slot",
+            "type": "string"
+          },
+          {
+            "name": "hex",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "doc": "Repaints one colour slot: skin, hair, eyes, top, bottom, shoes, accent."
       },
       "setStyle": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "chibi",
+            "type": "ActorProxy"
+          },
+          {
+            "name": "slot",
+            "type": "string"
+          },
+          {
+            "name": "variant",
+            "type": "string"
+          }
+        ],
+        "returns": "boolean",
+        "doc": "Swaps one style slot — head, hair, eyes, body, legs, feet — and rebuilds."
       },
       "attach": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "chibi",
+            "type": "ActorProxy"
+          },
+          {
+            "name": "socket",
+            "type": "string"
+          },
+          {
+            "name": "actor",
+            "type": "ActorProxy"
+          }
+        ],
+        "returns": "boolean",
+        "doc": "Hangs an actor off a socket: Head, Face, Hand_L, Hand_R, Back."
       },
       "socket": {
         "kind": "fn",
-        "shared": true
+        "shared": true,
+        "params": [
+          {
+            "name": "chibi",
+            "type": "ActorProxy"
+          },
+          {
+            "name": "socket",
+            "type": "string"
+          }
+        ],
+        "returns": "ActorProxy | null",
+        "doc": "The socket's own actor, for reading where it is. Null for an unknown name."
       }
     }
   },
   "bare": {
     "log": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "args",
+          "type": "any[]",
+          "variadic": true
+        }
+      ],
+      "returns": "void"
     },
     "warn": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "args",
+          "type": "any[]",
+          "variadic": true
+        }
+      ],
+      "returns": "void"
     },
     "error": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "args",
+          "type": "any[]",
+          "variadic": true
+        }
+      ],
+      "returns": "void"
     }
   },
   "actorProxy": {
     "id": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number",
+      "readonly": true
     },
     "name": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "tag": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "active": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "transform": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "ActorProxyTransform",
+      "readonly": true,
+      "doc": "Position and rotation of the found actor."
     },
     "transform3d": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "Transform3DProxy | null",
+      "readonly": true,
+      "doc": "The actor's Transform3D, or null in a 2D scene."
     },
     "getComponent": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "returns": "ComponentProxy | null"
     },
     "destroy": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [],
+      "returns": "void"
     }
   },
   "actorProxyTransform": {
     "x": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number",
+      "doc": "World-space X position."
     },
     "y": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number",
+      "doc": "World-space Y position."
     },
     "rotation": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number",
+      "doc": "World-space rotation in radians."
     }
   },
   "collisionData": {
     "other": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "ActorProxy"
     },
     "contactPoint": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "Vec2"
     },
     "normal": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "Vec2"
     },
     "relativeVelocity": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "tag": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string",
+      "readonly": true
     },
     "name": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string",
+      "readonly": true
     },
     "getComponent": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "returns": "ComponentProxy | null",
+      "doc": "The same as other.getComponent(type)."
     }
   },
   "hooks": {
     "onAwake": {
-      "shared": true
+      "shared": true,
+      "params": [],
+      "returns": "void",
+      "doc": "Called once when the script loads, after the actor has joined its scene."
     },
     "onStart": {
-      "shared": true
+      "shared": true,
+      "params": [],
+      "returns": "void",
+      "doc": "Called once on the first frame after the scene has started."
     },
     "onUpdate": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "dt",
+          "type": "number"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called every frame. `dt` is seconds since the last frame."
     },
     "onFixedUpdate": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "dt",
+          "type": "number"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called at a fixed rate regardless of frame rate. Use for physics-dependent logic."
     },
     "onLateUpdate": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "dt",
+          "type": "number"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called every frame after every onUpdate has run."
     },
     "onDestroy": {
-      "shared": true
+      "shared": true,
+      "params": [],
+      "returns": "void",
+      "doc": "Called just before the actor is destroyed or the scene unloads."
     },
     "onCollisionEnter": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "data",
+          "type": "CollisionData"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called when this actor's collider first contacts another collider."
     },
     "onCollisionStay": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "data",
+          "type": "CollisionData"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called every physics step while the contact persists."
     },
     "onCollisionExit": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "data",
+          "type": "CollisionData"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called when the contact ends."
     },
     "onTriggerEnter": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "other",
+          "type": "ActorProxy"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called when another collider enters this actor's trigger volume."
     },
     "onTriggerStay": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "other",
+          "type": "ActorProxy"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called every physics step while it stays inside."
     },
     "onTriggerExit": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "other",
+          "type": "ActorProxy"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called when it leaves."
     },
     "onNetworkMessage": {
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "name": "payload",
+          "type": "any"
+        },
+        {
+          "name": "sender",
+          "type": "number"
+        }
+      ],
+      "returns": "void",
+      "doc": "Called for every message the session delivers. Defining it is enough: the script attaches itself the frame a session appears."
     }
   },
   "uiNode": {
     "name": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "kind": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "visible": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "interactive": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "order": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "style": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "width": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number | string"
     },
     "height": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number | string"
     },
     "minWidth": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "minHeight": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "maxWidth": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "maxHeight": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "grow": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "shrink": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "padding": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "margin": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "layout": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "gap": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "wrap": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "mainAlign": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "crossAlign": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "columns": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "cellSize": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "positioning": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "anchor": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "anchorMin": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "anchorMax": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "pivot": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "offset": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "offsetMax": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "text": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "textScale": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "textAlign": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "verticalAlign": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "wrapText": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "lineSpacing": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "background": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string | null"
     },
     "tint": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "opacity": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "borderColour": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string | null"
     },
     "borderWidth": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "texturePath": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "sourceRect": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "ninePatch": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "clip": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "scroll": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "scrollOffset": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number[]"
     },
     "ignoreSafeArea": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "focusable": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "modal": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "navUp": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "navDown": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "navLeft": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "navRight": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "autoFocus": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "value": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "minValue": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "maxValue": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "step": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "checked": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean"
     },
     "selectedIndex": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "options": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string[]"
     },
     "x": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "y": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "scale": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "number"
     },
     "align": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "string"
     },
     "rect": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "{ x: number; y: number; width: number; height: number }",
+      "readonly": true
     },
     "hovered": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean",
+      "readonly": true
     },
     "pressed": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean",
+      "readonly": true
     },
     "clicked": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean",
+      "readonly": true
     },
     "focused": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean",
+      "readonly": true
     },
     "expanded": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "boolean",
+      "readonly": true
     },
     "parent": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "UiNode | null",
+      "readonly": true,
+      "doc": "The node this one hangs under, or null at the root."
     },
     "children": {
       "kind": "prop",
-      "shared": true
+      "shared": true,
+      "type": "UiNode[]",
+      "readonly": true,
+      "doc": "A fresh array each read, so a script cannot mutate the tree by writing to it."
     },
     "add": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "spec",
+          "type": "object"
+        }
+      ],
+      "returns": "UiNode",
+      "doc": "Appends a child built from a spec and returns it."
     },
     "find": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "returns": "UiNode | null",
+      "doc": "The first descendant with this name, or null."
     },
     "remove": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [],
+      "returns": "void",
+      "doc": "Detaches this node and everything under it."
     },
     "focus": {
       "kind": "fn",
-      "shared": true
+      "shared": true,
+      "params": [],
+      "returns": "void",
+      "doc": "Gives this node the focus a pad or a remote drives."
+    }
+  },
+  "types": {
+    "Vec2": {
+      "doc": "Plain {x, y} value object used throughout the API.",
+      "members": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      }
+    },
+    "AudioHandle": {
+      "doc": "Opaque handle returned by Audio.play(). Pass it to Audio.stop() to halt playback.",
+      "members": {
+        "id": {
+          "type": "number",
+          "readonly": true
+        }
+      }
+    },
+    "ComponentProxy": {
+      "doc": "A component reached through getComponent(). Every schema-declared property is readable and writable under its C# name and its camelCase name (\"GravityScale\" or \"gravityScale\"); vectors read as {x, y} and colours as \"#RRGGBBAA\".",
+      "index": "any",
+      "members": {
+        "type": {
+          "type": "string",
+          "readonly": true
+        },
+        "actor": {
+          "type": "ActorProxy",
+          "readonly": true
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ScriptProxy": {
+      "doc": "A ScriptComponent seen from another script.",
+      "extends": "ComponentProxy",
+      "members": {
+        "invoke": {
+          "params": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "args",
+              "type": "any[]",
+              "variadic": true
+            }
+          ],
+          "returns": "any",
+          "doc": "Calls a top-level function the other script defines and returns its result."
+        },
+        "call": {
+          "params": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "args",
+              "type": "any[]",
+              "variadic": true
+            }
+          ],
+          "returns": "any",
+          "doc": "The same as invoke()."
+        }
+      }
+    }
+  },
+  "meta": {
+    "globals": {
+      "actor": {
+        "doc": "The Actor that owns this script component."
+      },
+      "transform": {
+        "doc": "The actor's Transform component."
+      },
+      "transform3d": {
+        "doc": "The actor's Transform3D, or null in a 2D scene. Rotations are Euler angles in degrees.",
+        "interface": "Transform3DProxy",
+        "nullable": true
+      },
+      "Input": {
+        "doc": "Input queries: actions, keys, mouse, touch and the on-screen joystick."
+      },
+      "Audio": {
+        "doc": "Audio playback."
+      },
+      "Scene": {
+        "doc": "Scene and actor management."
+      },
+      "Debug": {
+        "doc": "Logging."
+      },
+      "Vector2": {
+        "doc": "2D vector maths over plain {x, y} objects."
+      },
+      "Physics": {
+        "doc": "2D world queries."
+      },
+      "Time": {
+        "doc": "Frame timing."
+      },
+      "Network": {
+        "doc": "The multiplayer session. Present in every build so a multiplayer script runs solo; a solo session satisfies every query."
+      },
+      "UI": {
+        "doc": "Screen space: the only global that knows how big the window is, and the tree a script builds in it."
+      },
+      "DG": {
+        "doc": "Darks Games accounts and social: identity, presence, achievements and cloud saves. Every member is safe to call in a build without the layer."
+      },
+      "Chibi": {
+        "doc": "MakeChibi's characters: spawning, dressing and animating them."
+      }
+    },
+    "sections": {
+      "actorProxy": {
+        "interface": "ActorProxy",
+        "doc": "An actor found through the Scene API, a hierarchy query or a collision."
+      },
+      "actorProxyTransform": {
+        "interface": "ActorProxyTransform",
+        "doc": "The transform of a found actor: position and rotation only."
+      },
+      "collisionData": {
+        "interface": "CollisionData",
+        "doc": "Contact data handed to the collision hooks. tag, name and getComponent forward to `other`."
+      },
+      "uiNode": {
+        "interface": "UiNode",
+        "doc": "One node in the screen-space tree, as UI.build returns it. The members are generated from UiDocument's own key list on both engines, so this and the contract cannot describe different things."
+      }
     }
   }
 }

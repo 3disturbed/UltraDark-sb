@@ -352,19 +352,6 @@ test('a gamepad reads the axis names a C# bindings file uses', () => {
     assert.equal(pad.getAxis('NoSuchAxis'), 0);
 });
 
-test('the C# runtime dispatches every hook the JavaScript bridge does', () => {
-    // A script written against the browser's hook list has to fire under Jint too.
-    // JintRuntime.KnownHooks is read from source so the two cannot drift apart.
-    const csharp = fs.readFileSync(
-        path.join(repoRoot, 'SexyBiscuit.Engine', 'Scripting', 'JintRuntime.cs'), 'utf8');
-
-    const block = csharp.match(/KnownHooks\s*=\s*\{([^}]*)\}/);
-    assert.ok(block, 'could not find JintRuntime.KnownHooks');
-
-    const hooks = [...block[1].matchAll(/"(\w+)"/g)].map((m) => m[1]).sort();
-    assert.deepEqual(hooks, [...SCRIPT_HOOKS].sort());
-});
-
 test('both engines generate the same set of primitive shapes', () => {
     // A scene stores a MeshPrimitive by name, so a shape one engine can build and the
     // other cannot does not fail loudly -- it falls through to a cube. Capsule and Torus

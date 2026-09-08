@@ -23,7 +23,12 @@ by the HTML5 runtime's `html5/src/scripting/ScriptBridge.js`. The list itself li
 `html5/src/scripting/bridge-api.json`; a test on each side (`ScriptBridgeParityTests` and
 `html5/tests/bridge.test.js`) holds its bridge to that file in both directions, so the two can
 only drift apart by failing a build. A script that uses only what is here runs unchanged in the
-browser and natively. The `.d.ts` produced by `TypeScriptDefinitions.Generate()` matches it.
+browser and natively. The file also describes every member (parameters, return, type, a line of
+documentation), and `html5/src/scripting/sb-engine.d.ts` is generated from it by
+`npm run gen` in `html5/`; the C# assembly embeds that file and serves it as
+`TypeScriptDefinitions.Generate()` and as the MCP resource `sexybiscuit://scripting/api.d.ts`.
+`npm run lint` fails when the checked-in `.d.ts` is stale, so the API an editor completes, the one
+an agent is shown and the one both bridges implement are one list.
 
 ### `actor` — the actor owning this script
 
@@ -483,6 +488,9 @@ DEVELOPMENT`), so leaving these calls in shipping code is free.
 
 ## Editor IntelliSense
 
+Copy `html5/src/scripting/sb-engine.d.ts` beside the scripts (it is the generated file the
+contract describes), or have the engine write it:
+
 ```csharp
 TypeScriptDefinitions.WriteToFile("Scripts/sb-engine.d.ts");
 ```
@@ -496,8 +504,8 @@ Then in `Scripts/jsconfig.json`:
 }
 ```
 
-VS Code then gives full completion and hover types for `actor`, `transform`,
-`Input`, `Audio`, `Scene`, `Debug` and `Vector2`, with no build step.
+VS Code then gives full completion and hover types for every global in the contract, with no
+build step.
 
 ---
 
@@ -520,10 +528,19 @@ Two habits from the old scripts are worth unlearning:
 
 ## Extending the bridge
 
-Add to both sides or neither: the member in `ScriptBridge.cs`, the same member in
-`html5/src/scripting/ScriptBridge.js`, and its entry in `html5/src/scripting/bridge-api.json`.
-The parity tests fail until all three agree, and the `.d.ts` in `TypeScriptDefinitions.cs` and
-this page should follow.
+Add to both sides or neither, in this order:
+
+1. The member in `html5/src/scripting/bridge-api.json`: its `kind`, `shared`, and for a fn its
+   `params` and `returns`, for a prop its `type` (and `readonly`), plus a one-line `doc`. A type
+   the member names must be a builtin or declared under `types`; `html5/tests/contract.test.js`
+   checks both.
+2. `cd html5 && npm run gen`, which rewrites `sb-engine.d.ts`. Never edit that file by hand;
+   `npm run lint` fails when it is stale, and the C# build embeds it.
+3. The same member in `html5/src/scripting/ScriptBridge.js`, then in `ScriptBridge.cs`.
+4. `npm test`, then `dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj --filter "FullyQualifiedName~Parity"`:
+   the parity tests fail until the contract and both bridges agree, and `npm run mirror`
+   (`html5/tools/mirror-check.js`) fails a change that touched one bridge and not the other.
+5. This page.
 
 On the C# side each proxy is a plain JS object with delegates hung off it:
 
