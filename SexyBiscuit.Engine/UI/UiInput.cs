@@ -226,6 +226,16 @@ public sealed class UiInput
         }
     }
 
+    /// <summary>
+    /// Whether a press is currently being dragged across a control.
+    /// </summary>
+    /// <remarks>
+    /// Read by <see cref="UiCanvas.ScreenToCanvas"/> in world space, where a pointer ray can
+    /// stop meeting the canvas's plane mid-drag if the camera swings. Holding the last good
+    /// point is better than reporting a miss, which would read as a jump to the far edge.
+    /// </remarks>
+    internal bool IsDragging => _dragging != null;
+
     private void ContinuePress(UiInputFrame frame)
     {
         if (_dragging is { Kind: UiKind.Slider } slider)

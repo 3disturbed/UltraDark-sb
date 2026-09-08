@@ -959,6 +959,34 @@ public sealed class ScriptBridge
         // Paint order against the canvases other scripts own. Higher is in front.
         Prop("order", () => new JsNumber(Canvas().Order), v => Canvas().Order = (int)Num(v));
 
+        // --- world space ---
+        //
+        // The same tree, hung on a plane in the scene instead of stretched over the screen.
+        // Spelled in lower case here and title case in a .ui document because that is the
+        // convention everywhere else in the contract: a script writes "world", a document
+        // writes "World", and the codec treats them as one word.
+
+        Prop("space",
+            () => new JsString(Canvas().Space == UiSpace.World ? "world" : "screen"),
+            v => Canvas().Space = Text(v).Equals("world", StringComparison.OrdinalIgnoreCase)
+                ? UiSpace.World : UiSpace.Screen);
+
+        Prop("facing",
+            () => new JsString(LowerFirst(Canvas().Facing.ToString())),
+            v => Canvas().Facing = ParseFacing(Text(v)));
+
+        // Where a world canvas stands, when the script's actor has no 3D transform.
+        Prop("worldX", () => new JsNumber(Canvas().WorldPosition.X),
+            v => Canvas().WorldPosition = Canvas().WorldPosition with { X = Num(v) });
+        Prop("worldY", () => new JsNumber(Canvas().WorldPosition.Y),
+            v => Canvas().WorldPosition = Canvas().WorldPosition with { Y = Num(v) });
+        Prop("worldZ", () => new JsNumber(Canvas().WorldPosition.Z),
+            v => Canvas().WorldPosition = Canvas().WorldPosition with { Z = Num(v) });
+
+        // Canvas units per world unit: the size dial for a world canvas.
+        Prop("pixelsPerUnit", () => new JsNumber(Canvas().PixelsPerUnit),
+            v => Canvas().PixelsPerUnit = Num(v, 100f));
+
         // Focus is what lets a script's menu work on a pad, a D-pad or a TV remote.
         Prop("focused", () => WrapUiNode(Canvas().Input.Focus.Focused));
 
@@ -1036,6 +1064,26 @@ public sealed class ScriptBridge
     }
 
     /// <summary>The node behind a handle a script passed back in, or null.</summary>
+    /// <summary>"VerticalBillboard" as a script writes it: the contract is lower-camel throughout.</summary>
+    private static string LowerFirst(string name)
+        => name.Length == 0 ? name : char.ToLowerInvariant(name[0]) + name[1..];
+
+    /// <summary>
+    /// Reads a facing the forgiving way the document codec does, so "vertical-billboard",
+    /// "verticalBillboard" and "VerticalBillboard" are one value.
+    /// </summary>
+    private static UiFacing ParseFacing(string name)
+    {
+        string wanted = new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+
+        foreach (UiFacing candidate in Enum.GetValues<UiFacing>())
+            if (candidate.ToString().ToLowerInvariant() == wanted) return candidate;
+
+        throw new UiDocumentException(
+            $"\"{name}\" is not a valid value for \"facing\". Expected one of: "
+            + string.Join(", ", Enum.GetNames<UiFacing>()) + ".");
+    }
+
     private UiNode? NodeOf(JsValue value)
     {
         if (value is not ObjectInstance handle) return null;

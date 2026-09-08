@@ -300,6 +300,28 @@ whichever the scan finds first. A name that resolves to nothing becomes a
 
 **Check** — `grep -n 'TypeNameStyle' SexyBiscuit.Engine/Scene/SceneSerializer.cs`
 
+### A world canvas is drawn before the frame it appears in
+
+`UiCanvas.Space = World` is painted into a render target *before* the 3D pass, because binding
+a target discards the back buffer and because the 3D pass is what draws the quad carrying it.
+Anything that reorders `EngineHost.Render` has to keep world-canvas textures first.
+
+Two consequences worth knowing: `ReferenceResolution` is the texture's resolution, so soft
+world text is fixed by raising it and not by `PixelsPerUnit`; and the quads blend with
+*straight* alpha, not the transparent pass's premultiplied `AlphaBlend`, because that is what
+`UiPainter` writes. Drawing them with the pass's own blend darkens every translucent panel and
+looks deliberate.
+
+**Check** — `grep -n 'PaintWorldTargets' SexyBiscuit.Engine/Core/EngineHost.cs SexyBiscuit.Engine/UI/UiPainter.cs`
+
+### `worldFollow` owns three of its node's properties
+
+A node with `WorldFollow` has its `Positioning`, `Offset` and `Visible` rewritten every frame
+by the canvas. Setting any of them yourself is setting a value the next layout pass overwrites —
+hide a marker by clearing `WorldFollow` or moving `WorldAnchor`, not by writing `Visible`.
+
+**Check** — `grep -n 'ResolveWorldFollowers' SexyBiscuit.Engine/UI/UiCanvas.cs`
+
 ### Textures survive only through their path twins
 
 `Texture2D`, `SoundEffect` and `Model` are not serialisable.

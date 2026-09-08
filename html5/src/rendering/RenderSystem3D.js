@@ -11,9 +11,11 @@ import { MeshRenderer } from './MeshRenderer.js';
 import { Light3D, LightType, SkyLight } from './Light3D.js';
 import { Camera3D } from './Camera3D.js';
 import { Skybox } from './Skybox.js';
-import { Geometry } from './PrimitiveMesh.js';
+import { Geometry, getPrimitive, MeshPrimitive } from './PrimitiveMesh.js';
+import { quadTransform } from '../ui/UiWorld.js';
 import {
     STANDARD_VERTEX, STANDARD_FRAGMENT, SKYBOX_VERTEX, SKYBOX_FRAGMENT, MAX_LIGHTS,
+    UNLIT_TEXTURED_VERTEX, UNLIT_TEXTURED_FRAGMENT,
 } from './Shaders.js';
 
 /** What one frame cost. Shown by the editor's render-stats panel. */
@@ -74,6 +76,8 @@ export class RenderSystem3D {
 
         this._programs.standard = buildProgram(gl, STANDARD_VERTEX, STANDARD_FRAGMENT, 'standard');
         this._programs.skybox = buildProgram(gl, SKYBOX_VERTEX, SKYBOX_FRAGMENT, 'skybox');
+        this._programs.unlitTextured = buildProgram(
+            gl, UNLIT_TEXTURED_VERTEX, UNLIT_TEXTURED_FRAGMENT, 'unlitTextured');
 
         // A 1x1 white texture stands in wherever a material has no albedo map, so
         // the shader never branches on a missing sampler binding.
@@ -169,6 +173,63 @@ export class RenderSystem3D {
             gl.depthMask(true);
             gl.disable(gl.BLEND);
         }
+
+        // World-space UI, after the scene it hangs in: a canvas on a wall is transparent
+        // geometry like any other, and it reads depth so a pillar in front still hides it.
+        this._drawWorldCanvases(options.worldCanvases ?? [], viewProjection);
+    }
+
+    /**
+     * Draws every world-space UiCanvas as a textured quad.
+     *
+     * The canvases arrive as an argument rather than being read from UiCanvas.all here,
+     * because UiCanvas already imports Camera3D and importing it back would close a cycle
+     * between the UI and the renderer. The host owns the frame order, so it owns the list.
+     */
+    _drawWorldCanvases(canvases, viewProjection) {
+        if (canvases.length === 0) return;
+
+        const gl = this.gl;
+        const geometry = getPrimitive(MeshPrimitive.Quad);
+        if (!geometry) return;
+
+        const program = this._programs.unlitTextured;
+        gl.useProgram(program.program);
+        gl.uniformMatrix4fv(program.uniform('uViewProjection'), false, viewProjection.m);
+        gl.uniform4f(program.uniform('uColor'), 1, 1, 1, 1);
+        gl.uniform1i(program.uniform('uTexture'), 0);
+
+        gl.enable(gl.BLEND);
+
+        // Straight alpha, matching what UiPainter writes into the texture: a panel authored
+        // #161920e6 must be that colour in the world and on the screen alike. The native
+        // engine swaps to BlendState.NonPremultiplied here for exactly the same reason.
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+
+        for (const { canvas, texture } of canvases) {
+            const basis = canvas.worldBasis();
+            if (!basis || !texture) continue;
+
+            if (canvas.depthTest) gl.enable(gl.DEPTH_TEST);
+            else gl.disable(gl.DEPTH_TEST);
+
+            if (canvas.doubleSided) gl.disable(gl.CULL_FACE);
+            else gl.enable(gl.CULL_FACE);
+
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, texture.getGLTexture(gl));
+
+            gl.uniformMatrix4fv(program.uniform('uWorld'), false, quadTransform(basis).m);
+
+            this._drawGeometry(program, geometry);
+            this.stats.drawCalls++;
+        }
+
+        gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.CULL_FACE);
+        gl.depthMask(true);
+        gl.disable(gl.BLEND);
     }
 
     _setSharedUniforms(program, viewProjection, cameraPosition) {
@@ -267,7 +328,6 @@ export class RenderSystem3D {
 
     _uploadGeometry(geometry) {
         const gl = this.gl;
-        const program = this._programs.standard.program;
 
         const vao = gl.createVertexArray();
         gl.bindVertexArray(vao);
@@ -283,9 +343,13 @@ export class RenderSystem3D {
             ['aTexCoord', 2, 24],
         ];
 
+        // The fixed slots from ATTRIBUTE_SLOTS, not whatever one program's linker chose, so
+        // this VAO is correct under every program that draws the mesh.
+        const slots = new Map(ATTRIBUTE_SLOTS);
+
         for (const [name, size, offset] of attributes) {
-            const location = gl.getAttribLocation(program, name);
-            if (location < 0) continue;
+            const location = slots.get(name);
+            if (location === undefined) continue;
             gl.enableVertexAttribArray(location);
             gl.vertexAttribPointer(location, size, gl.FLOAT, false, stride, offset);
         }
@@ -366,10 +430,24 @@ function lightWeight(light, objectPosition) {
 // Shader plumbing
 // -----------------------------------------------------------------------------
 
+/**
+ * Vertex attribute slots, fixed for every program.
+ *
+ * A geometry's VAO is built once, against whichever program uploaded it, and then reused by
+ * all of them. Left to the linker the slots would differ per program -- an unlit shader that
+ * never mentions the normal would put the texture coordinate where the standard shader puts
+ * the normal -- and the same mesh would draw correctly under one program and scrambled under
+ * the next. Binding them by name before linking is what makes one VAO safe everywhere.
+ */
+const ATTRIBUTE_SLOTS = [['aPosition', 0], ['aNormal', 1], ['aTexCoord', 2]];
+
 function buildProgram(gl, vertexSource, fragmentSource, label) {
     const program = gl.createProgram();
     gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, vertexSource, `${label}.vert`));
     gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource, `${label}.frag`));
+
+    for (const [name, slot] of ATTRIBUTE_SLOTS) gl.bindAttribLocation(program, slot, name);
+
     gl.linkProgram(program);
 
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {

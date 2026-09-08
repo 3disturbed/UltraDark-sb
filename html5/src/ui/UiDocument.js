@@ -133,6 +133,16 @@ export function apply(node, key, value) {
         case 'scrolloffset':   node.scrollOffset = toVec2(value); break;
         case 'ignoresafearea': node.ignoreSafeArea = bool(value); break;
 
+        // --- following a point in the world ---
+        // A note, not a property. Every shared JSON table in this repository carries one, and
+        // a document a person is expected to hand-edit should be able to say why it exists.
+        // Ignored rather than stored, so it never reaches a script or a round trip.
+        case '$comment': break;
+
+        case 'worldfollow':         node.worldFollow = bool(value); break;
+        case 'worldanchor':         node.worldAnchor = toVec3(value, key); break;
+        case 'worldfollowdistance': node.worldFollowDistance = num(value); break;
+
         // --- focus and navigation ---
         case 'focusable': node.focusable = parseEnum(Focusability, value, key); break;
         case 'modal':     node.modal = bool(value); break;
@@ -349,6 +359,10 @@ export function read(node, key) {
         case 'scrolloffset':   return fromVec2(node.scrollOffset);
         case 'ignoresafearea': return node.ignoreSafeArea;
 
+        case 'worldfollow':         return node.worldFollow;
+        case 'worldanchor':         return fromVec3(node.worldAnchor);
+        case 'worldfollowdistance': return node.worldFollowDistance;
+
         // --- focus and navigation ---
         case 'focusable': return node.focusable;
         case 'modal':     return node.modal;
@@ -402,7 +416,7 @@ export function isWritable(key) {
  * recomputed every frame, and the aliases (`x`, `y`, `size`, `type`, `scale`, `align`,
  * `absolute`) would each write a second copy of a property already listed.
  */
-const WRITABLE_KEYS = Object.freeze([
+export const WRITABLE_KEYS = Object.freeze([
     'name', 'kind', 'visible', 'interactive', 'order', 'style',
     'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'grow', 'shrink',
     'padding', 'margin',
@@ -412,6 +426,7 @@ const WRITABLE_KEYS = Object.freeze([
     'background', 'tint', 'opacity', 'borderColour', 'borderWidth', 'texturePath',
     'sourceRect', 'ninePatch',
     'clip', 'scroll', 'scrollOffset', 'ignoreSafeArea',
+    'worldFollow', 'worldAnchor', 'worldFollowDistance',
     'focusable', 'modal', 'navUp', 'navDown', 'navLeft', 'navRight', 'autoFocus',
     'value', 'minValue', 'maxValue', 'step', 'checked', 'selectedIndex', 'options',
 ]);
@@ -493,4 +508,25 @@ function readSize(mode, size) {
 function trimZeros(n) { return String(Math.round(n * 10000) / 10000); }
 
 function fromVec2(v) { return [v.x, v.y]; }
+
+function fromVec3(v) { return [v.x, v.y, v.z]; }
+
+/**
+ * Three numbers, strictly.
+ *
+ * Stricter than toVec2, and deliberately: a world anchor written with two numbers is a typo
+ * with a plausible-looking result, and the native codec throws on it. Silently zeroing Z
+ * here would put the marker on the wrong wall in one engine only.
+ */
+function toVec3(value, key) {
+    if (!Array.isArray(value)) {
+        if (value && typeof value === 'object') {
+            return { x: Number(value.x) || 0, y: Number(value.y) || 0, z: Number(value.z) || 0 };
+        }
+        throw new UiDocumentError(`"${key}" needs three numbers.`);
+    }
+
+    if (value.length !== 3) throw new UiDocumentError(`"${key}" needs three numbers.`);
+    return { x: Number(value[0]) || 0, y: Number(value[1]) || 0, z: Number(value[2]) || 0 };
+}
 function fromEdges(v) { return [v.x, v.y, v.z, v.w]; }

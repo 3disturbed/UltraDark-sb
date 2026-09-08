@@ -9,7 +9,7 @@
 // twice is ten, and the seven compositions are the same arithmetic on both engines.
 // -----------------------------------------------------------------------------
 
-import { UiKind, AlignMode, ScrollMode } from './UiEnums.js';
+import { UiKind, AlignMode, ScrollMode, UiSpace } from './UiEnums.js';
 import { paintOrder } from './UiLayout.js';
 import { width as textWidth, height as textHeight, wrap, lineHeightOf } from './UiTextMeasure.js';
 import { drawText } from './BitmapFont.js';
@@ -40,6 +40,11 @@ export function paintAll(ctx, viewportWidth, viewportHeight, options = {}) {
     for (const canvas of canvases) {
         canvas.setViewport(viewportWidth, viewportHeight);
         canvas.layout();
+
+        // A world canvas has already been painted, into its own texture, by the host before
+        // the 3D pass drew the quad carrying it.
+        if (canvas.space === UiSpace.World) continue;
+
         paint(ctx, canvas, options);
     }
 }

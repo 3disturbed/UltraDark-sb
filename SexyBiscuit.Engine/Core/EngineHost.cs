@@ -212,6 +212,11 @@ public sealed class EngineHost : IDisposable
         var scene = SceneManager.ActiveScene;
         if (scene == null) return;
 
+        // World-space UI is painted into its own textures first, because binding a render
+        // target discards the back buffer -- and because the 3D pass is what draws the quads
+        // those textures hang on, so they have to exist before it runs.
+        UI.UiPainter.PaintWorldTargets(SpriteBatch, FocusRingWanted());
+
         if (Config.Enable3D) Renderer3D.Render(scene);
 
         // Through RenderSystem2D, not a bare SpriteBatch.Begin(). The bare call takes
@@ -400,12 +405,60 @@ public sealed class EngineHost : IDisposable
         var viewport = GraphicsDevice.Viewport;
 
         // A copy, because a script reacting to a click is allowed to destroy a canvas.
-        foreach (UI.UiCanvas canvas in new List<UI.UiCanvas>(UI.UiCanvas.All))
+        var canvases = new List<UI.UiCanvas>(UI.UiCanvas.All);
+
+        foreach (UI.UiCanvas canvas in canvases)
         {
             canvas.SetViewport(viewport.Width, viewport.Height);
             canvas.Layout();
-            canvas.Input.Update(frame);
         }
+
+        UI.UiCanvas? nearest = NearestWorldCanvasUnderPointer(canvases, frame.Pointer);
+
+        foreach (UI.UiCanvas canvas in canvases)
+        {
+            UI.UiInputFrame theirs = frame;
+
+            // Two canvases hanging in the same line of sight must not both take the click.
+            // Screen canvases are left as they are: they have always all seen the pointer,
+            // and changing that would move a HUD's behaviour for a feature it is not part of.
+            if (canvas.Space == UI.UiSpace.World && !ReferenceEquals(canvas, nearest))
+                theirs.Pointer = UI.UiCanvas.Nowhere;
+
+            canvas.Input.Update(theirs);
+        }
+    }
+
+    /// <summary>
+    /// The world-space canvas the pointer meets first, or null when it meets none.
+    /// </summary>
+    /// <remarks>
+    /// A canvas whose plane the ray crosses outside its own rectangle does not count, so a
+    /// huge backdrop hanging behind a small panel does not swallow the panel's clicks.
+    /// </remarks>
+    private UI.UiCanvas? NearestWorldCanvasUnderPointer(List<UI.UiCanvas> canvases, Vector2 pointer)
+    {
+        if (Rendering.Camera3D.Main is not { } camera) return null;
+
+        var viewport = GraphicsDevice.Viewport;
+        (Vector3 origin, Vector3 direction) = camera.ScreenToWorldRay(pointer, viewport.Width, viewport.Height);
+
+        UI.UiCanvas? nearest = null;
+        float best = float.PositiveInfinity;
+
+        foreach (UI.UiCanvas canvas in canvases)
+        {
+            if (canvas.Space != UI.UiSpace.World || !canvas.Interactive) continue;
+            if (canvas.WorldBasis() is not { } basis) continue;
+
+            if (UI.UiWorld.RayDistance(basis, origin, direction, canvas.CanvasSize) is not { } distance) continue;
+            if (distance >= best) continue;
+
+            best = distance;
+            nearest = canvas;
+        }
+
+        return nearest;
     }
 
     private UI.UiInputFrame BuildUiInputFrame(float unscaledDt)
@@ -449,10 +502,18 @@ public sealed class EngineHost : IDisposable
         if (UI.UiCanvas.All.Count == 0) return;
 
         var viewport = GraphicsDevice.Viewport;
-        bool ring = UI.UiCanvas.All.Count > 0 && UI.UiCanvas.All[0].Input.Focus.Modes.ShowFocusRing;
-
-        UI.UiPainter.PaintAll(SpriteBatch, viewport.Width, viewport.Height, ring);
+        UI.UiPainter.PaintAll(SpriteBatch, viewport.Width, viewport.Height, FocusRingWanted());
     }
+
+    /// <summary>Whether the focus ring should be drawn this frame.</summary>
+    /// <remarks>
+    /// Read from the first canvas and applied to all of them. The ring answers "is the player
+    /// driving this with a pad or a remote", which is a property of the player and not of any
+    /// one canvas, so asking each separately would let two canvases disagree about the same
+    /// hands. Shared by the screen pass and the world pass so both say the same thing.
+    /// </remarks>
+    private static bool FocusRingWanted()
+        => UI.UiCanvas.All.Count > 0 && UI.UiCanvas.All[0].Input.Focus.Modes.ShowFocusRing;
 
     public void Dispose()
     {

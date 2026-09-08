@@ -441,8 +441,10 @@ public void SpawnDamageNumber(Scene scene, Vector2 worldPos, int amount)
     actor.LifeSpan = 1.0f;                       // automatic cleanup
 
     // The number lives on the UI canvas, in screen space, and follows the actor by
-    // being written each frame. There is no world-space canvas: a camera that pans
-    // must not take a HUD with it, and one that does is the bug that rule exists for.
+    // being written each frame -- which is what keeps it crisp and upright. (In 3D,
+    // set WorldFollow and WorldAnchor and the canvas projects it for you. A world-
+    // space canvas is the other tool, for a UI that belongs to a surface in the
+    // scene rather than to the player.)
     UiNode label = canvas.Root.Add(new UiNode
     {
         Kind        = UiKind.Label,

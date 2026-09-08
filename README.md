@@ -611,8 +611,9 @@ Per source or per bus:
 ## 10. UI System
 
 One retained widget tree, shared by both engines and reachable from a game script. A UI is
-a tree of nodes laid out by rows, columns and grids, painted in screen space, and navigable
-with a mouse, a finger, a gamepad or a TV remote.
+a tree of nodes laid out by rows, columns and grids, navigable with a mouse, a finger, a
+gamepad or a TV remote — and painted either across the screen or on a plane standing in the
+scene, without the tree knowing which.
 
 ### A whole screen in one call
 
@@ -633,6 +634,23 @@ UI.find("hp").value = health / maxHealth;
 
 The same document loads from a `.ui` file or a `UiCanvas` component in a scene, and C# builds
 it the same way with `UiDocument.FromJson`.
+
+### The same widget, on the screen or on a wall
+
+A document says nothing about which space it is in — the canvas decides. So a panel authored
+once can be a HUD in one scene and a terminal bolted to a wall in another, with no second file
+and no second layout pass:
+
+```js
+UI.space = "world";              // "screen" | "world"
+UI.facing = "plane";             // or "billboard" / "verticalBillboard"
+UI.pixelsPerUnit = 140;          // canvas units per world unit
+```
+
+A world canvas is painted into a texture by the same painter and hung on a quad in the 3D pass,
+so geometry in front of it hides it and a pointer ray clicks it. For a marker that must stay
+crisp and upright instead — damage numbers, quest arrows — set `worldFollow` on a node of an
+ordinary screen canvas and it is projected through the camera each frame.
 
 ### Sizing
 

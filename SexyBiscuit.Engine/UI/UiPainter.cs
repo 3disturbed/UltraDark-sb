@@ -59,8 +59,54 @@ public static class UiPainter
         {
             canvas.SetViewport(viewportWidth, viewportHeight);
             canvas.Layout();
+
+            // A world canvas has already been painted, into its own texture, by
+            // PaintWorldTargets before the 3D pass drew the quad carrying it.
+            if (canvas.Space == UiSpace.World) continue;
+
             Paint(sb, canvas, showFocusRing);
         }
+    }
+
+    /// <summary>
+    /// Paints every world-space canvas into its own texture, ready for the 3D pass to hang
+    /// on a quad.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Must run before the 3D pass, and therefore before anything has been drawn to the back
+    /// buffer, because binding a render target is what discards it.
+    /// </para>
+    /// <para>
+    /// The painter itself needs no world-space code at all: it already takes its target as an
+    /// argument, and a world canvas resolves to a scale of one and an offset of zero, so the
+    /// scissor rectangles it computes land in texture pixels without being told. That is the
+    /// whole reason this feature is a canvas property and not a second painter.
+    /// </para>
+    /// </remarks>
+    public static void PaintWorldTargets(SpriteBatch sb, bool showFocusRing = false)
+    {
+        GraphicsDevice gd = sb.GraphicsDevice;
+        RenderTargetBinding[] previous = gd.GetRenderTargets();
+
+        bool painted = false;
+
+        foreach (UiCanvas canvas in UiCanvas.All)
+        {
+            if (canvas.Space != UiSpace.World || !canvas.IsWithinDrawDistance) continue;
+
+            canvas.Layout();
+
+            RenderTarget2D? target = canvas.EnsureWorldTarget(gd);
+            if (target == null) continue;
+
+            gd.SetRenderTarget(target);
+            gd.Clear(Color.Transparent);
+            Paint(sb, canvas, showFocusRing);
+            painted = true;
+        }
+
+        if (painted) gd.SetRenderTargets(previous.Length > 0 ? previous : null);
     }
 
     /// <summary>Paints one canvas. The tree must already have been laid out.</summary>

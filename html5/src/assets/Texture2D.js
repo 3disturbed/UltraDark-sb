@@ -22,6 +22,21 @@ export class Texture2D {
         /** @type {?WebGLTexture} Created on first use by the 3D renderer. */
         this.glTexture = null;
         this._glContext = null;
+
+        /**
+         * Bumped by `invalidate()` when the source pixels change under a texture that has
+         * already been uploaded. Without it a world-space UI would upload once and then
+         * show the same frame for ever, because getGLTexture caches on the handle alone.
+         */
+        this.version = 0;
+        this._uploadedVersion = -1;
+    }
+
+    /** Says the source pixels have changed, so the next draw re-uploads them. */
+    invalidate() {
+        this.version++;
+        this.width = this.source?.width ?? this.width;
+        this.height = this.source?.height ?? this.height;
     }
 
     /**
@@ -29,9 +44,10 @@ export class Texture2D {
      * @param {WebGL2RenderingContext} gl
      */
     getGLTexture(gl) {
-        if (this.glTexture && this._glContext === gl) return this.glTexture;
+        const uploaded = this.glTexture && this._glContext === gl;
+        if (uploaded && this._uploadedVersion === this.version) return this.glTexture;
 
-        const texture = gl.createTexture();
+        const texture = uploaded ? this.glTexture : gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.source);
@@ -46,6 +62,7 @@ export class Texture2D {
 
         this.glTexture = texture;
         this._glContext = gl;
+        this._uploadedVersion = this.version;
         return texture;
     }
 
@@ -55,6 +72,7 @@ export class Texture2D {
             this._glContext.deleteTexture(this.glTexture);
             this.glTexture = null;
             this._glContext = null;
+            this._uploadedVersion = -1;
         }
     }
 

@@ -168,6 +168,47 @@ public sealed class UiNode
     public bool IgnoreSafeArea { get => _ignoreSafeArea; set => SetMeasure(ref _ignoreSafeArea, value); }
 
     // -------------------------------------------------------------------------
+    // Following a point in the world
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether this node chases <see cref="WorldAnchor"/> across the screen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For the things a canvas standing in the world is bad at: damage numbers, quest
+    /// markers, an interaction prompt over a lever. A following node stays flat on the
+    /// screen at its authored size, so its text is pixel-crisp and never turns edge-on —
+    /// it simply moves. A world-space <see cref="UiCanvas"/> is the other answer, for a UI
+    /// that genuinely belongs to a surface in the scene.
+    /// </para>
+    /// <para>
+    /// Following <em>owns</em> three properties of the node it is set on:
+    /// <see cref="Positioning"/> (forced to <see cref="PositionMode.Absolute"/>, since a
+    /// node in the flow cannot be placed), <see cref="Offset"/> and <see cref="Visible"/>,
+    /// which goes false behind the camera. Writing them yourself is writing to a value the
+    /// next frame overwrites.
+    /// </para>
+    /// </remarks>
+    public bool WorldFollow
+    {
+        get => _worldFollow;
+        set
+        {
+            if (_worldFollow == value) return;
+            _worldFollow = value;
+            if (value) Canvas?.NoteWorldFollower();
+            InvalidateArrange();
+        }
+    }
+
+    /// <summary>The point in the world a following node tracks.</summary>
+    public Vector3 WorldAnchor { get => _worldAnchor; set => SetArrange(ref _worldAnchor, value); }
+
+    /// <summary>Stop showing a following node past this distance. Zero never stops.</summary>
+    public float WorldFollowDistance { get => _worldFollowDistance; set => SetArrange(ref _worldFollowDistance, value); }
+
+    // -------------------------------------------------------------------------
     // Focus and navigation
     // -------------------------------------------------------------------------
 
@@ -325,6 +366,11 @@ public sealed class UiNode
     private void SetCanvasRecursive(UiCanvas? canvas)
     {
         Canvas = canvas;
+
+        // A whole tree is usually built loose and added at the end, so the latch has to be
+        // set on the way in as well as when the property is written.
+        if (canvas != null && _worldFollow) canvas.NoteWorldFollower();
+
         foreach (UiNode child in Children) child.SetCanvasRecursive(canvas);
     }
 
@@ -466,6 +512,10 @@ public sealed class UiNode
     private ScrollMode _scroll = ScrollMode.None;
     private Vector2    _scrollOffset;
     private bool       _ignoreSafeArea;
+
+    private bool    _worldFollow;
+    private Vector3 _worldAnchor;
+    private float   _worldFollowDistance;
 
     private float _value = 1f, _minValue, _maxValue = 1f, _step;
     private bool  _checked;
