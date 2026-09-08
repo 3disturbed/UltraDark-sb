@@ -29,14 +29,13 @@ export const repoRoot = path.resolve(gameDir, '../..');
 const engine = await import(path.join(repoRoot, 'html5/src/index.js'));
 export const { deserialize, ScriptComponent, PhysicsSystem2D, Vector2 } = engine;
 
-// ScriptUi is what the `UI` global reaches: the flat panel/label/bar/button/image
-// surface. It used to live in UiCanvas.js; UiCanvas is now the RETAINED WIDGET
-// TREE next door, which is a different thing with different methods. Building
-// one of those here gets "ui.setPointer is not a function" out of every test at
-// once, which is at least loud. EngineHost does `new ScriptUi(...)` and so does
-// this -- the harness is only worth anything while it wires the scene up the way
-// the real host does.
-const { ScriptUi } = await import(path.join(repoRoot, 'html5/src/ui/ScriptUi.js'));
+// The UI is a retained tree now, and the host does not hand the scene a UI object
+// at all: the bridge makes one UiCanvas per script on its first `UI` call and
+// registers it in UiCanvas.all. So there is nothing to construct here -- there is
+// a per-frame duty instead, and skipping it is silent. A canvas that is never
+// laid out has every node at a zero rect, which reads as "the HUD is missing"
+// rather than as "the harness forgot", and nothing hit-tests.
+const { UiCanvas } = await import(path.join(repoRoot, 'html5/src/ui/UiCanvas.js'));
 const { Time } = await import(path.join(repoRoot, 'html5/src/core/Time.js'));
 const { DarksGames } = await import(path.join(repoRoot, 'html5/src/dg/DarksGames.js'));
 
@@ -153,12 +152,13 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene', dg = null } 
     const scene = deserialize(fs.readFileSync(path.join(gameDir, sceneName), 'utf8'),
                               { onWarning: () => {} });
 
-    const ui = new ScriptUi({ width: VIEWPORT.width, height: VIEWPORT.height });
+    // Canvases are process-wide, like Time and DarksGames.instance: one boot's
+    // HUD would otherwise still be laid out and hit-tested during the next one.
+    UiCanvas.clearAll();
 
     scene.engine = {
         input,
         audio: null,
-        ui,
         Time,
         assets: { loadText: async (p) => fs.readFileSync(path.join(gameDir, p), 'utf8') },
     };
@@ -184,11 +184,48 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene', dg = null } 
 
     // Where the pointer is, and whether it is down, for UI hover and clicks.
     const pointer = { x: -1, y: -1, down: false };
+    let lastPointer = { x: -1, y: -1 };
+
+    // Per boot, not the module constant: the size sweep changes it.
+    const viewport = { width: VIEWPORT.width, height: VIEWPORT.height };
+
+    /**
+     * What EngineHost._updateUiCanvases does: size every canvas, lay it out, then
+     * feed it the frame's input.
+     *
+     * Layout before input, not after. Hit-testing reads the rectangles this pass
+     * produces, so a canvas whose tree changed this frame -- a draft board that
+     * just opened -- would otherwise be picked against last frame's shape, and a
+     * card would be clickable where it used to be.
+     */
+    function pumpUi() {
+        if (UiCanvas.all.length === 0) return;
+
+        const frame = {
+            deltaTime: DT,
+            pointer: { x: pointer.x, y: pointer.y },
+            pointerDelta: { x: pointer.x - lastPointer.x, y: pointer.y - lastPointer.y },
+            pointerDown: pointer.down,
+            pointerIsTouch: false,
+            wheel: 0,
+            navAxis: { x: 0, y: 0 },
+            navUp: false, navDown: false, navLeft: false, navRight: false,
+            confirm: false, cancel: false,
+            typed: '', backspace: false,
+        };
+        lastPointer = { x: pointer.x, y: pointer.y };
+
+        // A copy, because a script reacting to a click may destroy a canvas.
+        for (const canvas of [...UiCanvas.all]) {
+            canvas.setViewport(viewport.width, viewport.height);
+            canvas.layout();
+            canvas.input.update(frame);
+        }
+    }
 
     async function step(frames = 1) {
         for (let i = 0; i < frames; i++) {
-            ui.setPointer(pointer.x, pointer.y, pointer.down);
-            ui.update();
+            pumpUi();
 
             // Advance the real clock, then hand the scene the SCALED delta, the
             // same as the engine host does. A pause is timeScale 0, and a
@@ -215,10 +252,61 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene', dg = null } 
         console.log = realLog;
     }
 
+    /**
+     * Every node on every canvas, laid out, as a flat list.
+     *
+     * The flat UI handed out a single `elements` array; a tree has to be walked,
+     * and every tool that used to read that array wants the same thing from it --
+     * what is on screen, where, and what it says. `rect` is in CANVAS space and
+     * `screen` is where it actually lands, which differ the moment a canvas is
+     * not ConstantPixel; the overflow sweep has to judge the second.
+     */
+    function uiNodes({ visibleOnly = true } = {}) {
+        const out = [];
+        for (const canvas of UiCanvas.all) {
+            for (const node of canvas.root.descendants()) {
+                if (visibleOnly && !visibleInTree(node)) continue;
+                out.push({
+                    node,
+                    canvas,
+                    kind: String(node.kind).toLowerCase(),
+                    name: node.name ?? '',
+                    text: String(node.text ?? ''),
+                    value: node.value,
+                    visible: node.visible,
+                    rect: node.rect,
+                    screen: canvas.canvasRectToScreen(node.rect),
+                });
+            }
+        }
+        return out;
+    }
+
+    /** A node is only on screen if every ancestor is too. */
+    function visibleInTree(node) {
+        for (let n = node; n; n = n.parent) { if (!n.visible) return false; }
+        return true;
+    }
+
     return {
         scene, input, errors, logs, find, byTag, scriptOn, step, restore,
-        ui,
         Time,
+        ui: {
+            nodes: uiNodes,
+            find: (name) => {
+                for (const canvas of UiCanvas.all) {
+                    const hit = canvas.find(String(name));
+                    if (hit) return hit;
+                }
+                return null;
+            },
+            get canvases() { return [...UiCanvas.all]; },
+            setViewport(width, height) {
+                viewport.width = width;
+                viewport.height = height;
+                pumpUi();
+            },
+        },
         dg: dgRuntime,
         social: () => scriptOn('Social'),
         // Drive the UI pointer: `click(x, y)` presses this frame and releases

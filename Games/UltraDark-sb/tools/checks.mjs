@@ -298,7 +298,9 @@ test('a pilot on auto-aim can kill a boss with no adds on the field', async () =
 // The screen. All of this used to be world-space sprites and a log line.
 // ---------------------------------------------------------------------------
 
-const uiTexts = (g) => g.ui.elements.filter((e) => e.visible && e.text).map((e) => String(e.text));
+// Every word on screen. A tree has to be walked and a node is only visible when
+// every ancestor is, which is the harness's job rather than each test's.
+const uiTexts = (g) => g.ui.nodes().filter((n) => n.text).map((n) => n.text);
 
 test('the HUD reads the run, not just the pilot', async () => {
     const g = boot();
@@ -854,13 +856,18 @@ test('being hit costs the multiplier, and kills build it back', async () => {
 // empty arena because it cached a proxy to a destroyed actor. None of that
 // stops the game, and none of it shows up in a log.
 
-/** The tracked bar and its heading, as the UI layer actually holds them. */
+/**
+ * The tracked bar and its heading.
+ *
+ * By NAME now, not by shape. The flat UI had no names, so this had to pick the
+ * bar out by "kind bar, anchored top", which would have matched any other bar
+ * that happened to be anchored the same way. hud-kit names its nodes, and a
+ * name is what the game's own code reaches them by too.
+ */
 function marquee(g) {
-    const visible = g.ui.elements.filter((e) => e.visible);
-    return {
-        bar:   visible.find((e) => e.kind === 'bar' && e.anchor === 'top') ?? null,
-        title: visible.find((e) => e.kind === 'label' && e.anchor === 'top') ?? null,
-    };
+    const shown = g.ui.nodes();
+    const named = (name) => shown.find((n) => n.name === name) ?? null;
+    return { bar: named('trackerBar0'), title: named('trackerName0') };
 }
 
 test('the boss bar arrives with the boss and leaves with it', async () => {

@@ -1,8 +1,9 @@
 // ui-shot.mjs -- where every UI element actually lands, without a browser.
 //
 // Every other gate here reads text, and a layout is a picture. This boots the
-// real scene through the real host and asks the real ScriptUi for the rectangle
-// of each element, then fails if any of them is off the viewport.
+// real scene through the real host, lays out every UiCanvas the way the host
+// does, and asks each node where it landed -- then fails if any of them is off
+// the viewport.
 //
 // It exists because a HUD that renders in the corner and hangs off the edge is
 // invisible to the validator, to 32 game tests and to the engine's own suite --
@@ -54,10 +55,16 @@ try {
     g.restore();
 }
 
-const out = g.ui.elements
-    .filter((e) => e.visible)
-    .map((e) => ({ kind: e.kind, text: String(e.text ?? ''), anchor: e.anchor,
-                   scale: e.scale, ...g.ui.rectOf(e) }));
+// Screen rectangles, not canvas ones. A canvas scales and offsets its tree, and
+// the two agree only at ConstantPixel on a viewport that matches -- which is the
+// one case a sweep like this exists to look past. What overflows is what the
+// player would see off the edge.
+//
+// A node with no size is skipped rather than reported: a layout row is a
+// container, and an empty container at 0x0 is not a thing hanging off the screen.
+const out = g.ui.nodes()
+    .map((n) => ({ kind: n.kind, name: n.name, text: n.text, ...n.screen }))
+    .filter((n) => n.width > 0 && n.height > 0);
 
 fs.writeFileSync('/tmp/ui-rects.json', JSON.stringify({ state, W, H, elements: out }, null, 1));
 

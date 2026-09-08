@@ -40,8 +40,20 @@ var stopTimer = 0;
 function onStart() {
     // Both overlays exist from the start and stay invisible: creating one at the
     // moment of a hit is the frame you least want to allocate on.
-    flashPanel = UI.panel(0, 0, UI.width, UI.height, { anchor: "topleft", background: "#ffffff", visible: false });
-    fadePanel  = UI.panel(0, 0, UI.width, UI.height, { anchor: "topleft", background: "#000000", visible: false });
+    //
+    // `width: "*"` is what "cover the screen" means to the layout engine, so these
+    // follow a resize, a rotation or going fullscreen on their own. This used to be
+    // a resize() called first in onLateUpdate, forever, for two panels whose whole
+    // intent was to fill the viewport.
+    UI.build({
+        children: [
+            { name: "flash", width: "*", height: "*", background: "#ffffff", visible: false },
+            { name: "fade",  width: "*", height: "*", background: "#000000", visible: false },
+        ],
+    });
+
+    flashPanel = UI.find("flash");
+    fadePanel  = UI.find("fade");
 }
 
 // ---------------------------------------------------------------------------
@@ -52,17 +64,10 @@ function onStart() {
 // ---------------------------------------------------------------------------
 
 function onLateUpdate(dt) {
-    resize();
     updateShake(dt);
     updateFlash(dt);
     updateFade(dt);
     updateHitStop(dt);
-}
-
-/** The viewport can change at any moment; a full-screen panel has to follow it. */
-function resize() {
-    if (flashPanel) { flashPanel.width = UI.width; flashPanel.height = UI.height; }
-    if (fadePanel)  { fadePanel.width  = UI.width; fadePanel.height  = UI.height; }
 }
 
 // ---------------------------------------------------------------------------
