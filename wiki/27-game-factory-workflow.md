@@ -73,8 +73,8 @@ web build. Native mobile is a later engine milestone; the PWA is the mobile buil
 Inside the editor the same steps are tools that answer in a few lines instead of a log:
 `run_tests` (engine, templates, html5 or lint: totals and failing names), `run_scene_report`
 (play the scene for a few seconds: frames, fps, script errors, console warnings and errors),
-and `export_build` with `get_build_report` (every target, one line each, the archive size and
-the upload URL). `get_context` opens a session in about a hundred tokens; `apply_scene_edits`
+and `export_build` (every target, one line each, the archive size and the upload URL; `report=true`
+reads back a run that outlived the wait). `get_context` opens a session in about a hundred tokens; `apply_scene_edits`
 and `spawn_many` batch scene work into one call and one undo step.
 
 ## Token hygiene
@@ -99,12 +99,16 @@ tools that returned the most text; the editor writes the same per turn to
 `get_session_usage` with it in about seventy tokens. The benchmark is one fixed brief ("Hello
 World: add a coin the player collects, ship a web build") run before and after a change.
 
-One fixed cost is already measured: the full tool catalogue is 47,400 characters of compact
-JSON (about 11,800 tokens), paid once per session when Claude Code loads the tool set, and held
-under 48,000 by `--dump-mcp-tools --all --budget` in CI and by `SexyBiscuit.Editor.Tests`. Half
-of that is parameter schemas and half descriptions; the descriptions no longer restate what the
-schema already says. The planned tool-surface merge (about 55 tools instead of 88) would bring
-it near 30,000, and is the remaining work here.
+One fixed cost is measured: the full tool catalogue is 40,433 characters of compact JSON (about
+10,100 tokens), paid once per session when Claude Code loads the tool set, and held under 41,000
+by `--dump-mcp-tools --all --budget` in CI and by `SexyBiscuit.Editor.Tests`. Two rounds got it
+there. First the descriptions stopped restating what the schema already says; then the surface
+merged from 88 tools to 52, each absorbed tool becoming an argument on the survivor that already
+carried its arguments (see [25. AI Assistant & MCP](25-ai-assistant-mcp.md#one-tool-per-job)).
+That took 7,000 characters off, not the 17,000 a naive count of the tools would suggest: a merged
+tool keeps every parameter it absorbed, and parameter schemas are half the catalogue. What is
+left is spread thin across 52 tools, so the next real saving is a shorter schema, not fewer
+tools.
 
 ## Per-game checklist
 
