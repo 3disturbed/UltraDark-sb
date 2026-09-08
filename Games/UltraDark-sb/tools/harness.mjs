@@ -29,8 +29,14 @@ export const repoRoot = path.resolve(gameDir, '../..');
 const engine = await import(path.join(repoRoot, 'html5/src/index.js'));
 export const { deserialize, ScriptComponent, PhysicsSystem2D, Vector2 } = engine;
 
-// UiCanvas is not re-exported from the engine index, so it is imported by path.
-const { UiCanvas } = await import(path.join(repoRoot, 'html5/src/ui/UiCanvas.js'));
+// ScriptUi is what the `UI` global reaches: the flat panel/label/bar/button/image
+// surface. It used to live in UiCanvas.js; UiCanvas is now the RETAINED WIDGET
+// TREE next door, which is a different thing with different methods. Building
+// one of those here gets "ui.setPointer is not a function" out of every test at
+// once, which is at least loud. EngineHost does `new ScriptUi(...)` and so does
+// this -- the harness is only worth anything while it wires the scene up the way
+// the real host does.
+const { ScriptUi } = await import(path.join(repoRoot, 'html5/src/ui/ScriptUi.js'));
 const { Time } = await import(path.join(repoRoot, 'html5/src/core/Time.js'));
 const { DarksGames } = await import(path.join(repoRoot, 'html5/src/dg/DarksGames.js'));
 
@@ -147,7 +153,7 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene', dg = null } 
     const scene = deserialize(fs.readFileSync(path.join(gameDir, sceneName), 'utf8'),
                               { onWarning: () => {} });
 
-    const ui = new UiCanvas({ width: VIEWPORT.width, height: VIEWPORT.height });
+    const ui = new ScriptUi({ width: VIEWPORT.width, height: VIEWPORT.height });
 
     scene.engine = {
         input,

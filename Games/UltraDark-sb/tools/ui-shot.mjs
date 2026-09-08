@@ -1,7 +1,7 @@
 // ui-shot.mjs -- where every UI element actually lands, without a browser.
 //
 // Every other gate here reads text, and a layout is a picture. This boots the
-// real scene through the real host and asks the real UiCanvas for the rectangle
+// real scene through the real host and asks the real ScriptUi for the rectangle
 // of each element, then fails if any of them is off the viewport.
 //
 // It exists because a HUD that renders in the corner and hangs off the edge is
