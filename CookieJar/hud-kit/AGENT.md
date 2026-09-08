@@ -143,9 +143,10 @@ are rounded, because a bitmap font at 1.5× is mush.
 
 ## What it does not do
 
-- **No input handling.** The pause overlay draws; deciding that Esc pauses is your script's job.
-- **No layout engine.** Rows stack at a fixed height. Two columns, or a bar that grows with its
-  label, is a copy of this file with different arithmetic, not a flag.
+- **No input handling.** The pause overlay draws and traps focus, so a pad or a remote cannot
+  walk out of it; deciding that Esc pauses is still your script's job.
+- **No second column.** Rows are a column of label-and-value pairs. The tree could express a
+  two-column form, but this cookie does not: a HUD that needs one is a different HUD.
 - **One player.** Split-screen wants one of these per viewport, and the contract has one viewport.
 - **Trackers stack, they do not compete.** Two bosses at once give two bars down the top of the
   screen, in the order listed. There is no "most important one" logic, and there should not be.

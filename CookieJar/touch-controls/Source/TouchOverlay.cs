@@ -9,6 +9,12 @@ namespace Cookies.TouchControls;
 /// The turn-on for on-screen controls. Builds a canvas of thumb sticks and buttons and keeps them
 /// fed, so a controller written for a keyboard runs on a phone unchanged.
 /// </summary>
+/// <remarks>
+/// The controls are painted as nodes on a <see cref="UiCanvas"/> and driven straight from
+/// <see cref="TouchManager"/>. The canvas routes a single pointer, which is right for a menu and
+/// wrong for a pad — a stick and a button have to be held at the same time — so the overlay does
+/// its own per-finger claiming and leaves the canvas to the painting.
+/// </remarks>
 public sealed class TouchOverlay : Component
 {
     /// <summary>Whether to draw a left stick, for movement.</summary>
@@ -44,23 +50,31 @@ public sealed class TouchOverlay : Component
     /// <summary>Adds a mouse simulator, so the overlay can be tried where there is no touch panel.</summary>
     public bool SimulateWithMouse { get; set; }
 
-    /// <summary>The canvas the controls live on, once it has been built.</summary>
-    public Canvas? Canvas { get; private set; }
+    /// <summary>The canvas the controls are painted on, once it has been built.</summary>
+    public UiCanvas? Canvas { get; private set; }
 
     /// <summary>The sticks and buttons, for a game that wants to move or restyle them.</summary>
-    public TouchStick?             Left    { get; private set; }
-    public TouchStick?             Right   { get; private set; }
+    public TouchStick? Left { get; private set; }
+    public TouchStick? Right { get; private set; }
     public IReadOnlyList<TouchButton> Keys => _buttons;
 
     private readonly List<TouchButton> _buttons = new();
+    private readonly HashSet<int> _claimed = new();
     private bool _visible = true;
 
     public override void Start()
     {
-        var canvas = Actor.GetComponent<Canvas>() ?? Actor.AddComponent<Canvas>();
-        Canvas      = canvas;
-        canvas.TouchInput = true;
+        UiCanvas canvas = Actor.GetComponent<UiCanvas>() ?? Actor.AddComponent<UiCanvas>();
+        Canvas = canvas;
+
+        // Device pixels, so a finger's position and a control's rectangle are the same units.
+        canvas.ScaleMode = UiScaleMode.ConstantPixel;
         canvas.PlayerIndex = PlayerIndex;
+
+        // The overlay is painted, never navigated: a focus ring on a thumb stick would be noise,
+        // and the canvas must not eat a tap meant for the game's own UI.
+        canvas.Interactive = false;
+        canvas.Order = 100;
 
         if (SimulateWithMouse && Actor.GetComponent<MouseTouchSimulator>() == null)
             Actor.AddComponent<MouseTouchSimulator>();
@@ -72,72 +86,69 @@ public sealed class TouchOverlay : Component
     public override void Update(float dt)
     {
         if (AutoHideOnDesktop) ApplyVisibility();
+
+        var touch = EngineHost.Current?.Input.Touch;
+        IReadOnlyList<TouchPoint> touches = touch?.Touches ?? Array.Empty<TouchPoint>();
+
+        // One pass, so a finger claimed by a stick cannot also press a button under it.
+        _claimed.Clear();
+        Left?.Update(touches, _claimed);
+        Right?.Update(touches, _claimed);
+        foreach (TouchButton button in _buttons) button.Update(touches, _claimed);
     }
+
+    public override void OnDestroy() => ReleaseAll();
 
     /// <summary>Lets go of everything, for a scene change or a pause.</summary>
     public void ReleaseAll()
     {
         Left?.Release();
         Right?.Release();
-        foreach (var button in _buttons) button.Release();
+        foreach (TouchButton button in _buttons) button.Release();
     }
 
-    private void Build(Canvas canvas)
+    private void Build(UiCanvas canvas)
     {
-        var player = EngineHost.Current?.Input.GetPlayer(PlayerIndex);
-        var size   = ScreenSize();
+        PlayerInput? player = EngineHost.Current?.Input.GetPlayer(PlayerIndex);
+        Vector2 size = ScreenSize();
+        var tint = Color.White;
 
         if (LeftStick)
         {
-            Left = Stick(player, "MoveX", "MoveY",
-                         new Vector2(Margin.X, size.Y - Margin.Y));
-            canvas.AddWidget(Left);
+            Left = new TouchStick(canvas.Root, tint, Opacity)
+            {
+                ActionX = "MoveX", ActionY = "MoveY",
+                Radius = StickRadius, Floating = FloatingSticks, Player = player,
+                Home = new Vector2(Margin.X, size.Y - Margin.Y),
+            };
         }
 
         if (RightStick)
         {
-            Right = Stick(player, "CameraX", "CameraY",
-                          new Vector2(size.X - Margin.X, size.Y - Margin.Y));
-            canvas.AddWidget(Right);
+            Right = new TouchStick(canvas.Root, tint, Opacity)
+            {
+                ActionX = "CameraX", ActionY = "CameraY",
+                Radius = StickRadius, Floating = FloatingSticks, Player = player,
+                Home = new Vector2(size.X - Margin.X, size.Y - Margin.Y),
+            };
         }
 
         // Buttons stack up the right-hand side, above the right stick when there is one.
         float lift = RightStick ? Margin.Y + StickRadius * 2f : Margin.Y;
+
         for (int i = 0; i < Buttons.Count; i++)
         {
-            var button = new TouchButton
+            var button = new TouchButton(canvas.Root, tint, Opacity)
             {
-                Action  = Buttons[i],
-                Radius  = ButtonRadius,
-                Player  = player,
-                Opacity = Opacity,
-                Size    = new Vector2(ButtonRadius * 2f, ButtonRadius * 2f),
+                Action = Buttons[i],
+                Radius = ButtonRadius,
+                Player = player,
+                Home = new Vector2(size.X - Margin.X * 0.6f - i % 2 * ButtonRadius * 2.4f,
+                                   size.Y - lift - i / 2 * ButtonRadius * 2.4f),
             };
-
-            var centre = new Vector2(size.X - Margin.X * 0.6f - i % 2 * ButtonRadius * 2.4f,
-                                     size.Y - lift - i / 2 * ButtonRadius * 2.4f);
-            button.Position = centre - button.Size * 0.5f;
-
+            button.Rebuild();
             _buttons.Add(button);
-            canvas.AddWidget(button);
         }
-    }
-
-    private TouchStick Stick(PlayerInput? player, string actionX, string actionY, Vector2 centre)
-    {
-        // The region a thumb may land in is wider than the stick, so a floating stick has room.
-        var size  = new Vector2(StickRadius * 3f, StickRadius * 3f);
-        return new TouchStick
-        {
-            ActionX  = actionX,
-            ActionY  = actionY,
-            Radius   = StickRadius,
-            Floating = FloatingSticks,
-            Player   = player,
-            Opacity  = Opacity,
-            Size     = size,
-            Position = centre - size * 0.5f,
-        };
     }
 
     private void ApplyVisibility()
@@ -148,9 +159,9 @@ public sealed class TouchOverlay : Component
         _visible = wanted;
         if (!wanted) ReleaseAll();
 
-        if (Left  != null) Left.Visible  = wanted;
+        if (Left != null) Left.Visible = wanted;
         if (Right != null) Right.Visible = wanted;
-        foreach (var button in _buttons) button.Visible = wanted;
+        foreach (TouchButton button in _buttons) button.Visible = wanted;
     }
 
     /// <summary>
@@ -168,6 +179,7 @@ public sealed class TouchOverlay : Component
         var device = EngineHost.Current?.GraphicsDevice;
         return device == null
             ? new Vector2(1920f, 1080f)
-            : new Vector2(device.PresentationParameters.BackBufferWidth, device.PresentationParameters.BackBufferHeight);
+            : new Vector2(device.PresentationParameters.BackBufferWidth,
+                          device.PresentationParameters.BackBufferHeight);
     }
 }

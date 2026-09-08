@@ -1,21 +1,20 @@
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
 using SexyBiscuit.Engine.Input;
 using SexyBiscuit.Engine.UI;
 
 namespace Cookies.TouchControls;
 
 /// <summary>
-/// A round action button. Holds one named action down through the player's virtual input layer for
-/// as long as a finger is on it.
+/// An action button drawn on screen. Claims one finger and holds a named action down for as long
+/// as that finger stays on it.
 /// </summary>
 /// <remarks>
-/// The engine's own touch bindings cannot do this: a touch binding with no axis reads as "a tap
-/// anywhere on the screen", which cannot tell two on-screen buttons apart.
+/// Like <see cref="TouchStick"/>, the visuals are canvas nodes and the input comes from
+/// <see cref="TouchManager"/>, so a stick and two buttons can all be held at once.
 /// </remarks>
-public sealed class TouchButton : Widget
+public sealed class TouchButton
 {
-    /// <summary>The action this button holds down.</summary>
+    /// <summary>The action it holds down.</summary>
     public string Action { get; set; } = "Jump";
 
     /// <summary>What is written on it. Defaults to the action's first letter.</summary>
@@ -27,56 +26,91 @@ public sealed class TouchButton : Widget
     /// <summary>Who is pressing it.</summary>
     public PlayerInput? Player { get; set; }
 
+    /// <summary>The centre of the button.</summary>
+    public Vector2 Home { get; set; }
+
     /// <summary>True while a finger is on it.</summary>
-    public bool IsPressed => _pointerId != null;
+    public bool IsPressed => _fingerId != null;
 
-    private int? _pointerId;
-
-    public override void HandlePointer(in Pointer pointer)
+    /// <summary>Whether the button is drawn and takes input at all.</summary>
+    public bool Visible
     {
-        if (!Visible || !Interactable) return;
+        get => _node.Visible;
+        set => _node.Visible = value;
+    }
 
-        if (_pointerId == null)
+    private readonly UiNode _node;
+    private readonly float _opacity;
+    private int? _fingerId;
+
+    public TouchButton(UiNode parent, Color tint, float opacity)
+    {
+        _opacity = opacity;
+        _node = parent.Add(new UiNode
         {
-            if (!pointer.JustPressed || !ContainsPoint(pointer.Position)) return;
+            Kind = UiKind.Panel,
+            Positioning = PositionMode.Absolute,
+            Background = tint,
+            Opacity = opacity,
+            TextAlign = AlignMode.Center,
+            VerticalAlign = AlignMode.Center,
+        });
+    }
 
-            _pointerId = pointer.Id;
-            Player?.PressVirtual(Action);
-            RaiseClick();
+    /// <summary>Sizes and labels the button. Call once the action and radius are set.</summary>
+    public void Rebuild()
+    {
+        _node.WidthMode = SizeMode.Fixed;
+        _node.Width = Radius * 2f;
+        _node.HeightMode = SizeMode.Fixed;
+        _node.Height = Radius * 2f;
+        _node.Text = Label ?? (Action.Length > 0 ? Action[..1] : "");
+        _node.Offset = Home - new Vector2(Radius, Radius);
+    }
+
+    /// <summary>Reads this frame's touches and holds or releases the action.</summary>
+    public void Update(IReadOnlyList<TouchPoint> touches, HashSet<int> claimed)
+    {
+        if (!Visible) { Release(); return; }
+
+        if (_fingerId == null)
+        {
+            foreach (TouchPoint touch in touches)
+            {
+                if (claimed.Contains(touch.Id)) continue;
+                if (touch.Phase != TouchPhase.Began) continue;
+                if (Vector2.Distance(touch.Position, Home) > Radius) continue;
+
+                _fingerId = touch.Id;
+                claimed.Add(touch.Id);
+                Player?.PressVirtual(Action);
+                _node.Opacity = MathF.Min(1f, _opacity * 2f);
+                return;
+            }
             return;
         }
 
-        if (pointer.Id != _pointerId) return;
+        TouchPoint? held = null;
+        foreach (TouchPoint touch in touches)
+            if (touch.Id == _fingerId) { held = touch; break; }
 
         // Sliding off the button releases it, the way a real button does.
-        if (pointer.JustReleased || !pointer.IsDown || !ContainsPoint(pointer.Position)) Release();
+        bool gone = held is not { } finger
+                 || finger.Phase is TouchPhase.Ended or TouchPhase.Cancelled
+                 || Vector2.Distance(finger.Position, Home) > Radius;
+
+        if (gone) { Release(); return; }
+
+        claimed.Add(_fingerId.Value);
     }
 
     /// <summary>Lets the action go, for a scene change or losing focus.</summary>
     public void Release()
     {
-        if (_pointerId == null) return;
+        if (_fingerId == null) return;
 
-        _pointerId = null;
+        _fingerId = null;
         Player?.ReleaseVirtual(Action);
-    }
-
-    public override void Draw(SpriteBatch sb, SpriteFont? font)
-    {
-        if (!Visible) return;
-
-        var bounds = Bounds;
-        var centre = new Vector2(bounds.X + bounds.Width * 0.5f, bounds.Y + bounds.Height * 0.5f);
-        float alpha = Opacity * (IsPressed ? 1.6f : 1f);
-
-        int r = (int)Radius;
-        for (int y = -r; y <= r; y++)
-        {
-            int half = (int)MathF.Sqrt(MathF.Max(0f, Radius * Radius - y * y));
-            if (half > 0) FillRect(sb, new Rectangle((int)centre.X - half, (int)centre.Y + y, half * 2, 1), Tint * alpha);
-        }
-
-        string text = Label ?? (Action.Length > 0 ? Action[..1] : "");
-        if (font != null && text.Length > 0) DrawTextInRect(sb, font, text, bounds, Color.White * 0.9f);
+        _node.Opacity = _opacity;
     }
 }
