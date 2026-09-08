@@ -18,6 +18,53 @@ public sealed class Skybox : Component
     public Color        GradientTop    { get; set; } = new Color(0.1f, 0.3f, 0.8f);
     public Color        GradientBottom { get; set; } = new Color(0.6f, 0.7f, 0.9f);
 
+    /// <summary>
+    /// Multiplier applied to the sky's colour as it is drawn. Default 1.
+    /// </summary>
+    /// <remarks>
+    /// The browser scales the sky in its fragment shader; here it rides on the effect's
+    /// diffuse colour, which <see cref="BasicEffect"/> multiplies into both the gradient's
+    /// vertex colours and the cubemap. Below 1 darkens the sky under a bright scene; above 1
+    /// blows it out. Negative is clamped away rather than inverting the sky.
+    /// </remarks>
+    public float Exposure { get; set; } = 1f;
+
+    /// <summary>
+    /// Folder holding the six cubemap faces. Empty (the default) leaves the gradient in place.
+    /// </summary>
+    /// <remarks>
+    /// The one path a scene file stores, because six of them in a property bag is not
+    /// something anyone edits by hand. <see cref="CubemapFacePaths"/> spells out the
+    /// convention it stands for — <c>px</c>, <c>nx</c>, <c>py</c>, <c>ny</c>, <c>pz</c>,
+    /// <c>nz</c> as .png, the names <c>wiki/05-rendering-3d.md</c> has always used. The faces
+    /// are loaded on the first <see cref="Draw"/>, which is the first moment there is a
+    /// <see cref="GraphicsDevice"/> to build a <see cref="TextureCube"/> with; setting the
+    /// path again asks for another attempt.
+    /// </remarks>
+    public string CubemapPath
+    {
+        get => _cubemapPath;
+        set
+        {
+            _cubemapPath  = value ?? "";
+            _cubemapTried = false;
+        }
+    }
+    private string _cubemapPath = "";
+    private bool   _cubemapTried;
+
+    /// <summary>Face file names in the order <see cref="TextureCube"/> wants them.</summary>
+    private static readonly string[] FaceNames = { "px", "nx", "py", "ny", "pz", "nz" };
+
+    /// <summary>
+    /// The six face paths a <see cref="CubemapPath"/> folder stands for, +X,-X,+Y,-Y,+Z,-Z.
+    /// </summary>
+    public static string[] CubemapFacePaths(string folder)
+    {
+        string root = (folder ?? "").TrimEnd('/', '\\');
+        return FaceNames.Select(name => $"{root}/{name}.png").ToArray();
+    }
+
     // -------------------------------------------------------------------------
     // GPU resources (created on first Draw)
     // -------------------------------------------------------------------------
@@ -94,6 +141,14 @@ public sealed class Skybox : Component
     /// </summary>
     public void Draw(GraphicsDevice gd, Camera3D camera)
     {
+        if (CubemapTexture == null && !_cubemapTried && !string.IsNullOrWhiteSpace(_cubemapPath))
+        {
+            // Once, not once a frame: a missing folder would otherwise reopen six files and
+            // print six lines every frame for the life of the scene.
+            _cubemapTried = true;
+            LoadCubemap(CubemapFacePaths(_cubemapPath), gd);
+        }
+
         // Save render state
         var prevDepthState   = gd.DepthStencilState;
         var prevRastState    = gd.RasterizerState;
@@ -148,7 +203,7 @@ public sealed class Skybox : Component
         // Because MonoGame BasicEffect doesn't expose a TextureCube parameter,
         // we tint each face by sampling the dominant colour direction instead.
         // For a true cubemap the game should supply a custom HLSL effect.
-        effect.DiffuseColor = Vector3.One;
+        effect.DiffuseColor = Vector3.One * MathF.Max(0f, Exposure);
         effect.LightingEnabled = false;
 
         gd.SetVertexBuffer(_cubeVB!);
@@ -176,6 +231,10 @@ public sealed class Skybox : Component
         effect.VertexColorEnabled = true;
         effect.LightingEnabled    = false;
         effect.TextureEnabled     = false;
+
+        // BasicEffect multiplies the diffuse colour into each vertex colour, so this scales
+        // the whole gradient without rebuilding the quad.
+        effect.DiffuseColor = Vector3.One * MathF.Max(0f, Exposure);
 
         gd.SetVertexBuffer(_quadVB!);
 

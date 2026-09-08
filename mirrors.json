@@ -1033,11 +1033,6 @@
       "WorldStreamer"
     ],
     "jsOnly": [],
-    "knownGaps": {
-      "Skybox": [
-        "cubemapPath",
-        "exposure"
-      ]
-    }
+    "knownGaps": {}
   }
 }
