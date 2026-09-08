@@ -117,7 +117,7 @@ jobs:
       # Headless smoke test: the MCP tool registry and the Claude Code plumbing load without a
       # window, and the full tool catalogue stays under budget (a session pays it once).
       - name: Dump MCP tools
-        run: dotnet SexyBiscuit.Editor/bin/Release/net8.0/SexyBiscuit.Editor.dll --dump-mcp-tools --all --markdown --budget 60000 > /dev/null
+        run: dotnet SexyBiscuit.Editor/bin/Release/net8.0/SexyBiscuit.Editor.dll --dump-mcp-tools --all --markdown --budget 48000 > /dev/null
         shell: bash
 
       - name: Cookies compile against this engine

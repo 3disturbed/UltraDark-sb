@@ -10,7 +10,7 @@ selection, camera, capture, play mode, console). `GameCode/` the C# game project
 
     dotnet build SexyBiscuit.Editor/SexyBiscuit.Editor.csproj
     dotnet test SexyBiscuit.Editor.Tests/SexyBiscuit.Editor.Tests.csproj
-    dotnet SexyBiscuit.Editor/bin/Debug/net8.0/SexyBiscuit.Editor.dll --dump-mcp-tools --all --budget 60000 > /dev/null
+    dotnet SexyBiscuit.Editor/bin/Debug/net8.0/SexyBiscuit.Editor.dll --dump-mcp-tools --all --budget 48000 > /dev/null
 
 The editor uses the engine's public API only. `SexyBiscuit.Tests` references the engine, so the
 tools that live here are covered by `SexyBiscuit.Editor.Tests`, which builds the real catalogue

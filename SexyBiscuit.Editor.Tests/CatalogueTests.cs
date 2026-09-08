@@ -17,11 +17,12 @@ namespace SexyBiscuit.Editor.Tests;
 public class CatalogueTests : IDisposable
 {
     /// <summary>
-    /// The ceiling on the compact <c>tools/list</c>, in characters. About four characters to the
-    /// token, so this is the fixed cost of opening a session. It only ever goes down: lower it
-    /// when tools merge, never raise it to make a test pass.
+    /// The ceiling on the compact <c>tools/list</c>, in characters — 47,368 today, about 11,800
+    /// tokens, which every session pays before it does anything. The same number is enforced from
+    /// the command line by <c>--dump-mcp-tools --all --budget</c> in CI. It only ever goes down:
+    /// lower it when tools merge, never raise it to make a test pass.
     /// </summary>
-    private const int Budget = 76_000;
+    private const int Budget = 48_000;
 
     private readonly HeadlessSceneHost _scene = AssistantSelfTest.CatalogueScene();
     private readonly McpToolRegistry   _registry;

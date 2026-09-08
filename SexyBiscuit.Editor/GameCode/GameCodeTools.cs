@@ -70,11 +70,9 @@ public sealed class GameCodeTools
     }
 
     [McpTool("create_code_project",
-        "Add a C# project to the open SexyBiscuit project: <Name>.csproj at the project root, Source/ with starter classes " +
-        "(a GameMode, PlayerController and Character, a Spinner component, an example [McpTool] class), a per-machine " +
-        "SexyBiscuit.props pointing at this engine, and .gitignore. Existing files are never overwritten unless overwrite " +
-        "is true. By default it then builds, hot-loads the assembly, and swaps a plain GameMode in the scene for the " +
-        "project's own.",
+        "Add a C# project to the open SexyBiscuit project: the csproj, Source/ with starter classes, a per-machine props " +
+        "file pointing at this engine, and .gitignore. Existing files are never overwritten unless overwrite is true. " +
+        "It then builds, hot-loads the assembly and puts the project's own GameMode in the scene.",
         MainThread = false, Label = "Create the C# project")]
     public async Task<McpToolResult> CreateCodeProject(
         [McpParam("Overwrite generated files that already exist")] bool overwrite = false,
@@ -135,11 +133,9 @@ public sealed class GameCodeTools
     // -------------------------------------------------------------------------
 
     [McpTool("build_project",
-        "Compile the project's C# code with dotnet build and return structured diagnostics {file, line, column, code, " +
-        "severity, message}. Waits up to wait_seconds (default 40); if the build is still running you get status " +
-        "'running' and a build_id to poll with get_build_status. Building alone does not change the editor — call " +
-        "reload_game_code (which builds for you) to make the new code live. The game compiles against the engine build " +
-        "this editor runs; after editing engine source call rebuild_engine_and_restart instead.",
+        "Compile the project's C# code and return structured diagnostics. Building alone does not change the editor — " +
+        "call reload_game_code, which builds for you, to make the new code live. After editing engine source call " +
+        "rebuild_engine_and_restart instead. A slow build returns a build_id for get_build_status.",
         MainThread = false, Label = "Build the project")]
     public async Task<McpToolResult> BuildProject(
         [McpParam("Seconds to wait before returning a build_id to poll")] int waitSeconds = 40,
@@ -159,11 +155,8 @@ public sealed class GameCodeTools
     // -------------------------------------------------------------------------
 
     [McpTool("run_tests",
-        "Run a test suite and return the totals and the failing names, not the log. project: 'engine' (the engine's " +
-        "xunit suite), 'templates' (only the template smoke tests, which run every template's scripts on the C# engine), " +
-        "'html5' (npm test in html5/: the JavaScript engine and the tools) or 'lint' (npm run lint). filter narrows " +
-        "engine tests by name (FullyQualifiedName~filter) or html5 tests by pattern. Blocks until the run finishes or " +
-        "waitSeconds pass; the first run after a change includes a build.",
+        "Run a test suite and return the totals and the failing names, not the log. The first run after a change " +
+        "includes a build, so allow for it.",
         MainThread = false, Label = "Run tests")]
     public async Task<McpToolResult> RunTests(
         [McpParam("engine, templates, html5 or lint")] string project = "engine",
@@ -317,11 +310,9 @@ public sealed class GameCodeTools
     }
 
     [McpTool("reload_game_code",
-        "Build the C# project (unless build=false) and hot-reload the assembly into the running editor: the scene is " +
-        "serialised, the old assembly unloaded, the new one loaded and the scene restored with unsaved edits intact. Play " +
-        "mode is stopped first. Reports which actor and component classes and which game_ tools appeared or disappeared. " +
-        "Refuses when the game was compiled against a different engine build than this editor runs — call " +
-        "rebuild_engine_and_restart — unless allow_engine_mismatch is true.",
+        "Build the C# project and hot-reload the assembly into the running editor, keeping the scene and its unsaved " +
+        "edits. Play mode is stopped first. Reports which classes and game_ tools appeared or disappeared. Refuses " +
+        "when the game was built against a different engine than this editor runs — rebuild_engine_and_restart then.",
         MainThread = false, Label = "Reload game code")]
     public async Task<McpToolResult> ReloadGameCode(
         [McpParam("Build first")] bool build = true,
@@ -543,12 +534,10 @@ public sealed class GameCodeTools
     }
 
     [McpTool("rebuild_engine_and_restart",
-        "Rebuild the engine and the editor from source and restart the editor so engine changes take effect. The build " +
-        "runs into a staging folder first, so a failure leaves the running editor untouched and returns diagnostics " +
-        "without restarting. On success the editor saves the scene, writes a resume file, and restarts a couple of " +
-        "seconds after this result is delivered; it reopens the same project and scene, restores the selection, and " +
-        "resumes the assistant session. While it restarts, MCP calls fail for 10-30 seconds: stop calling tools, wait, " +
-        "then call get_context until it answers, and re-list tools. Never repeat the rebuild.",
+        "Rebuild the engine and editor from source and restart, so engine changes take effect. A failed build leaves " +
+        "the running editor untouched and returns diagnostics. On success it restarts within seconds and reopens the " +
+        "same project, scene and session: stop calling tools, wait 15-30 seconds, then call get_context until it " +
+        "answers. Never repeat the rebuild.",
         MainThread = false, Label = "Rebuild the engine and restart")]
     public async Task<McpToolResult> RebuildEngineAndRestart(
         [McpParam("Debug, Release or Development; defaults to the running editor's")] string? configuration = null,

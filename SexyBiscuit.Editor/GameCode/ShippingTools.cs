@@ -33,11 +33,9 @@ public sealed class ShippingTools
     // -------------------------------------------------------------------------
 
     [McpTool("export_build",
-        "Export the open project from disk: stage assets, scenes and scripts per target, publish self-contained desktop " +
-        "players (publish=true; needs the engine source and the .NET SDK), archive them, and upload the archives " +
-        "(upload=true publishes the native archives to DarksGames; needs DG_BUILD_TOKEN). platforms " +
-        "take BuildSettings names or RIDs — web, win-x64, osx-arm64, linux-x64 — and default to those four. Save the " +
-        "scene first. Waits up to waitSeconds and returns one line per target; a longer run returns a job id for " +
+        "Export the open project from disk: stage per target, publish self-contained desktop players (needs the engine " +
+        "source and the .NET SDK), archive them, and optionally upload the native archives to DarksGames (needs " +
+        "DG_BUILD_TOKEN). Save the scene first. Returns one line per target; a longer run returns a job id for " +
         "get_build_report.",
         MainThread = false, Label = "Export the build")]
     public async Task<McpToolResult> ExportBuild(
@@ -89,11 +87,9 @@ public sealed class ShippingTools
 
     [McpTool("publish_build",
         "Publish archives that already exist to DarksGames — no rebuild, so a twenty-minute desktop publish is not " +
-        "repeated just to send the file. Takes the archives from the last export_build in this session, or from the " +
-        "project's dist/build-report.json, or one explicit archive path. Only native builds publish: the web build is " +
-        "not a downloadable game build and is skipped. Re-publishing the same slug, version and platform replaces that " +
-        "build in place and keeps its download link working, so bump version for a genuinely new build. Needs " +
-        "DG_BUILD_TOKEN in the environment or on the first line of ~/.sexybiscuit/dg-token.",
+        "repeated just to send the file. Native builds only; the web build is skipped. Re-publishing the same slug, " +
+        "version and platform replaces that build in place, so bump version for a genuinely new one. Needs " +
+        "DG_BUILD_TOKEN or the first line of ~/.sexybiscuit/dg-token.",
         MainThread = false, Label = "Publish to DarksGames")]
     public async Task<McpToolResult> PublishBuild(
         [McpParam("Limit to these targets, e.g. [\"osx-arm64\"]")] string[]? platforms = null,

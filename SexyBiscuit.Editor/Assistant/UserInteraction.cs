@@ -38,10 +38,9 @@ public sealed class UserInteraction
     }
 
     [McpTool("ask_user",
-        "Ask the user a question in the editor and wait for the answer. Optional choices become buttons; the user can " +
-        "also type a free answer unless allow_free_text is false. Blocks until answered, or until timeout_seconds " +
-        "(default 900, 30-3600) passes. Returns {answer, choice_index, free_text}, or {status:'timeout'} / " +
-        "{status:'cancelled'}. Use it for decisions that are expensive to change later, not for routine choices.",
+        "Ask the user a question in the editor and wait for the answer. choices become buttons; the user can also type " +
+        "one unless allow_free_text is false. Blocks until answered, or returns a timeout or cancelled status. Use it " +
+        "for decisions that are expensive to change later, not for routine ones.",
         MainThread = false, Label = "Ask: {question}")]
     public async Task<McpToolResult> AskUser(
         [McpParam("The question, plain text")] string question,
@@ -76,11 +75,9 @@ public sealed class UserInteraction
     }
 
     [McpTool("wait_for_user",
-        "For sessions driving the editor from a terminal: block until the user types something in the editor's Assistant " +
-        "panel, then return it as {status:'prompt', text}. Call it at the end of every turn and act on the result. " +
-        "Also returns {status:'timeout'} after timeout_seconds (default 900, 10-3600), {status:'cancelled'} when the " +
-        "user presses Stop, {status:'editor_closing'}, or {status:'not_needed'} for the embedded assistant, whose user " +
-        "messages arrive directly.",
+        "For sessions driving the editor from a terminal: block until the user types in the editor's Assistant panel, " +
+        "then return what they typed. Call it at the end of every turn and act on the result. Also returns a timeout, " +
+        "cancelled or editor_closing status, or not_needed for the embedded assistant.",
         MainThread = false, Label = "Wait for the user")]
     public async Task<McpToolResult> WaitForUser(
         [McpParam("Seconds to wait")] int timeoutSeconds = 0,
