@@ -1034,9 +1034,6 @@
     ],
     "jsOnly": [],
     "knownGaps": {
-      "CapsuleCollider3D": [
-        "height"
-      ],
       "CharacterController3D": [
         "radius",
         "height",

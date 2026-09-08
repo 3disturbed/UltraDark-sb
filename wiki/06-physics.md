@@ -406,15 +406,20 @@ sphere.Radius = 0.5f;
 
 var capsule = actor.AddComponent<CapsuleCollider3D>();
 capsule.Radius = 0.4f;
-capsule.Length = 1.2f;      // cylindrical section, excluding the caps
+capsule.Height = 2.0f;      // total, caps included — what a scene file stores
+capsule.Length = 1.2f;      // the same dimension seen as the shaft, caps excluded
 ```
+
+`Height` and `Length` are two views of one capsule: `Length == Height - 2 × Radius`.
+`Height` is the one the browser stores and the one written to a scene file, so
+size a capsule with it and let `Length` be the number Bepu is handed.
 
 Shared: `IsTrigger`, `Friction` (default 0.5), `Restitution` (default 0).
 
 `Collider3D.Awake` adds a `Rigidbody3D` if the actor has none, and
 `Rigidbody3D.Awake` calls `collider.RegisterShape(...)`. So adding just the
 collider is enough — but the **same "shape is built at `Awake`" problem as 2D
-applies**: `Radius`, `Length` and `HalfExtents` are read at registration time,
+applies**: `Radius`, `Height` and `HalfExtents` are read at registration time,
 before you get a chance to set them.
 
 Rebuild by removing the body and re-running `Awake` on the rigidbody:
@@ -423,9 +428,9 @@ Rebuild by removing the body and re-running `Awake` on the rigidbody:
 var t3d = actor.AddComponent<Transform3D>();
 t3d.Position = spawn;
 
-var col = actor.AddComponent<CapsuleCollider3D>();   // registers a 0.5 × 1 capsule
+var col = actor.AddComponent<CapsuleCollider3D>();   // registers the default 0.5 × 2 capsule
 col.Radius = 0.4f;
-col.Length = 1.2f;
+col.Height = 2.0f;
 
 var rb = actor.GetComponent<Rigidbody3D>()!;          // added by the collider
 PhysicsSystem3D.Instance.RemoveBody(actor);           // drop the stale body

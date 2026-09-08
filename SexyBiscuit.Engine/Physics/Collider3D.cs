@@ -115,8 +115,33 @@ public sealed class CapsuleCollider3D : Collider3D
     /// <summary>Radius of the capsule hemisphere ends. Default 0.5.</summary>
     public float Radius { get; set; } = 0.5f;
 
-    /// <summary>Length of the cylindrical shaft (not including the hemispherical caps). Default 1.</summary>
-    public float Length { get; set; } = 1f;
+    /// <summary>
+    /// Total height of the capsule, caps included. Default 2.
+    /// </summary>
+    /// <remarks>
+    /// The dimension the browser stores and a scene file carries, so a capsule sized on one
+    /// engine is the same capsule on the other. Bepu wants the shaft instead, which is what
+    /// <see cref="Length"/> hands it.
+    /// </remarks>
+    public float Height { get; set; } = 2f;
+
+    /// <summary>
+    /// Length of the cylindrical shaft, excluding the hemispherical caps — the number Bepu's
+    /// <c>Capsule</c> takes. Default 1, which is <see cref="Height"/> 2 less two 0.5 caps.
+    /// </summary>
+    /// <remarks>
+    /// A view over <see cref="Height"/> rather than a field of its own, so the two cannot
+    /// drift apart, and left out of scene files for the same reason: a file carrying both
+    /// would let a hand edit to one be undone by the other, depending on which key the
+    /// loader reached first. A scene written before <see cref="Height"/> existed still loads
+    /// — setting the shaft sets the height it implies.
+    /// </remarks>
+    [SceneIgnore]
+    public float Length
+    {
+        get => MathF.Max(0f, Height - Radius * 2f);
+        set => Height = value + Radius * 2f;
+    }
 
     public override void RegisterShape(PhysicsSystem3D physics, Actor actor, float mass)
     {
