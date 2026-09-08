@@ -28,14 +28,27 @@ export class Camera3D extends Component {
     /** The camera a possessed pawn owns. Set by the player controller. */
     static playerView = null;
 
-    /** The view the renderer draws through. */
+    /** Drops every registered camera. A test that leaks one poisons the next. */
+    static clearAll() {
+        Camera3D.all.length = 0;
+        Camera3D.playerView = null;
+    }
+
+    /**
+     * The view the renderer draws through: the possessed pawn's camera, else one tagged
+     * 'MainCamera3D', else one tagged 'MainCamera', else whichever was added first.
+     *
+     * The liveness check is not decoration -- a switched-off camera used to win this
+     * election here while the C# twin skipped it, so a scene that disabled its menu camera
+     * rendered through it in the browser and through the next one natively. CameraParityTests
+     * and cameraMain.test.js pin the order and the check together.
+     */
     static get main() {
-        if (Camera3D.playerView && !Camera3D.playerView.actor?.isDestroyed) {
-            return Camera3D.playerView;
-        }
-        return Camera3D.all.find((c) => c.actor?.tag === 'MainCamera3D')
-            ?? Camera3D.all.find((c) => c.actor?.tag === 'MainCamera')
-            ?? Camera3D.all[0]
+        if (Camera3D.playerView && live(Camera3D.playerView)) return Camera3D.playerView;
+
+        return Camera3D.all.find((c) => live(c) && c.actor.tag === 'MainCamera3D')
+            ?? Camera3D.all.find((c) => live(c) && c.actor.tag === 'MainCamera')
+            ?? Camera3D.all.find(live)
             ?? null;
     }
 
@@ -144,4 +157,12 @@ export class Camera3D extends Component {
         };
     }
 }
+/** Whether a camera is eligible to be `main`: switched on, attached and alive. */
+function live(camera) {
+    return camera.enabled === true
+        && camera.actor != null
+        && !camera.actor.isDestroyed
+        && camera.actor.isActive;
+}
+
 registerComponent(Camera3D, { category: 'Rendering', summary: 'The 3D view transform.' });
