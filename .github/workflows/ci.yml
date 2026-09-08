@@ -128,6 +128,11 @@ jobs:
       - name: Test
         run: dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj -c Release --no-restore --verbosity normal
 
+      # The editor's own tools live in that project, so SexyBiscuit.Tests (engine only) cannot
+      # reach them. This covers the catalogue every session pays for, headlessly.
+      - name: Test the editor
+        run: dotnet test SexyBiscuit.Editor.Tests/SexyBiscuit.Editor.Tests.csproj -c Release --no-restore --verbosity normal
+
   # The expensive runners. Nightly for main, every release tag, or on request.
   cross-platform:
     name: Build and test (${{ matrix.os }})

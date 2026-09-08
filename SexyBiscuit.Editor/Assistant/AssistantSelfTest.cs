@@ -24,7 +24,7 @@ public static class AssistantSelfTest
     {
         public int Calls;
 
-        [McpTool("get_project_info", "Self-test stand-in: reports that no project is open.")]
+        [McpTool("get_project_info", "Self-test stand-in: reports that no project is open.", ReadOnly = true)]
         public McpToolResult GetProjectInfo()
         {
             Calls++;
@@ -45,20 +45,39 @@ public static class AssistantSelfTest
     // --dump-mcp-tools
     // -------------------------------------------------------------------------
 
-    private static int DumpTools(AssistantSettings settings, LaunchOptions options)
-    {
-        using var scene = new HeadlessSceneHost(SceneTemplates.CreateDefault3D("Catalogue"));
-        // With --all the real editor classes stand in for the self-test stand-ins, which mimic some of the same names.
-        var (registry, _, _) = BuildHeadlessServer(scene, settings, new InteractionBoard(), out _, includeSelfTestTools: !options.DumpAll);
+    /// <summary>A scene for a catalogue or a self-test to hang tools off. The caller disposes it.</summary>
+    internal static HeadlessSceneHost CatalogueScene() => new(SceneTemplates.CreateDefault3D("Catalogue"));
 
-        if (options.DumpAll)
+    /// <summary>
+    /// The tool catalogue the editor serves, built without a window: the engine's scene tools over
+    /// <paramref name="scene"/>, the interaction and cookie tools, and with <paramref name="all"/>
+    /// the editor-only classes too.
+    /// </summary>
+    /// <remarks>
+    /// The editor tool classes need a running editor to <em>call</em> but only their attributes to
+    /// <em>describe</em>, so they are registered as instances created without their constructors.
+    /// That is what lets <c>--dump-mcp-tools --all</c> and the catalogue tests see the same surface
+    /// an editor session serves. Without <paramref name="all"/> the self-test stand-ins take their
+    /// place, since they mimic some of the same names.
+    /// </remarks>
+    internal static McpToolRegistry BuildCatalogue(HeadlessSceneHost scene, AssistantSettings settings, bool all)
+    {
+        var (registry, _, _) = BuildHeadlessServer(scene, settings, new InteractionBoard(), out _, includeSelfTestTools: !all);
+
+        if (all)
         {
-            // The editor tool classes need a running editor to *call*, but only their attributes to *describe*:
-            // register instances created without their constructors, so the catalogue is the one the editor serves.
             var editor = new McpRegistrationOptions { Source = "editor" };
             foreach (var type in new[] { typeof(EditorTools), typeof(GameCode.GameCodeTools), typeof(GameCode.ShippingTools) })
                 registry.RegisterInstance(System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(type), editor);
         }
+
+        return registry;
+    }
+
+    private static int DumpTools(AssistantSettings settings, LaunchOptions options)
+    {
+        using var scene = CatalogueScene();
+        var registry = BuildCatalogue(scene, settings, all: options.DumpAll);
 
         var catalogue = new JsonObject { ["tools"] = registry.DescribeForToolsList() };
         string compact = catalogue.ToJsonString();

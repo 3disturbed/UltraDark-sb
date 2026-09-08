@@ -9,17 +9,20 @@ selection, camera, capture, play mode, console). `GameCode/` the C# game project
 ## Gate for this folder
 
     dotnet build SexyBiscuit.Editor/SexyBiscuit.Editor.csproj
+    dotnet test SexyBiscuit.Editor.Tests/SexyBiscuit.Editor.Tests.csproj
     dotnet SexyBiscuit.Editor/bin/Debug/net8.0/SexyBiscuit.Editor.dll --dump-mcp-tools --all --budget 60000 > /dev/null
-    dotnet SexyBiscuit.Editor/bin/Debug/net8.0/SexyBiscuit.Editor.dll --assistant-selftest --dry-run
 
-The editor uses the engine's public API only. The tests project does not reference the editor, so
-a tool that lives here has no test unless you write one against the headless server
-(`AssistantSelfTest.BuildHeadlessServer`).
+The editor uses the engine's public API only. `SexyBiscuit.Tests` references the engine, so the
+tools that live here are covered by `SexyBiscuit.Editor.Tests`, which builds the real catalogue
+through `AssistantSelfTest.BuildCatalogue` without opening a window.
 
 ## Rules that apply here only
 
 - A tool is `[McpTool]` with a description under 120 characters, a stub echo rather than a view,
-  and `Mutating`/`Destructive` set right. Then regenerate `wiki/25-ai-assistant-mcp.md` and re-run
-  the budget dump: every agent pays for the catalogue once per session.
+  and its three flags set right: `Mutating` means it edits the scene (snapshot undo first),
+  `Destructive` warns a client, and `ReadOnly` claims it changes **nothing** — no scene, no file,
+  no process, no upload. `ReadOnly` is opt-in; leaving it off is always safe. Then regenerate
+  `wiki/25-ai-assistant-mcp.md` and re-run the budget dump: every agent pays for the catalogue
+  once per session.
 - The running editor does not see an engine change until `rebuild_engine_and_restart`.
 - Twin: `html5/editor/` is the browser editor (a subset); a scene-format change reaches both.

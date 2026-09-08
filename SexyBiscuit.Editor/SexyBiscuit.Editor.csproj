@@ -23,6 +23,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The editor's own test project builds the tool catalogue through AssistantSelfTest, which
+         is how the 44 editor-hosted tools get covered without opening a window. -->
+    <InternalsVisibleTo Include="SexyBiscuit.Editor.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- ImGui.NET for dockable panel layout -->
     <PackageReference Include="ImGui.NET" Version="1.90.0" />
 
