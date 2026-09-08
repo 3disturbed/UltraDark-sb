@@ -37,9 +37,15 @@ through `AssetManager`**:
 | `SpriteFont` | `Content.Load<SpriteFont>("Fonts/ui")` — MGCB pipeline |
 | `Effect` (shader) | `Content.Load<Effect>("Shaders/blur")` — MGCB pipeline |
 | 3D model | `MeshRenderer.LoadModel(path, GraphicsDevice)` — AssimpNet |
-| Cubemap | `Skybox.LoadCubemap(sixPaths, GraphicsDevice)` |
+| Cubemap | `Skybox.CubemapPath = "Assets/Sky"`, or `Skybox.LoadCubemap(sixPaths, GraphicsDevice)` |
 | Tilemap | `TilemapData.LoadFromJson(path)` |
 | Anything else | `Assets.Load<byte[]>(path)` and parse it yourself |
+
+A `TextureCube` is not an `AssetManager` type, but its six faces are: `LoadCubemap`
+reads each through `AssetManager.Current` when a host is running, so a cubemap in
+a mounted bundle is found like any other texture, and drops to the file system
+when there is no host. It used to read the files directly, which is why a sky
+that worked from a source tree came out as the gradient in a bundled build.
 
 Adding a type means editing `LoadFromStream<T>` in
 `SexyBiscuit.Engine/Assets/AssetManager.cs` — it is a short `if` chain.

@@ -64,6 +64,11 @@ export class RenderSystem3D {
         this._uniformCache = new WeakMap();
         this._whitePixel = null;
         this._initialised = false;
+
+        // Skybox -> the faces we last started loading for it, joined. Keyed by the paths
+        // rather than by the skybox alone so a load that failed is not retried every frame
+        // for the life of the scene, while a later loadCubemap with different faces is.
+        this._cubemapLoads = new WeakMap();
     }
 
     /** True when a usable WebGL2 context is present. */
@@ -371,6 +376,8 @@ export class RenderSystem3D {
         const sky = Skybox.active;
         const program = this._programs.skybox;
 
+        if (sky?.pendingFaces) this._resolveCubemap(sky);
+
         gl.useProgram(program.program);
 
         const top = (sky?.gradientTop ?? Color.from('#3A5CA8')).toFloatArray();
@@ -382,7 +389,17 @@ export class RenderSystem3D {
         gl.uniform1f(program.uniform('uExposure'), sky?.exposure ?? 1);
         gl.uniformMatrix4fv(program.uniform('uInverseViewProjection'), false,
             Matrix4.invert(viewProjection).toArray());
-        gl.uniform1i(program.uniform('uHasCubemap'), sky?.cubemapTexture ? 1 : 0);
+
+        // The sky program samples nothing else, so the cube gets unit 0. A sampler left
+        // unbound reads whatever the mesh pass put on that unit last frame, which for a
+        // samplerCube is undefined rather than merely wrong.
+        const cubemap = sky?.cubemapTexture ?? null;
+        if (cubemap) {
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
+            gl.uniform1i(program.uniform('uCubemap'), 0);
+        }
+        gl.uniform1i(program.uniform('uHasCubemap'), cubemap ? 1 : 0);
 
         // The sky fills the frame, so it neither tests nor writes depth; drawing
         // it first means every later fragment overwrites it.
@@ -395,6 +412,39 @@ export class RenderSystem3D {
         this.stats.drawCalls++;
     }
 
+    /**
+     * Loads and uploads the six faces a Skybox is waiting on, once.
+     *
+     * A skybox names one folder and turns it into six paths; nothing had ever read them
+     * back, so `cubemapPath` set the sky in a native build and left the browser on its
+     * gradient. The load is asynchronous — six images over the network — so the draw that
+     * starts it and the several that follow all see `pendingFaces` still set, and the guard
+     * is what stops six requests becoming six a frame.
+     *
+     * @param {import('./Skybox.js').Skybox} sky
+     */
+    _resolveCubemap(sky) {
+        const faces = sky.pendingFaces;
+        if (!faces || !this.gl) return;
+
+        const key = faces.join('|');
+        if (this._cubemapLoads.get(sky) === key) return;
+        this._cubemapLoads.set(sky, key);
+
+        const assets = sky.actor?.scene?.engine?.assets;
+        if (!assets) return;
+
+        const gl = this.gl;
+        Promise.all(faces.map((path) => assets.loadTexture(path)))
+            .then((textures) => {
+                // Six images take long enough that the scene may have moved on to another
+                // sky, or none, while they were in flight.
+                if (sky.pendingFaces?.join('|') !== key) return;
+                sky.markCubemapUploaded(uploadCubemap(gl, textures.map((texture) => texture.source)));
+            })
+            .catch((err) => console.warn(`[RenderSystem3D] cubemap '${faces[0]}': ${err.message}`));
+    }
+
     /** Releases the shaders and the fallback texture. */
     dispose() {
         if (!this.gl) return;
@@ -405,6 +455,43 @@ export class RenderSystem3D {
         this._programs = {};
         this._initialised = false;
     }
+}
+
+/**
+ * Six images as one GL cubemap, in the order `Skybox.faceNames` lists them.
+ *
+ * The GL face enums run +X, -X, +Y, -Y, +Z, -Z from `TEXTURE_CUBE_MAP_POSITIVE_X`, which is
+ * the order `Skybox.faceNames`, `Skybox.CubemapFacePaths` and C#'s `Skybox.FaceOrder` all
+ * use, so the index is the offset and nothing has to be remapped.
+ *
+ * @param {WebGL2RenderingContext} gl
+ * @param {(ImageBitmap|HTMLImageElement|HTMLCanvasElement)[]} sources Six faces.
+ * @returns {WebGLTexture}
+ */
+export function uploadCubemap(gl, sources) {
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+
+    // Not flipped, unlike Texture2D: a cube is sampled by direction rather than by a
+    // texture coordinate, and flipping the faces turns the sky upside down. Texture2D
+    // leaves the flag on after every upload, so this has to say so rather than assume.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+
+    for (let face = 0; face < 6; face++) {
+        gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA, gl.RGBA,
+            gl.UNSIGNED_BYTE, sources[face]);
+    }
+
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    // All three axes clamp: the seam where two faces meet is the classic cubemap artefact,
+    // and it is the edge texel wrapping round that draws it.
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+
+    return texture;
 }
 
 const LIGHT_TYPE_INDEX = {

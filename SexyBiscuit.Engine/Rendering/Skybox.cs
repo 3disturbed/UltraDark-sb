@@ -74,6 +74,10 @@ public sealed class Skybox : Component
     private BasicEffect?     _gradientEffect;
     private VertexBuffer?    _quadVB;
 
+    // The colours _quadVB's vertices were built from, so a later edit rebuilds it.
+    private Color            _quadTop;
+    private Color            _quadBottom;
+
     // Face order expected by TextureCube: +X, -X, +Y, -Y, +Z, -Z
     private static readonly CubeMapFace[] FaceOrder =
     {
@@ -89,47 +93,90 @@ public sealed class Skybox : Component
     /// Loads 6 face images in +X,-X,+Y,-Y,+Z,-Z order and assembles a TextureCube.
     /// facePaths must have exactly 6 entries.
     /// </summary>
+    /// <remarks>
+    /// The first face decides the cube's size; a face that is missing, not square or a
+    /// different size is reported and skipped, leaving that side of the sky black rather
+    /// than failing the whole load. A first face that cannot be read leaves the gradient in
+    /// place, because there is nothing to size a cube from.
+    /// </remarks>
     public void LoadCubemap(string[] facePaths, GraphicsDevice gd)
     {
         if (facePaths.Length != 6)
             throw new ArgumentException("Exactly 6 face paths are required (+X -X +Y -Y +Z -Z).", nameof(facePaths));
 
-        // Load first face to get dimensions
-        Texture2D? first = null;
-        try { first = Texture2D.FromStream(gd, File.OpenRead(facePaths[0])); }
-        catch (Exception ex)
-        {
-            System.Console.Error.WriteLine($"[Skybox] Cannot load face 0 '{facePaths[0]}': {ex.Message}");
-            return;
-        }
+        var first = ReadFace(facePaths[0], gd);
+        if (first == null) return;
 
-        int size = first.Width;
+        int size = first.Value.Size;
         var cube = new TextureCube(gd, size, false, SurfaceFormat.Color);
+        cube.SetData(FaceOrder[0], first.Value.Pixels);
 
-        // Extract pixels from first face
-        var pixels = new Color[size * size];
-        first.GetData(pixels);
-        cube.SetData(FaceOrder[0], pixels);
-        first.Dispose();
-
-        // Remaining faces
         for (int i = 1; i < 6; i++)
         {
-            try
+            var face = ReadFace(facePaths[i], gd);
+            if (face == null) continue;
+
+            if (face.Value.Size != size)
             {
-                using var tex = Texture2D.FromStream(gd, File.OpenRead(facePaths[i]));
-                var facePixels = new Color[size * size];
-                tex.GetData(facePixels);
-                cube.SetData(FaceOrder[i], facePixels);
+                Console.Error.WriteLine(
+                    $"[Skybox] Face {i} '{facePaths[i]}' is {face.Value.Size}px; the first face is {size}px. Skipped.");
+                continue;
             }
-            catch (Exception ex)
-            {
-                System.Console.Error.WriteLine($"[Skybox] Cannot load face {i} '{facePaths[i]}': {ex.Message}");
-            }
+
+            cube.SetData(FaceOrder[i], face.Value.Pixels);
         }
 
         CubemapTexture?.Dispose();
         CubemapTexture = cube;
+    }
+
+    /// <summary>One face's pixels and its edge length, or null when it could not be read.</summary>
+    /// <remarks>
+    /// The asset manager first, so a cubemap inside an export bundle is found the way every
+    /// other texture is — <c>AssetManager.Load</c> checks mounted bundles before the file
+    /// system, and going straight to <see cref="File.OpenRead"/> is why a sky that worked
+    /// from a source tree silently fell back to the gradient in a bundled build. The file
+    /// system after it, so a tool or a test with no running host still loads one.
+    /// <para>
+    /// A texture the manager hands over is cached and reference-counted by it, so the
+    /// reference is given back with <c>Unload</c> rather than disposed; the pixels have been
+    /// copied out by then, and disposing it would leave the cache holding a dead texture.
+    /// </para>
+    /// </remarks>
+    private static (Color[] Pixels, int Size)? ReadFace(string path, GraphicsDevice gd)
+    {
+        var assets = Assets.AssetManager.Current;
+
+        try
+        {
+            if (assets != null)
+            {
+                try { return Square(assets.Load<Texture2D>(path), path); }
+                finally { assets.Unload(path); }
+            }
+
+            using var texture = Texture2D.FromStream(gd, File.OpenRead(path));
+            return Square(texture, path);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Skybox] Cannot load face '{path}': {ex.Message}");
+            return null;
+        }
+
+        static (Color[] Pixels, int Size)? Square(Texture2D texture, string path)
+        {
+            if (texture.Width != texture.Height)
+            {
+                Console.Error.WriteLine(
+                    $"[Skybox] Face '{path}' is {texture.Width}x{texture.Height}; a cube face must be square. Skipped.");
+                return null;
+            }
+
+            var pixels = new Color[texture.Width * texture.Height];
+            texture.GetData(pixels);
+            return (pixels, texture.Width);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -308,20 +355,33 @@ public sealed class Skybox : Component
         return _cubemapEffect;
     }
 
+    /// <summary>
+    /// Builds the full-screen gradient quad, and rebuilds it when either colour changes.
+    /// </summary>
+    /// <remarks>
+    /// The colours live in the vertices, so a quad built once and kept for the life of the
+    /// component ignores every later edit to <see cref="GradientTop"/> and
+    /// <see cref="GradientBottom"/> — and the editor edits both live, while the browser
+    /// recomputes its gradient on every draw. The two engines disagreeing on a live edit is
+    /// exactly the class of defect the mirror map exists to catch, so the guard compares the
+    /// colours the buffer was built from rather than merely checking that a buffer exists.
+    /// <see cref="Exposure"/> sidesteps this by riding on the effect's diffuse colour.
+    /// </remarks>
     private void EnsureGradientResources(GraphicsDevice gd)
     {
-        if (_quadVB != null) return;
+        if (_quadVB != null && _quadTop == GradientTop && _quadBottom == GradientBottom) return;
+
+        _quadVB?.Dispose();
+        _quadTop    = GradientTop;
+        _quadBottom = GradientBottom;
 
         // Full-screen triangle strip with per-vertex colours
-        var top    = GradientTop;
-        var bottom = GradientBottom;
-
         var verts = new VertexPositionColor[]
         {
-            new(new Vector3(-1,  1, 0), top),
-            new(new Vector3(-1, -1, 0), bottom),
-            new(new Vector3( 1,  1, 0), top),
-            new(new Vector3( 1, -1, 0), bottom)
+            new(new Vector3(-1,  1, 0), _quadTop),
+            new(new Vector3(-1, -1, 0), _quadBottom),
+            new(new Vector3( 1,  1, 0), _quadTop),
+            new(new Vector3( 1, -1, 0), _quadBottom)
         };
 
         _quadVB = new VertexBuffer(gd, VertexPositionColor.VertexDeclaration,
