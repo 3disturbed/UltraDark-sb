@@ -187,80 +187,14 @@ public static class DebugOverlay
     }
 
     /// <summary>
-    /// Minimal 3×5 pixel-font renderer using the 1×1 white pixel texture.
-    /// Each character is approximated as a solid colored block (4×8) so the
-    /// overlay is readable even without a loaded SpriteFont.
+    /// Draws one line of the overlay.
     /// </summary>
+    /// <remarks>
+    /// Through the shared 5x7 glyph table, which is the engine's one font: the browser
+    /// imports the same file and the C# side embeds it, so debug text and game text are
+    /// drawn by the same code. This used to be a hand-rolled 3x5 table that only this
+    /// file knew about, written when there was no font to reach for.
+    /// </remarks>
     private static void DrawPixelText(SpriteBatch sb, string text, int x, int y, Color color)
-    {
-        // Each glyph is 5px wide, 8px tall with 1px gap
-        const int GlyphW = 5;
-        const int GlyphH = 8;
-        const int Gap    = 1;
-
-        // We render a solid block per character; this is intentionally
-        // low-fidelity — the real overlay should replace _pixel rendering
-        // with a proper SpriteFont once FontStashSharp is initialised.
-        int cx = x;
-        foreach (char ch in text)
-        {
-            if (ch == ' ')
-            {
-                cx += GlyphW + Gap;
-                continue;
-            }
-
-            // Draw a tiny coloured rectangle representing the character.
-            // Each glyph column bitmap is encoded below for printable ASCII.
-            byte[][]? bmp = GetGlyphBitmap(ch);
-            if (bmp == null)
-            {
-                // Fallback: solid block
-                sb.Draw(_pixel!, new Rectangle(cx, y, GlyphW - 1, GlyphH), color);
-            }
-            else
-            {
-                for (int col = 0; col < bmp.Length; col++)
-                {
-                    byte colMask = bmp[col][0];
-                    for (int row = 0; row < GlyphH; row++)
-                    {
-                        bool lit = (colMask & (1 << (GlyphH - 1 - row))) != 0;
-                        if (lit)
-                            sb.Draw(_pixel!, new Rectangle(cx + col, y + row, 1, 1), color);
-                    }
-                }
-            }
-
-            cx += GlyphW + Gap;
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Minimal 3-column, 8-row bitmap font for common ASCII characters.
-    // Each entry: array of column bitmasks (bit 7 = top row).
-    // Only the characters used in the overlay stats are populated;
-    // everything else falls back to a solid block.
-    // -------------------------------------------------------------------------
-    private static byte[][]? GetGlyphBitmap(char ch)
-    {
-        // Digits 0-9 and common punctuation used in the overlay labels
-        return ch switch
-        {
-            '0' => new byte[][] { new[]{(byte)0x7E}, new[]{(byte)0x81}, new[]{(byte)0x81}, new[]{(byte)0x7E} },
-            '1' => new byte[][] { new[]{(byte)0x00}, new[]{(byte)0x82}, new[]{(byte)0xFF}, new[]{(byte)0x80} },
-            '2' => new byte[][] { new[]{(byte)0xE2}, new[]{(byte)0x91}, new[]{(byte)0x91}, new[]{(byte)0x8E} },
-            '3' => new byte[][] { new[]{(byte)0x42}, new[]{(byte)0x89}, new[]{(byte)0x89}, new[]{(byte)0x76} },
-            '4' => new byte[][] { new[]{(byte)0x1F}, new[]{(byte)0x10}, new[]{(byte)0x10}, new[]{(byte)0xFF} },
-            '5' => new byte[][] { new[]{(byte)0x4F}, new[]{(byte)0x89}, new[]{(byte)0x89}, new[]{(byte)0x71} },
-            '6' => new byte[][] { new[]{(byte)0x7E}, new[]{(byte)0x89}, new[]{(byte)0x89}, new[]{(byte)0x72} },
-            '7' => new byte[][] { new[]{(byte)0x01}, new[]{(byte)0xF1}, new[]{(byte)0x09}, new[]{(byte)0x07} },
-            '8' => new byte[][] { new[]{(byte)0x76}, new[]{(byte)0x89}, new[]{(byte)0x89}, new[]{(byte)0x76} },
-            '9' => new byte[][] { new[]{(byte)0x4E}, new[]{(byte)0x91}, new[]{(byte)0x91}, new[]{(byte)0x7E} },
-            '.' => new byte[][] { new[]{(byte)0x00}, new[]{(byte)0x00}, new[]{(byte)0x60}, new[]{(byte)0x60} },
-            ':' => new byte[][] { new[]{(byte)0x00}, new[]{(byte)0x66}, new[]{(byte)0x66}, new[]{(byte)0x00} },
-            '-' => new byte[][] { new[]{(byte)0x08}, new[]{(byte)0x08}, new[]{(byte)0x08}, new[]{(byte)0x08} },
-            _ => null
-        };
-    }
+        => UI.BitmapFont.Draw(sb, text, new Vector2(x, y), color);
 }

@@ -1,276 +1,226 @@
 using Microsoft.Xna.Framework;
-using SexyBiscuit.Engine;
 using SexyBiscuit.Engine.Animation;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.UI;
-using SexyBiscuit.Engine.UI.Widgets;
 using SexyBiscuit.Demo.Actors;
 using SexyBiscuit.Demo.Systems;
 
 namespace SexyBiscuit.Demo.UI;
 
 /// <summary>
-/// HUD for the ATB battle screen.
-/// Displays ATB gauges, the action menu, move/item popups,
-/// damage numbers, status icons, turn order and a battle log.
+/// HUD for the ATB battle screen: gauges, the action menu, move and item popups,
+/// damage numbers, turn order and a battle log.
 /// </summary>
+/// <remarks>
+/// The static shape is a document; the lists that change with the fight are built as
+/// nodes at the moment they change. Columns lay themselves out, so adding a move to a
+/// pet does not mean choosing a Y for it.
+/// </remarks>
 public class BattleHUD : Actor
 {
-    // -------------------------------------------------------------------------
-    // References
-    // -------------------------------------------------------------------------
-    private Canvas _canvas = null!;
+    private const string Document = """
+    {
+      "children": [
+        {
+          "name": "atb", "absolute": true, "anchor": "topright", "x": -20, "y": 20,
+          "width": 200, "layout": "column", "gap": 8,
+          "children": [
+            { "kind": "label", "text": "ATB", "tint": "#d3d3d3", "align": "center" },
+            { "name": "atbRows", "layout": "column", "gap": 12 }
+          ]
+        },
 
-    // -------------------------------------------------------------------------
-    // ATB gauge bars (one per combatant)
-    // -------------------------------------------------------------------------
-    private readonly List<(Label nameLabel, ProgressBar atbBar)> _atbRows = new();
+        {
+          "name": "turnOrder", "absolute": true, "anchor": "topright", "x": -20, "y": 200,
+          "width": 200, "height": 400, "background": "#0a0a1eb4",
+          "layout": "column", "gap": 4, "padding": 6
+        },
 
-    // -------------------------------------------------------------------------
-    // Action menu
-    // -------------------------------------------------------------------------
-    private Panel  _actionMenu    = null!;
-    private Panel  _moveListPanel = null!;
-    private Panel  _itemListPanel = null!;
+        {
+          "name": "logBg", "absolute": true, "anchor": "bottomleft", "x": 60, "y": -290,
+          "width": 1060, "height": 110, "background": "#05051ec8", "padding": 10,
+          "children": [
+            { "name": "battleLog", "kind": "label", "text": "", "wrapText": true,
+              "width": "*", "tint": "#ffffe0" }
+          ]
+        },
 
-    // -------------------------------------------------------------------------
-    // Battle log
-    // -------------------------------------------------------------------------
-    private Label _battleLog = null!;
-    private readonly Queue<string> _logLines = new();
+        {
+          "name": "actionMenu", "visible": false,
+          "absolute": true, "anchor": "bottomleft", "x": 60, "y": -40,
+          "width": 520, "height": "auto", "background": "#0a0a1edc",
+          "layout": "column", "gap": 4, "padding": 10, "crossAlign": "stretch"
+        },
+
+        {
+          "name": "moveList", "visible": false,
+          "absolute": true, "anchor": "bottomleft", "x": 620, "y": -40,
+          "width": 500, "height": "auto", "background": "#0a140adc",
+          "layout": "column", "gap": 4, "padding": 8, "crossAlign": "stretch"
+        },
+
+        {
+          "name": "itemList", "visible": false,
+          "absolute": true, "anchor": "bottomleft", "x": 620, "y": -40,
+          "width": 500, "height": "auto", "background": "#140a0adc",
+          "layout": "column", "gap": 4, "padding": 8, "crossAlign": "stretch"
+        }
+      ]
+    }
+    """;
+
     private const int MaxLogLines = 6;
 
-    // -------------------------------------------------------------------------
-    // Turn order display
-    // -------------------------------------------------------------------------
-    private Panel _turnOrderPanel = null!;
+    private UiCanvas _canvas = null!;
+    private readonly UiClicks _clicks = new();
 
-    // -------------------------------------------------------------------------
-    // Construction
-    // -------------------------------------------------------------------------
+    private UiNode _atbRows = null!;
+    private UiNode _actionMenu = null!;
+    private UiNode _moveList = null!;
+    private UiNode _itemList = null!;
+    private UiNode _battleLog = null!;
+
+    private readonly List<UiNode> _atbBars = new();
+    private readonly Queue<string> _logLines = new();
+
+    private BattleCombatantActor? _activeCombatant;
+
     public BattleHUD() : base("BattleHUD")
     {
-        BuildUI();
-    }
+        _canvas = AddComponent<UiCanvas>();
+        _canvas.ScaleMode = UiScaleMode.Match;
+        _canvas.ReferenceResolution = new Vector2(1920f, 1080f);
+        _canvas.Adopt(UiDocument.FromJson(Document));
 
-    // -------------------------------------------------------------------------
-    // UI Construction
-    // -------------------------------------------------------------------------
-    private void BuildUI()
-    {
-        _canvas = AddComponent<Canvas>();
-        _canvas.ReferenceResolution = new Vector2(1920, 1080);
+        _atbRows = _canvas.Find("atbRows")!;
+        _actionMenu = _canvas.Find("actionMenu")!;
+        _moveList = _canvas.Find("moveList")!;
+        _itemList = _canvas.Find("itemList")!;
+        _battleLog = _canvas.Find("battleLog")!;
 
-        BuildAtbSection();
-        BuildActionMenu();
-        BuildMoveListPanel();
-        BuildItemListPanel();
-        BuildBattleLog();
-        BuildTurnOrder();
-
-        // Initially hide action menus
-        _actionMenu.Visible    = false;
-        _moveListPanel.Visible = false;
-        _itemListPanel.Visible = false;
-    }
-
-    private void BuildAtbSection()
-    {
-        // ATB gauges drawn along the right side of the screen
-        var atbHeader = _canvas.AddWidget<Label>();
-        atbHeader.Text      = "ATB";
-        atbHeader.TextColor = Color.LightGray;
-        atbHeader.Position  = new Vector2(1700, 20);
-        atbHeader.Size      = new Vector2(200, 28);
-        atbHeader.Alignment = TextAlignment.Center;
-    }
-
-    private void BuildActionMenu()
-    {
-        _actionMenu              = _canvas.AddWidget<Panel>();
-        _actionMenu.Position     = new Vector2(60, 800);
-        _actionMenu.Size         = new Vector2(520, 240);
-        _actionMenu.LayoutMode   = PanelLayoutMode.Vertical;
-        _actionMenu.BackgroundColor = new Color(10, 10, 30, 220);
-        _actionMenu.Padding      = 10f;
-
-        string[] actions = { "Attack", "Skill", "Item", "Flee", "Capture" };
-        foreach (var action in actions)
+        foreach (string action in new[] { "Attack", "Skill", "Item", "Flee", "Capture" })
         {
-            string captured = action;
-            var btn = new Button
-            {
-                Text      = captured,
-                TextColor = Color.White,
-                Size      = new Vector2(500, 40),
-            };
-            btn.OnClick += () => OnActionMenuChoice(captured);
-            _actionMenu.AddChild(btn);
+            string choice = action;
+            UiNode button = AddButton(_actionMenu, choice, Color.White);
+            _clicks.On(button, () => OnActionMenuChoice(choice));
         }
     }
 
-    private void BuildMoveListPanel()
-    {
-        _moveListPanel              = _canvas.AddWidget<Panel>();
-        _moveListPanel.Position     = new Vector2(620, 800);
-        _moveListPanel.Size         = new Vector2(500, 240);
-        _moveListPanel.LayoutMode   = PanelLayoutMode.Vertical;
-        _moveListPanel.BackgroundColor = new Color(10, 20, 10, 220);
-        _moveListPanel.Padding      = 8f;
-    }
+    protected override void Update(float dt) => _clicks.Tick();
 
-    private void BuildItemListPanel()
-    {
-        _itemListPanel              = _canvas.AddWidget<Panel>();
-        _itemListPanel.Position     = new Vector2(620, 800);
-        _itemListPanel.Size         = new Vector2(500, 240);
-        _itemListPanel.LayoutMode   = PanelLayoutMode.Vertical;
-        _itemListPanel.BackgroundColor = new Color(20, 10, 10, 220);
-        _itemListPanel.Padding      = 8f;
-    }
-
-    private void BuildBattleLog()
-    {
-        var logBg = _canvas.AddWidget<Panel>();
-        logBg.Position        = new Vector2(60, 680);
-        logBg.Size            = new Vector2(1060, 110);
-        logBg.BackgroundColor = new Color(5, 5, 20, 200);
-
-        _battleLog           = _canvas.AddWidget<Label>();
-        _battleLog.Position  = new Vector2(70, 686);
-        _battleLog.Size      = new Vector2(1040, 100);
-        _battleLog.TextColor = Color.LightYellow;
-        _battleLog.WordWrap  = true;
-        _battleLog.Text      = "";
-    }
-
-    private void BuildTurnOrder()
-    {
-        _turnOrderPanel              = _canvas.AddWidget<Panel>();
-        _turnOrderPanel.Position     = new Vector2(1700, 60);
-        _turnOrderPanel.Size         = new Vector2(200, 400);
-        _turnOrderPanel.LayoutMode   = PanelLayoutMode.Vertical;
-        _turnOrderPanel.BackgroundColor = new Color(10, 10, 30, 180);
-        _turnOrderPanel.Padding      = 6f;
-    }
+    /// <summary>A menu row, in the one shape every menu in this HUD uses.</summary>
+    private static UiNode AddButton(UiNode parent, string text, Color tint, bool enabled = true)
+        => parent.Add(new UiNode
+        {
+            Kind = UiKind.Button,
+            Text = text,
+            Tint = tint,
+            HeightMode = SizeMode.Fixed,
+            Height = 42f,
+            Interactive = enabled,
+            Background = new Color(255, 255, 255, 20),
+            TextAlign = AlignMode.Center,
+        });
 
     // -------------------------------------------------------------------------
-    // Public API — update state
+    // Public API
     // -------------------------------------------------------------------------
 
-    /// <summary>
-    /// Rebuilds ATB gauge rows from the current combatant list.
-    /// Call once when the battle starts.
-    /// </summary>
+    /// <summary>Rebuilds the gauge rows. Call once when the battle starts.</summary>
     public void InitialiseCombatants(IEnumerable<BattleCombatantActor> combatants)
     {
-        _atbRows.Clear();
+        _atbBars.Clear();
+        foreach (UiNode child in new List<UiNode>(_atbRows.Children)) _atbRows.Remove(child);
 
-        // Clear old widgets from ATB section (rebuild from scratch each time)
-        int rowY = 50;
-        foreach (var combatant in combatants)
+        foreach (BattleCombatantActor combatant in combatants)
         {
             if (combatant.Pet == null) continue;
 
-            var nameLabel = _canvas.AddWidget<Label>();
-            nameLabel.Text      = combatant.Pet.PetName;
-            nameLabel.TextColor = combatant.IsPlayer ? Color.LightBlue : Color.OrangeRed;
-            nameLabel.Position  = new Vector2(1700, rowY);
-            nameLabel.Size      = new Vector2(100, 24);
+            UiNode row = _atbRows.Add(new UiNode { Layout = LayoutMode.Column, Gap = new Vector2(2f, 2f) });
 
-            var atbBar = _canvas.AddWidget<ProgressBar>();
-            atbBar.Position        = new Vector2(1808, rowY + 4);
-            atbBar.Size            = new Vector2(92, 16);
-            atbBar.MaxValue        = 100f;
-            atbBar.Value           = 0f;
-            atbBar.FillColor       = combatant.IsPlayer ? Color.CornflowerBlue : Color.OrangeRed;
-            atbBar.BackgroundColor = new Color(30, 30, 30);
+            row.Add(new UiNode
+            {
+                Kind = UiKind.Label,
+                Text = combatant.Pet.PetName,
+                Tint = combatant.IsPlayer ? Color.LightBlue : Color.OrangeRed,
+            });
 
-            _atbRows.Add((nameLabel, atbBar));
-            rowY += 36;
+            UiNode bar = row.Add(new UiNode
+            {
+                Kind = UiKind.Bar,
+                WidthMode = SizeMode.Stretch,
+                HeightMode = SizeMode.Fixed, Height = 16f,
+                Value = 0f,
+                Tint = combatant.IsPlayer ? Color.CornflowerBlue : Color.OrangeRed,
+                Background = new Color(30, 30, 30),
+            });
+
+            _atbBars.Add(bar);
         }
     }
 
-    /// <summary>
-    /// Syncs ATB bar values to the current combatant gauges.
-    /// Call each frame from the battle scene.
-    /// </summary>
+    /// <summary>Syncs the gauges. Call each frame from the battle scene.</summary>
     public void UpdateAtbBars(IList<BattleCombatantActor> combatants)
     {
-        for (int i = 0; i < _atbRows.Count && i < combatants.Count; i++)
-        {
-            _atbRows[i].atbBar.Value = combatants[i].AtbGauge;
-        }
+        for (int i = 0; i < _atbBars.Count && i < combatants.Count; i++)
+            _atbBars[i].Value = Math.Clamp(combatants[i].AtbGauge / 100f, 0f, 1f);
     }
 
-    /// <summary>
-    /// Shows the action menu for the player's active combatant.
-    /// </summary>
     public void ShowActionMenu(BattleCombatantActor playerCombatant)
     {
-        _actionMenu.Visible    = true;
-        _moveListPanel.Visible = false;
-        _itemListPanel.Visible = false;
-        _activeCombatant       = playerCombatant;
+        _actionMenu.Visible = true;
+        _moveList.Visible = false;
+        _itemList.Visible = false;
+        _activeCombatant = playerCombatant;
     }
 
-    /// <summary>
-    /// Hides all action menus (used after a choice is made or during enemy turn).
-    /// </summary>
     public void HideActionMenu()
     {
-        _actionMenu.Visible    = false;
-        _moveListPanel.Visible = false;
-        _itemListPanel.Visible = false;
+        _actionMenu.Visible = false;
+        _moveList.Visible = false;
+        _itemList.Visible = false;
     }
 
-    /// <summary>
-    /// Appends a line to the scrolling battle log.
-    /// </summary>
+    /// <summary>Appends a line to the scrolling battle log.</summary>
     public void Log(string message)
     {
         _logLines.Enqueue(message);
-        while (_logLines.Count > MaxLogLines)
-            _logLines.Dequeue();
+        while (_logLines.Count > MaxLogLines) _logLines.Dequeue();
 
         _battleLog.Text = string.Join("\n", _logLines);
     }
 
-    // -------------------------------------------------------------------------
-    // Damage number display
-    // -------------------------------------------------------------------------
-
     /// <summary>
-    /// Spawns a floating damage number that tweens upward and fades over 1.2 seconds.
-    /// <paramref name="worldPos"/> is in UI (reference-resolution) coordinates.
+    /// A damage number that floats up and fades. <paramref name="position"/> is in
+    /// reference-resolution coordinates.
     /// </summary>
-    public void ShowDamageNumber(Vector2 worldPos, int amount, Color color)
+    public void ShowDamageNumber(Vector2 position, int amount, Color color)
     {
-        var floatLabel = _canvas.AddWidget<Label>();
-        floatLabel.Text      = amount.ToString();
-        floatLabel.TextColor = color;
-        floatLabel.Position  = worldPos;
-        floatLabel.Size      = new Vector2(120, 48);
-        floatLabel.Alignment = TextAlignment.Center;
-        floatLabel.Opacity   = 1f;
+        UiNode label = _canvas.Root.Add(new UiNode
+        {
+            Kind = UiKind.Label,
+            Text = amount.ToString(),
+            Tint = color,
+            Positioning = PositionMode.Absolute,
+            Offset = position,
+            TextAlign = AlignMode.Center,
+        });
 
-        // Tween: float upward 80 pixels while fading opacity to 0
         Tween.Create()
-            .TweenFloat(floatLabel, nameof(floatLabel.Opacity), 0f, 1.2f, EaseType.Linear)
+            .TweenFloat(label, nameof(label.Opacity), 0f, 1.2f, EaseType.Linear)
             .TweenValue(
-                () => floatLabel.Position.Y,
-                y  => floatLabel.Position = new Vector2(floatLabel.Position.X, y),
-                worldPos.Y - 80f,
+                () => label.Offset.Y,
+                y => label.Offset = new Vector2(label.Offset.X, y),
+                position.Y - 80f,
                 1.2f,
                 EaseType.OutQuad)
-            .OnComplete(() => _canvas.RemoveWidget(floatLabel))
+            .OnComplete(label.Detach)
             .Play();
     }
 
     // -------------------------------------------------------------------------
-    // Internal action handling
+    // Menus
     // -------------------------------------------------------------------------
-    private BattleCombatantActor? _activeCombatant;
 
     private void OnActionMenuChoice(string choice)
     {
@@ -298,10 +248,8 @@ public class BattleHUD : Actor
                 var target = BattleManager.Combatants.FirstOrDefault(c => !c.IsPlayer);
                 if (target != null && BattleManager.ActiveCombatant != null)
                 {
-                    // Use default Biscuit Ball (multiplier 1)
-                    var player = Scene?.FindActorsOfType<SexyBiscuit.Demo.Actors.PlayerActor>()
-                                      .FirstOrDefault();
-                    var wild   = Scene?.FindActorsOfType<WildPetActor>().FirstOrDefault();
+                    var player = Scene?.FindActorsOfType<PlayerActor>().FirstOrDefault();
+                    var wild = Scene?.FindActorsOfType<WildPetActor>().FirstOrDefault();
                     if (player != null && wild != null)
                         BattleManager.AttemptCapture(player, wild, 1f);
                 }
@@ -310,14 +258,29 @@ public class BattleHUD : Actor
         }
     }
 
+    /// <summary>
+    /// Rebuilds a popup's rows, forgetting the handlers the old ones carried.
+    /// </summary>
+    private void Repopulate(UiNode panel)
+    {
+        foreach (UiNode child in new List<UiNode>(panel.Children)) panel.Remove(child);
+
+        // The action menu's own handlers are re-registered below, because clearing is
+        // the only way to be sure a removed row cannot still fire.
+        _clicks.Clear();
+
+        foreach (UiNode button in _actionMenu.Children)
+        {
+            string choice = button.Text;
+            _clicks.On(button, () => OnActionMenuChoice(choice));
+        }
+    }
+
     private void ShowMoveList(BattleCombatantActor combatant)
     {
-        _actionMenu.Visible    = false;
-        _moveListPanel.Visible = true;
-
-        // Clear and rebuild move buttons
-        while (_moveListPanel.Children.Count > 0)
-            _moveListPanel.RemoveChild(_moveListPanel.Children[0]);
+        _actionMenu.Visible = false;
+        _moveList.Visible = true;
+        Repopulate(_moveList);
 
         if (combatant.Pet == null) return;
 
@@ -326,74 +289,56 @@ public class BattleHUD : Actor
 
         foreach (var move in combatant.Pet.Moves)
         {
-            var m   = move; // capture
+            var m = move;
             bool hasMp = combatant.Pet.Mp >= move.MpCost;
 
-            var btn = new Button
+            UiNode button = AddButton(_moveList, $"{m.Name}  [{m.MpCost}MP]",
+                                      hasMp ? Color.White : Color.Gray, hasMp);
+            if (!hasMp) continue;
+
+            _clicks.On(button, () =>
             {
-                Text         = $"{m.Name}  [{m.MpCost}MP]",
-                TextColor    = hasMp ? Color.White : Color.Gray,
-                Size         = new Vector2(480, 44),
-                Interactable = hasMp,
-            };
-            btn.OnClick += () =>
-            {
-                _moveListPanel.Visible = false;
+                _moveList.Visible = false;
                 BattleManager.ExecuteMove(m, combatant, target);
                 Log($"{combatant.Pet?.PetName} used {m.Name}!");
-            };
-            _moveListPanel.AddChild(btn);
+            });
         }
 
-        // Back button
-        var backBtn = new Button { Text = "Back", TextColor = Color.LightGray, Size = new Vector2(480, 40) };
-        backBtn.OnClick += () =>
-        {
-            _moveListPanel.Visible = false;
-            _actionMenu.Visible    = true;
-        };
-        _moveListPanel.AddChild(backBtn);
+        AddBackButton(_moveList);
     }
 
     private void ShowItemList()
     {
-        _actionMenu.Visible    = false;
-        _itemListPanel.Visible = true;
+        _actionMenu.Visible = false;
+        _itemList.Visible = true;
+        Repopulate(_itemList);
 
-        while (_itemListPanel.Children.Count > 0)
-            _itemListPanel.RemoveChild(_itemListPanel.Children[0]);
-
-        // List consumables and capture items (inventory would be tracked in a real game;
-        // here we seed a minimal default set)
-        var itemIds = new[] { "potion", "super_potion", "biscuit_ball", "great_ball" };
-        foreach (var id in itemIds)
+        foreach (string id in new[] { "potion", "super_potion", "biscuit_ball", "great_ball" })
         {
             var def = ItemDatabase.Get(id);
             if (def == null) continue;
-            var capturedDef = def;
 
-            var btn = new Button
-            {
-                Text      = capturedDef.Name,
-                TextColor = Color.White,
-                Size      = new Vector2(480, 44),
-            };
-            btn.OnClick += () => UseItem(capturedDef);
-            _itemListPanel.AddChild(btn);
+            var captured = def;
+            UiNode button = AddButton(_itemList, captured.Name, Color.White);
+            _clicks.On(button, () => UseItem(captured));
         }
 
-        var backBtn = new Button { Text = "Back", TextColor = Color.LightGray, Size = new Vector2(480, 40) };
-        backBtn.OnClick += () =>
+        AddBackButton(_itemList);
+    }
+
+    private void AddBackButton(UiNode panel)
+    {
+        UiNode back = AddButton(panel, "Back", Color.LightGray);
+        _clicks.On(back, () =>
         {
-            _itemListPanel.Visible = false;
-            _actionMenu.Visible    = true;
-        };
-        _itemListPanel.AddChild(backBtn);
+            panel.Visible = false;
+            _actionMenu.Visible = true;
+        });
     }
 
     private void UseItem(ItemDef def)
     {
-        _itemListPanel.Visible = false;
+        _itemList.Visible = false;
 
         var lead = PartyManager.GetLead();
         if (lead == null) return;

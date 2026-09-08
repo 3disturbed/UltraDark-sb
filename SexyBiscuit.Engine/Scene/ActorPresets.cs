@@ -140,11 +140,9 @@ public static class ActorPresets
         new("2D", "Tilemap", "A TilemapRenderer. Load a Tiled JSON map into it.",
             () => { var a = new Actor("Tilemap"); a.AddComponent<TilemapRenderer>(); return a; }),
 
-        new("UI", "Canvas", "Screen-space UI root.",
-            () => { var a = new Actor("Canvas"); a.AddComponent<Canvas>(); return a; }),
+        new("UI", "Canvas", "Screen-space UI root: a tree of nodes, laid out and navigable.",
+            () => { var a = new Actor("Canvas"); a.AddComponent<UiCanvas>(); return a; }),
 
-        new("UI", "World Canvas", "UI positioned in 3D space — nameplates, in-world screens.",
-            () => { var a = new Actor("World Canvas"); a.AddComponent<Transform3D>(); a.AddComponent<WorldCanvas>(); return a; }),
     };
 
     /// <summary>Finds a preset by name, exactly first and then ignoring case.</summary>

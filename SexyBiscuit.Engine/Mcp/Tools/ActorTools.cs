@@ -120,7 +120,7 @@ public sealed class ActorTools
         "Place a palette preset — the same list as the editor's Place Actors panel: Empty Actor, Empty Actor (3D), Mesh, " +
         "Skinned Mesh, Skybox, Directional Light, Point Light, Spot Light, 2D Light, Camera, Fly Camera, Camera 2D, " +
         "Game Mode, Character, AI Character, Player Start, Particle System (3D), Particle Emitter (2D), Sprite, Tilemap, " +
-        "Canvas, World Canvas. Call list_actor_presets for descriptions.",
+        "Canvas. Call list_actor_presets for descriptions.",
         Mutating = true, Label = "Place {preset}")]
     public McpToolResult PlaceActor(
         [McpParam("Preset name")] string preset,

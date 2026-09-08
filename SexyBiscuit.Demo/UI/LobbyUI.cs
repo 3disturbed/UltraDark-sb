@@ -3,230 +3,142 @@ using SexyBiscuit.Engine;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.Steam;
 using SexyBiscuit.Engine.UI;
-using SexyBiscuit.Engine.UI.Widgets;
 
 namespace SexyBiscuit.Demo.UI;
 
 /// <summary>
-/// Steam lobby browser and host UI.
-/// Provides lobby creation, discovery, joining, ready-up and game start.
-/// Works gracefully without STEAMWORKS defined — buttons are shown but do nothing.
+/// Steam lobby browser and host UI: create, discover, join, ready up and start.
+/// Works without STEAMWORKS defined — the buttons are shown and do nothing.
 /// </summary>
+/// <remarks>
+/// The two panels are one document with one of them hidden. Rows size themselves, so a
+/// lobby list is built by adding nodes rather than by choosing a height for each one.
+/// </remarks>
 public class LobbyUI : Actor
 {
-    // -------------------------------------------------------------------------
-    // Events
-    // -------------------------------------------------------------------------
-    /// <summary>Raised when the user clicks the Back button.</summary>
+    private const string Document = """
+    {
+      "children": [
+        { "name": "dim", "width": "*", "height": "*", "background": "#000000a0" },
+
+        {
+          "name": "main", "absolute": true, "anchor": "center",
+          "width": 800, "height": 680, "background": "#0f0a1ef0",
+          "layout": "column", "gap": 12, "padding": 16, "crossAlign": "stretch",
+          "children": [
+            { "kind": "label", "text": "MULTIPLAYER", "tint": "#ffdc50", "align": "center", "scale": 2 },
+            { "name": "status", "kind": "label", "text": "Find or create a lobby to play online.",
+              "tint": "#d3d3d3", "align": "center" },
+            {
+              "layout": "row", "gap": 16, "height": 50,
+              "children": [
+                { "name": "host", "kind": "button", "text": "Host Game", "grow": 1,
+                  "tint": "#ffffff", "background": "#ffffff14", "align": "center" },
+                { "name": "find", "kind": "button", "text": "Join Game", "grow": 1,
+                  "tint": "#ffffff", "background": "#ffffff14", "align": "center" }
+              ]
+            },
+            { "name": "lobbyList", "grow": 1, "background": "#050514b4",
+              "layout": "column", "gap": 4, "padding": 8, "crossAlign": "stretch",
+              "scroll": "Vertical" },
+            { "name": "back", "kind": "button", "text": "Back", "height": 44,
+              "tint": "#d3d3d3", "background": "#ffffff14", "align": "center" }
+          ]
+        },
+
+        {
+          "name": "lobby", "visible": false, "absolute": true, "anchor": "center",
+          "width": 800, "height": 680, "background": "#0a0f1ef0",
+          "layout": "column", "gap": 12, "padding": 16, "crossAlign": "stretch",
+          "children": [
+            { "name": "lobbyCode", "kind": "label", "text": "Lobby Code: --------",
+              "tint": "#ffdc50", "align": "center", "scale": 2 },
+            { "name": "members", "grow": 1, "background": "#050514a0",
+              "layout": "column", "gap": 4, "padding": 8, "crossAlign": "stretch" },
+            {
+              "layout": "row", "gap": 16, "height": 50,
+              "children": [
+                { "name": "ready", "kind": "button", "text": "Ready", "grow": 1,
+                  "tint": "#ffffff", "background": "#ffffff14", "align": "center" },
+                { "name": "start", "kind": "button", "text": "Start Game", "grow": 1, "visible": false,
+                  "tint": "#ffffff", "background": "#ffffff14", "align": "center" }
+              ]
+            },
+            { "name": "leave", "kind": "button", "text": "Leave Lobby", "height": 44,
+              "tint": "#d3d3d3", "background": "#ffffff14", "align": "center" }
+          ]
+        }
+      ]
+    }
+    """;
+
+    /// <summary>Raised when the user clicks Back.</summary>
     public event Action? OnBack;
 
-    // -------------------------------------------------------------------------
-    // Panels
-    // -------------------------------------------------------------------------
-    private Panel  _mainPanel    = null!;
-    private Panel  _lobbyPanel   = null!;
-    private Panel  _lobbyList    = null!;
-    private Label  _statusLabel  = null!;
-    private Label  _lobbyCodeLabel = null!;
-    private Button _startBtn     = null!;
-    private Button _readyBtn     = null!;
-    private Panel  _memberPanel  = null!;
+    private readonly UiClicks _clicks = new();
 
-    // -------------------------------------------------------------------------
-    // State
-    // -------------------------------------------------------------------------
-    private bool   _inLobby     = false;
-    private bool   _isHost      = false;
-    private bool   _localReady  = false;
+    private UiNode _mainPanel = null!;
+    private UiNode _lobbyPanel = null!;
+    private UiNode _lobbyList = null!;
+    private UiNode _statusLabel = null!;
+    private UiNode _lobbyCodeLabel = null!;
+    private UiNode _memberPanel = null!;
+    private UiNode _readyBtn = null!;
+    private UiNode _startBtn = null!;
 
-    // -------------------------------------------------------------------------
-    // Construction
-    // -------------------------------------------------------------------------
+    private bool _inLobby;
+    private bool _isHost;
+    private bool _localReady;
+
     public LobbyUI() : base("LobbyUI")
     {
-        BuildUI();
-        SubscribeEvents();
-    }
+        var canvas = AddComponent<UiCanvas>();
+        canvas.ScaleMode = UiScaleMode.Match;
+        canvas.ReferenceResolution = new Vector2(1920f, 1080f);
+        canvas.Adopt(UiDocument.FromJson(Document));
 
-    // -------------------------------------------------------------------------
-    // UI Construction
-    // -------------------------------------------------------------------------
-    private void BuildUI()
-    {
-        var canvas = AddComponent<Canvas>();
-        canvas.ReferenceResolution = new Vector2(1920, 1080);
+        _mainPanel = canvas.Find("main")!;
+        _lobbyPanel = canvas.Find("lobby")!;
+        _lobbyList = canvas.Find("lobbyList")!;
+        _statusLabel = canvas.Find("status")!;
+        _lobbyCodeLabel = canvas.Find("lobbyCode")!;
+        _memberPanel = canvas.Find("members")!;
+        _readyBtn = canvas.Find("ready")!;
+        _startBtn = canvas.Find("start")!;
 
-        // Background overlay
-        var overlay = canvas.AddWidget<Panel>();
-        overlay.Position        = Vector2.Zero;
-        overlay.Size            = new Vector2(1920, 1080);
-        overlay.BackgroundColor = new Color(0, 0, 0, 160);
-
-        // Main panel — lobby browser
-        _mainPanel              = canvas.AddWidget<Panel>();
-        _mainPanel.Position     = new Vector2(560, 200);
-        _mainPanel.Size         = new Vector2(800, 680);
-        _mainPanel.LayoutMode   = PanelLayoutMode.Vertical;
-        _mainPanel.BackgroundColor = new Color(15, 10, 30, 240);
-        _mainPanel.Padding      = 16f;
-
-        var title = new Label
-        {
-            Text      = "MULTIPLAYER",
-            TextColor = new Color(255, 220, 80),
-            Size      = new Vector2(768, 50),
-            Alignment = TextAlignment.Center
-        };
-        _mainPanel.AddChild(title);
-
-        _statusLabel = new Label
-        {
-            Text      = "Find or create a lobby to play online.",
-            TextColor = Color.LightGray,
-            Size      = new Vector2(768, 34),
-            Alignment = TextAlignment.Center
-        };
-        _mainPanel.AddChild(_statusLabel);
-
-        // Host / Find buttons
-        var hostBtn = new Button
-        {
-            Text      = "Host Game",
-            TextColor = Color.White,
-            Size      = new Vector2(368, 50),
-        };
-        hostBtn.OnClick += OnHostClicked;
-
-        var findBtn = new Button
-        {
-            Text      = "Join Game",
-            TextColor = Color.White,
-            Size      = new Vector2(368, 50),
-        };
-        findBtn.OnClick += OnFindClicked;
-
-        var btnRow = new Panel
-        {
-            Size        = new Vector2(768, 60),
-            LayoutMode  = PanelLayoutMode.Horizontal,
-            BackgroundColor = Color.Transparent,
-            Padding     = 16f
-        };
-        btnRow.AddChild(hostBtn);
-        btnRow.AddChild(findBtn);
-        _mainPanel.AddChild(btnRow);
-
-        // Lobby list (visible when searching)
-        _lobbyList              = new Panel
-        {
-            Size            = new Vector2(768, 280),
-            LayoutMode      = PanelLayoutMode.Vertical,
-            BackgroundColor = new Color(5, 5, 20, 180),
-            Padding         = 8f
-        };
-        _mainPanel.AddChild(_lobbyList);
-
-        // Back button
-        var backBtn = new Button
-        {
-            Text      = "Back",
-            TextColor = Color.LightGray,
-            Size      = new Vector2(200, 44),
-        };
-        backBtn.OnClick += () => OnBack?.Invoke();
-        _mainPanel.AddChild(backBtn);
-
-        // ── In-lobby panel (shown once inside a lobby) ────────────────────
-        _lobbyPanel              = canvas.AddWidget<Panel>();
-        _lobbyPanel.Position     = new Vector2(560, 200);
-        _lobbyPanel.Size         = new Vector2(800, 680);
-        _lobbyPanel.LayoutMode   = PanelLayoutMode.Vertical;
-        _lobbyPanel.BackgroundColor = new Color(10, 15, 30, 240);
-        _lobbyPanel.Padding      = 16f;
-        _lobbyPanel.Visible      = false;
-
-        _lobbyCodeLabel = new Label
-        {
-            Text      = "Lobby Code: --------",
-            TextColor = new Color(255, 220, 80),
-            Size      = new Vector2(768, 40),
-            Alignment = TextAlignment.Center
-        };
-        _lobbyPanel.AddChild(_lobbyCodeLabel);
-
-        _memberPanel             = new Panel
-        {
-            Size            = new Vector2(768, 300),
-            LayoutMode      = PanelLayoutMode.Vertical,
-            BackgroundColor = new Color(5, 5, 20, 160),
-            Padding         = 8f
-        };
-        _lobbyPanel.AddChild(_memberPanel);
-
-        _readyBtn = new Button
-        {
-            Text      = "Ready",
-            TextColor = Color.White,
-            Size      = new Vector2(240, 50)
-        };
-        _readyBtn.OnClick += OnReadyClicked;
-
-        _startBtn = new Button
-        {
-            Text      = "Start Game",
-            TextColor = Color.White,
-            Size      = new Vector2(240, 50)
-        };
-        _startBtn.OnClick += OnStartGameClicked;
-
-        var lobbyBtnRow = new Panel
-        {
-            Size            = new Vector2(768, 60),
-            LayoutMode      = PanelLayoutMode.Horizontal,
-            BackgroundColor = Color.Transparent,
-            Padding         = 16f
-        };
-        lobbyBtnRow.AddChild(_readyBtn);
-        lobbyBtnRow.AddChild(_startBtn);
-        _lobbyPanel.AddChild(lobbyBtnRow);
-
-        var leaveLobbyBtn = new Button
-        {
-            Text      = "Leave Lobby",
-            TextColor = Color.LightGray,
-            Size      = new Vector2(200, 44)
-        };
-        leaveLobbyBtn.OnClick += () =>
+        _clicks.On(canvas.Find("host")!, OnHostClicked);
+        _clicks.On(canvas.Find("find")!, OnFindClicked);
+        _clicks.On(_readyBtn, OnReadyClicked);
+        _clicks.On(_startBtn, OnStartGameClicked);
+        _clicks.On(canvas.Find("back")!, () => OnBack?.Invoke());
+        _clicks.On(canvas.Find("leave")!, () =>
         {
             SteamLobby.LeaveLobby();
             ShowMainPanel();
-        };
-        _lobbyPanel.AddChild(leaveLobbyBtn);
+        });
 
-        // Initially only host is visible in start button
-        _startBtn.Visible = false;
-    }
-
-    // -------------------------------------------------------------------------
-    // Event subscription
-    // -------------------------------------------------------------------------
-    private void SubscribeEvents()
-    {
         SteamLobby.OnLobbyCreated += OnLobbyCreated;
-        SteamLobby.OnLobbyJoined  += OnLobbyJoined;
+        SteamLobby.OnLobbyJoined += OnLobbyJoined;
         SteamLobby.OnLobbiesFound += OnLobbiesFound;
     }
 
     protected override void OnDestroy()
     {
         SteamLobby.OnLobbyCreated -= OnLobbyCreated;
-        SteamLobby.OnLobbyJoined  -= OnLobbyJoined;
+        SteamLobby.OnLobbyJoined -= OnLobbyJoined;
         SteamLobby.OnLobbiesFound -= OnLobbiesFound;
     }
 
+    protected override void Update(float dt)
+    {
+        _clicks.Tick();
+        if (_inLobby) RefreshMemberList();
+    }
+
     // -------------------------------------------------------------------------
-    // Button handlers
+    // Buttons
     // -------------------------------------------------------------------------
+
     private void OnHostClicked()
     {
         _statusLabel.Text = "Creating lobby...";
@@ -245,19 +157,21 @@ public class LobbyUI : Actor
     {
         _localReady = !_localReady;
         _readyBtn.Text = _localReady ? "Unready" : "Ready";
-        _readyBtn.TextColor = _localReady ? Color.LightGreen : Color.White;
+        _readyBtn.Tint = _localReady ? Color.LightGreen : Color.White;
     }
 
     private void OnStartGameClicked()
     {
         if (!_isHost) return;
-        // All players load the overworld; replication handles position sync
+
+        // Everybody loads the overworld; replication handles position sync.
         SBEngine.Instance.SceneManager.LoadScene("Scenes/Overworld");
     }
 
     // -------------------------------------------------------------------------
-    // Steam event callbacks
+    // Steam callbacks
     // -------------------------------------------------------------------------
+
     private void OnLobbyCreated(bool success, ulong lobbyId)
     {
         if (!success)
@@ -266,9 +180,8 @@ public class LobbyUI : Actor
             return;
         }
 
-        // Tag the lobby so others can filter by game
+        // Tag the lobby so others can filter by game.
         SteamLobby.SetLobbyData("game", "BiscuitChronicles");
-
         ShowLobbyPanel(lobbyId, isHost: true);
     }
 
@@ -289,115 +202,99 @@ public class LobbyUI : Actor
 
         if (lobbyIds.Count == 0)
         {
-            var emptyLabel = new Label
+            _lobbyList.Add(new UiNode
             {
-                Text      = "No lobbies found. Try hosting instead.",
-                TextColor = Color.Gray,
-                Size      = new Vector2(752, 36),
-                Alignment = TextAlignment.Center
-            };
-            _lobbyList.AddChild(emptyLabel);
+                Kind = UiKind.Label,
+                Text = "No lobbies found. Try hosting instead.",
+                Tint = Color.Gray,
+                TextAlign = AlignMode.Center,
+            });
             return;
         }
 
-        foreach (var lobbyId in lobbyIds)
+        foreach (ulong lobbyId in lobbyIds)
         {
-            ulong capturedId = lobbyId;
+            ulong captured = lobbyId;
 
-            var row = new Panel
+            UiNode row = _lobbyList.Add(new UiNode
             {
-                Size            = new Vector2(752, 50),
-                LayoutMode      = PanelLayoutMode.Horizontal,
-                BackgroundColor = new Color(20, 20, 50, 180),
-                Padding         = 8f
-            };
+                Layout = LayoutMode.Row,
+                Gap = new Vector2(8f, 0f),
+                HeightMode = SizeMode.Fixed, Height = 50f,
+                Padding = new Vector4(8f, 8f, 8f, 8f),
+                Background = new Color(20, 20, 50, 180),
+            });
 
-            // Host name label — in a full implementation we'd query lobby metadata
-            var nameLabel = new Label
+            row.Add(new UiNode
             {
-                Text      = $"Lobby {capturedId & 0xFFFF:X4}",
-                TextColor = Color.White,
-                Size      = new Vector2(480, 36)
-            };
-            row.AddChild(nameLabel);
+                Kind = UiKind.Label,
+                Text = $"Lobby {captured & 0xFFFF:X4}",
+                Grow = 1f,
+                Tint = Color.White,
+            });
 
-            var joinBtn = new Button
+            UiNode join = row.Add(new UiNode
             {
-                Text      = "Join",
-                TextColor = Color.LightGreen,
-                Size      = new Vector2(130, 38)
-            };
-#if STEAMWORKS
-            joinBtn.OnClick += () => SteamLobby.JoinLobby(new Steamworks.CSteamID(capturedId));
-#else
-            joinBtn.OnClick += () => SteamLobby.JoinLobby(new Steamworks.CSteamID(capturedId));
-#endif
-            row.AddChild(joinBtn);
+                Kind = UiKind.Button,
+                Text = "Join",
+                WidthMode = SizeMode.Fixed, Width = 130f,
+                Tint = Color.LightGreen,
+                Background = new Color(255, 255, 255, 20),
+                TextAlign = AlignMode.Center,
+            });
 
-            _lobbyList.AddChild(row);
+            _clicks.On(join, () => SteamLobby.JoinLobby(new Steamworks.CSteamID(captured)));
         }
     }
 
     // -------------------------------------------------------------------------
-    // Panel switching helpers
+    // Panel switching
     // -------------------------------------------------------------------------
+
     private void ShowMainPanel()
     {
-        _mainPanel.Visible  = true;
+        _mainPanel.Visible = true;
         _lobbyPanel.Visible = false;
-        _inLobby            = false;
-        _isHost             = false;
-        _localReady         = false;
-        _readyBtn.Text      = "Ready";
+        _inLobby = false;
+        _isHost = false;
+        _localReady = false;
+        _readyBtn.Text = "Ready";
     }
 
     private void ShowLobbyPanel(ulong lobbyId, bool isHost)
     {
-        _mainPanel.Visible  = false;
+        _mainPanel.Visible = false;
         _lobbyPanel.Visible = true;
-        _inLobby            = true;
-        _isHost             = isHost;
+        _inLobby = true;
+        _isHost = isHost;
 
         _lobbyCodeLabel.Text = lobbyId != 0
             ? $"Lobby Code: {lobbyId & 0xFFFF:X4}"
             : "Lobby Code: ----";
 
         _startBtn.Visible = isHost;
-
         RefreshMemberList();
     }
 
     private void RefreshMemberList()
     {
-        while (_memberPanel.Children.Count > 0)
-            _memberPanel.RemoveChild(_memberPanel.Children[0]);
+        foreach (UiNode child in new List<UiNode>(_memberPanel.Children)) _memberPanel.Remove(child);
 
-        // In a full implementation member info would come from Steamworks callbacks.
-        // Showing the local user as a placeholder.
+        // Member info would come from Steamworks callbacks in a full implementation;
+        // the local user stands in for the list.
         string localName = SteamManager.PersonaName;
         if (string.IsNullOrEmpty(localName)) localName = "You";
 
-        var memberLabel = new Label
+        _memberPanel.Add(new UiNode
         {
-            Text      = $"{localName} — {(_localReady ? "Ready" : "Not Ready")}",
-            TextColor = _localReady ? Color.LightGreen : Color.White,
-            Size      = new Vector2(752, 36)
-        };
-        _memberPanel.AddChild(memberLabel);
+            Kind = UiKind.Label,
+            Text = $"{localName} — {(_localReady ? "Ready" : "Not Ready")}",
+            Tint = _localReady ? Color.LightGreen : Color.White,
+        });
     }
 
     private void ClearLobbyList()
     {
-        while (_lobbyList.Children.Count > 0)
-            _lobbyList.RemoveChild(_lobbyList.Children[0]);
-    }
-
-    // -------------------------------------------------------------------------
-    // Update — refresh member list while in lobby
-    // -------------------------------------------------------------------------
-    protected override void Update(float dt)
-    {
-        if (_inLobby)
-            RefreshMemberList();
+        foreach (UiNode child in new List<UiNode>(_lobbyList.Children)) _lobbyList.Remove(child);
     }
 }

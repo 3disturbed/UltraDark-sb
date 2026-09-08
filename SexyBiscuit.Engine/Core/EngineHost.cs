@@ -224,35 +224,7 @@ public sealed class EngineHost : IDisposable
         // Camera2D.main.
         Renderer2D.RenderScene(SpriteBatch, scene, Rendering.Camera2D.Main);
 
-        DrawScriptUi();
         DrawUiCanvases();
-    }
-
-    /// <summary>
-    /// The screen-space UI a script built, drawn last and with no camera transform.
-    /// </summary>
-    /// <remarks>
-    /// Outside the camera matrix on purpose: the HUD is in screen space, so a camera
-    /// that has panned, zoomed or shaken must not take it along. Its own batch for the
-    /// same reason — the scene's batch carries the view transform.
-    /// </remarks>
-    private void DrawScriptUi()
-    {
-        var ui = UI.ScriptUi.Instance;
-        ui.SetViewport(GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height);
-
-        var mouse = Input?.MousePosition ?? Microsoft.Xna.Framework.Vector2.Zero;
-        ui.SetPointer(mouse.X, mouse.Y, Input?.IsMouseButtonDown(SexyBiscuit.Engine.Input.MouseButton.Left) ?? false);
-        ui.Update();
-
-        if (ui.Elements.Count == 0) return;
-
-        // NonPremultiplied for the same reason the scene batch uses it: a panel
-        // written "#161920e6" is a straight colour with an alpha, not a
-        // premultiplied one.
-        SpriteBatch.Begin(blendState: BlendState.NonPremultiplied, samplerState: SamplerState.PointClamp);
-        ui.Draw(SpriteBatch);
-        SpriteBatch.End();
     }
 
     // -------------------------------------------------------------------------

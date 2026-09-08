@@ -255,8 +255,7 @@ public sealed class UiNode
     /// <summary>True for the one frame a press completed on this node.</summary>
     /// <remarks>
     /// A click is a release inside the node the press started on, which is what every
-    /// other toolkit means by one and what <see cref="ScriptUi"/> already does. Dragging
-    /// off a button and letting go must not fire it.
+    /// other toolkit means by one. Dragging off a button and letting go must not fire it.
     /// </remarks>
     [SceneIgnore, JsonIgnore] public bool Clicked { get; internal set; }
 

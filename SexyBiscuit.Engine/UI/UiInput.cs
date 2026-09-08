@@ -65,8 +65,7 @@ public struct UiInputFrame
 /// </para>
 /// <para>
 /// A click is a release inside the node the press started on. Dragging off a button and
-/// letting go must not fire it, which is what every other toolkit means by a click and what
-/// <see cref="ScriptUi"/> already did for the flat API.
+/// letting go must not fire it, which is what every other toolkit means by a click.
 /// </para>
 /// </remarks>
 public sealed class UiInput

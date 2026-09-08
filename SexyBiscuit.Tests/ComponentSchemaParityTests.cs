@@ -49,6 +49,7 @@ public class ComponentSchemaParityTests
         { "Collider2D",     "html5/src/physics/Collider2D.js",       "SexyBiscuit.Engine/Physics/Collider2D.cs" },
         { "ChibiCharacter", "html5/src/chibi/ChibiCharacter.js",      "SexyBiscuit.Engine/Chibi/ChibiCharacter.cs" },
         { "ChibiAnimator",  "html5/src/chibi/ChibiAnimator.js",       "SexyBiscuit.Engine/Chibi/ChibiAnimator.cs" },
+        { "UiCanvas",       "html5/src/ui/UiCanvas.js",              "SexyBiscuit.Engine/UI/UiCanvas.cs" },
     };
 
     // -------------------------------------------------------------------------

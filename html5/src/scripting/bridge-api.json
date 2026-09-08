@@ -1,5 +1,5 @@
 {
-  "$comment": "The scripting contract shared by the C# Jint bridge (SexyBiscuit.Engine/Scripting/ScriptBridge.cs) and the browser bridge (html5/src/scripting/ScriptBridge.js). A test on each side pins its bridge to this file, so adding a member here without adding it to both bridges fails both suites. shared=false marks a member one engine has and the other does not; the validator warns when a script uses one.",
+  "$comment": "The scripting contract shared by the C# Jint bridge (SexyBiscuit.Engine/Scripting/ScriptBridge.cs) and the browser bridge (html5/src/scripting/ScriptBridge.js). A test on each side pins its bridge to this file, so adding a member here without adding it to both bridges fails both suites. shared=false marks a member one engine has and the other does not; the validator warns when a script uses one. uiNode is the handle UI.build returns: its members are generated from UiDocument's own key list on both engines, so a property added to the codec reaches both script APIs at once.",
   "version": 1,
   "globals": {
     "actor": {
@@ -453,23 +453,31 @@
         "kind": "prop",
         "shared": true
       },
-      "panel": {
+      "safeLeft": {
+        "kind": "prop",
+        "shared": true
+      },
+      "safeTop": {
+        "kind": "prop",
+        "shared": true
+      },
+      "safeRight": {
+        "kind": "prop",
+        "shared": true
+      },
+      "safeBottom": {
+        "kind": "prop",
+        "shared": true
+      },
+      "build": {
         "kind": "fn",
         "shared": true
       },
-      "label": {
-        "kind": "fn",
+      "root": {
+        "kind": "prop",
         "shared": true
       },
-      "bar": {
-        "kind": "fn",
-        "shared": true
-      },
-      "button": {
-        "kind": "fn",
-        "shared": true
-      },
-      "image": {
+      "find": {
         "kind": "fn",
         "shared": true
       },
@@ -479,6 +487,26 @@
       },
       "measure": {
         "kind": "fn",
+        "shared": true
+      },
+      "order": {
+        "kind": "prop",
+        "shared": true
+      },
+      "focused": {
+        "kind": "prop",
+        "shared": true
+      },
+      "setFocus": {
+        "kind": "fn",
+        "shared": true
+      },
+      "navigate": {
+        "kind": "fn",
+        "shared": true
+      },
+      "inputMode": {
+        "kind": "prop",
         "shared": true
       }
     },
@@ -704,12 +732,28 @@
       "shared": true
     }
   },
-  "uiElement": {
-    "x": {
+  "uiNode": {
+    "name": {
       "kind": "prop",
       "shared": true
     },
-    "y": {
+    "kind": {
+      "kind": "prop",
+      "shared": true
+    },
+    "visible": {
+      "kind": "prop",
+      "shared": true
+    },
+    "interactive": {
+      "kind": "prop",
+      "shared": true
+    },
+    "order": {
+      "kind": "prop",
+      "shared": true
+    },
+    "style": {
       "kind": "prop",
       "shared": true
     },
@@ -721,35 +765,27 @@
       "kind": "prop",
       "shared": true
     },
-    "text": {
+    "minWidth": {
       "kind": "prop",
       "shared": true
     },
-    "value": {
+    "minHeight": {
       "kind": "prop",
       "shared": true
     },
-    "visible": {
+    "maxWidth": {
       "kind": "prop",
       "shared": true
     },
-    "tint": {
+    "maxHeight": {
       "kind": "prop",
       "shared": true
     },
-    "background": {
+    "grow": {
       "kind": "prop",
       "shared": true
     },
-    "scale": {
-      "kind": "prop",
-      "shared": true
-    },
-    "anchor": {
-      "kind": "prop",
-      "shared": true
-    },
-    "align": {
+    "shrink": {
       "kind": "prop",
       "shared": true
     },
@@ -757,7 +793,211 @@
       "kind": "prop",
       "shared": true
     },
+    "margin": {
+      "kind": "prop",
+      "shared": true
+    },
+    "layout": {
+      "kind": "prop",
+      "shared": true
+    },
+    "gap": {
+      "kind": "prop",
+      "shared": true
+    },
+    "wrap": {
+      "kind": "prop",
+      "shared": true
+    },
+    "mainAlign": {
+      "kind": "prop",
+      "shared": true
+    },
+    "crossAlign": {
+      "kind": "prop",
+      "shared": true
+    },
+    "columns": {
+      "kind": "prop",
+      "shared": true
+    },
+    "cellSize": {
+      "kind": "prop",
+      "shared": true
+    },
+    "positioning": {
+      "kind": "prop",
+      "shared": true
+    },
+    "anchor": {
+      "kind": "prop",
+      "shared": true
+    },
+    "anchorMin": {
+      "kind": "prop",
+      "shared": true
+    },
+    "anchorMax": {
+      "kind": "prop",
+      "shared": true
+    },
+    "pivot": {
+      "kind": "prop",
+      "shared": true
+    },
+    "offset": {
+      "kind": "prop",
+      "shared": true
+    },
+    "offsetMax": {
+      "kind": "prop",
+      "shared": true
+    },
+    "text": {
+      "kind": "prop",
+      "shared": true
+    },
+    "textScale": {
+      "kind": "prop",
+      "shared": true
+    },
+    "textAlign": {
+      "kind": "prop",
+      "shared": true
+    },
+    "verticalAlign": {
+      "kind": "prop",
+      "shared": true
+    },
+    "wrapText": {
+      "kind": "prop",
+      "shared": true
+    },
+    "lineSpacing": {
+      "kind": "prop",
+      "shared": true
+    },
+    "background": {
+      "kind": "prop",
+      "shared": true
+    },
+    "tint": {
+      "kind": "prop",
+      "shared": true
+    },
+    "opacity": {
+      "kind": "prop",
+      "shared": true
+    },
+    "borderColour": {
+      "kind": "prop",
+      "shared": true
+    },
+    "borderWidth": {
+      "kind": "prop",
+      "shared": true
+    },
     "texturePath": {
+      "kind": "prop",
+      "shared": true
+    },
+    "sourceRect": {
+      "kind": "prop",
+      "shared": true
+    },
+    "ninePatch": {
+      "kind": "prop",
+      "shared": true
+    },
+    "clip": {
+      "kind": "prop",
+      "shared": true
+    },
+    "scroll": {
+      "kind": "prop",
+      "shared": true
+    },
+    "scrollOffset": {
+      "kind": "prop",
+      "shared": true
+    },
+    "ignoreSafeArea": {
+      "kind": "prop",
+      "shared": true
+    },
+    "focusable": {
+      "kind": "prop",
+      "shared": true
+    },
+    "modal": {
+      "kind": "prop",
+      "shared": true
+    },
+    "navUp": {
+      "kind": "prop",
+      "shared": true
+    },
+    "navDown": {
+      "kind": "prop",
+      "shared": true
+    },
+    "navLeft": {
+      "kind": "prop",
+      "shared": true
+    },
+    "navRight": {
+      "kind": "prop",
+      "shared": true
+    },
+    "autoFocus": {
+      "kind": "prop",
+      "shared": true
+    },
+    "value": {
+      "kind": "prop",
+      "shared": true
+    },
+    "minValue": {
+      "kind": "prop",
+      "shared": true
+    },
+    "maxValue": {
+      "kind": "prop",
+      "shared": true
+    },
+    "step": {
+      "kind": "prop",
+      "shared": true
+    },
+    "checked": {
+      "kind": "prop",
+      "shared": true
+    },
+    "selectedIndex": {
+      "kind": "prop",
+      "shared": true
+    },
+    "options": {
+      "kind": "prop",
+      "shared": true
+    },
+    "x": {
+      "kind": "prop",
+      "shared": true
+    },
+    "y": {
+      "kind": "prop",
+      "shared": true
+    },
+    "scale": {
+      "kind": "prop",
+      "shared": true
+    },
+    "align": {
+      "kind": "prop",
+      "shared": true
+    },
+    "rect": {
       "kind": "prop",
       "shared": true
     },
@@ -765,11 +1005,43 @@
       "kind": "prop",
       "shared": true
     },
+    "pressed": {
+      "kind": "prop",
+      "shared": true
+    },
     "clicked": {
       "kind": "prop",
       "shared": true
     },
-    "destroy": {
+    "focused": {
+      "kind": "prop",
+      "shared": true
+    },
+    "expanded": {
+      "kind": "prop",
+      "shared": true
+    },
+    "parent": {
+      "kind": "prop",
+      "shared": true
+    },
+    "children": {
+      "kind": "prop",
+      "shared": true
+    },
+    "add": {
+      "kind": "fn",
+      "shared": true
+    },
+    "find": {
+      "kind": "fn",
+      "shared": true
+    },
+    "remove": {
+      "kind": "fn",
+      "shared": true
+    },
+    "focus": {
       "kind": "fn",
       "shared": true
     }

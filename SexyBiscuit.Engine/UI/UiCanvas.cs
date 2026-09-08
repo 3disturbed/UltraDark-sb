@@ -300,6 +300,7 @@ public class UiCanvas : Component
 
         for (int i = Root.Children.Count - 1; i >= 0; i--) Root.Remove(Root.Children[i]);
 
+        Root.Name         = document.Name;
         Root.Layout       = document.Layout;
         Root.Gap          = document.Gap;
         Root.Wrap         = document.Wrap;

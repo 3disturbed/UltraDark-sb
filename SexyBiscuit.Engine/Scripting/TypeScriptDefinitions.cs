@@ -311,6 +311,137 @@ public static class TypeScriptDefinitions
         };
 
         /** The same as Debug.log / Debug.warn / Debug.error. */
+        /**
+         * One node in the screen-space widget tree, as UI.build returns it.
+         *
+         * The members are generated from UiDocument's own key list, so this and the
+         * contract cannot describe different things.
+         */
+        declare interface UiNode {
+            name: string;
+            kind: string;
+            visible: boolean;
+            interactive: boolean;
+            order: number;
+            style: string;
+            width: number | string;
+            height: number | string;
+            minWidth: number;
+            minHeight: number;
+            maxWidth: number;
+            maxHeight: number;
+            grow: number;
+            shrink: number;
+            padding: number[];
+            margin: number[];
+            layout: string;
+            gap: number[];
+            wrap: boolean;
+            mainAlign: string;
+            crossAlign: string;
+            columns: number;
+            cellSize: number[];
+            positioning: string;
+            anchor: string;
+            anchorMin: number[];
+            anchorMax: number[];
+            pivot: number[];
+            offset: number[];
+            offsetMax: number[];
+            text: string;
+            textScale: number;
+            textAlign: string;
+            verticalAlign: string;
+            wrapText: boolean;
+            lineSpacing: number;
+            background: string | null;
+            tint: string;
+            opacity: number;
+            borderColour: string | null;
+            borderWidth: number;
+            texturePath: string;
+            sourceRect: number[];
+            ninePatch: number[];
+            clip: boolean;
+            scroll: string;
+            scrollOffset: number[];
+            ignoreSafeArea: boolean;
+            focusable: string;
+            modal: boolean;
+            navUp: string;
+            navDown: string;
+            navLeft: string;
+            navRight: string;
+            autoFocus: boolean;
+            value: number;
+            minValue: number;
+            maxValue: number;
+            step: number;
+            checked: boolean;
+            selectedIndex: number;
+            options: string[];
+            x: number;
+            y: number;
+            scale: number;
+            align: string;
+            readonly rect: { x: number; y: number; width: number; height: number };
+            readonly hovered: boolean;
+            readonly pressed: boolean;
+            readonly clicked: boolean;
+            readonly focused: boolean;
+            readonly expanded: boolean;
+
+            /** The node this one hangs under, or null at the root. */
+            readonly parent: UiNode | null;
+            /** A fresh array each read, so a script cannot mutate the tree by writing to it. */
+            readonly children: UiNode[];
+
+            /** Appends a child built from a spec and returns it. */
+            add(spec: object): UiNode;
+            /** The first descendant with this name, or null. */
+            find(name: string): UiNode | null;
+            /** Detaches this node and everything under it. */
+            remove(): void;
+            /** Gives this node the focus a pad or a remote drives. */
+            focus(): void;
+        }
+
+        /** Screen space: the only global that knows how big the window is. */
+        declare const UI: {
+            /** The viewport in canvas units. */
+            readonly width: number;
+            readonly height: number;
+
+            /** What a notch or a television's overscan leaves usable. */
+            readonly safeLeft: number;
+            readonly safeTop: number;
+            readonly safeRight: number;
+            readonly safeBottom: number;
+
+            /** Builds a whole tree in one call and returns its root. Building again replaces it. */
+            build(spec: object): UiNode;
+            /** This script's root node. */
+            readonly root: UiNode;
+            /** The first node with this name, or null. */
+            find(name: string): UiNode | null;
+            /** Drops this script's nodes. Another script's HUD is untouched. */
+            clear(): void;
+            /** The width one line of text will occupy. */
+            measure(text: string, scale?: number): number;
+
+            /** Paint order against the canvases other scripts own. Higher is in front. */
+            order: number;
+
+            /** The node holding focus, or null. */
+            readonly focused: UiNode | null;
+            /** Moves focus to a node, or to the node with that name. */
+            setFocus(node: UiNode | string | null): boolean;
+            /** Steps focus one place. Returns whether anything moved. */
+            navigate(direction: "up" | "down" | "left" | "right"): boolean;
+            /** Which class of device the player is driving with. */
+            readonly inputMode: "pointer" | "directional" | "touch";
+        };
+
         declare function log(...args: any[]): void;
         declare function warn(...args: any[]): void;
         declare function error(...args: any[]): void;

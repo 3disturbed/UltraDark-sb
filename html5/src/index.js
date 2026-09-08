@@ -136,9 +136,7 @@ export { ChibiAnimator } from './chibi/ChibiAnimator.js';
 export { createScriptGlobals, wrapActor, unwrapActor, wrapCollisionData, wrapComponent, SCRIPT_HOOKS } from './scripting/ScriptBridge.js';
 
 // ---- UI ---------------------------------------------------------------------
-// The retained tree. ScriptUi is the flat five-kind surface the `UI` script global
-// builds on top of; UiCanvas is the tree UiLayout, UiFocus and UiDocument work on.
-export { ScriptUi, ANCHORS, widestLine } from './ui/ScriptUi.js';
+// The retained tree, which the `UI` script global builds into and UiPainter draws.
 export { UiCanvas } from './ui/UiCanvas.js';
 export { UiNode } from './ui/UiNode.js';
 export { UiFocus, UiInputModeTracker } from './ui/UiFocus.js';

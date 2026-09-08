@@ -15,7 +15,13 @@ import { Actor } from '../core/Actor.js';
 import { schemaOf } from '../core/TypeRegistry.js';
 import { coerce } from '../core/PropertyTypes.js';
 import { applyProperties } from '../scene/SceneSerializer.js';
-import { widestLine } from '../ui/ScriptUi.js';
+import { UiCanvas as UiCanvasClass } from '../ui/UiCanvas.js';
+import {
+    fromObject as uiFromObject, apply as uiApply, read as uiRead,
+    isWritable as uiIsWritable, SCRIPT_PROPERTIES,
+} from '../ui/UiDocument.js';
+import { NavDirection } from '../ui/UiNavigation.js';
+import { width as measureWidest } from '../ui/UiTextMeasure.js';
 import { NetworkManager as NetworkManagerClass } from '../net/NetworkManager.js';
 import { DarksGames as DarksGamesClass } from '../dg/DarksGames.js';
 import { Transform3D } from '../core/Transform3D.js';
@@ -480,77 +486,128 @@ export function createScriptGlobals(actor, services = {}) {
         },
     };
 
-    // ---- UI — screen space, which the world-space globals above cannot reach ---
+    // ---- UI — the retained widget tree, in screen space -------------------
     //
-    // Every element the script makes is owned by the host's canvas, and every
-    // element it makes is remembered here so `UI.clear()` and a scene change can
-    // take them away again. A script that leaks a label into the next scene is
-    // the failure this avoids.
-    const owned = new Set();
+    // One canvas per script, made on first use and destroyed with the component.
+    // That is stronger than the ownership set the flat UI kept: a script cannot
+    // reach another's nodes at all, and two scripts are two canvases sorted by
+    // `order` rather than "whichever started first", which is the draw-order
+    // hazard screen-effects had to document.
+    let ownCanvas = null;
 
-    const wrapElement = (element) => {
-        if (!element) return null;
-        owned.add(element);
+    const uiCanvas = () => {
+        if (ownCanvas) return ownCanvas;
 
-        const proxy = {
-            get x() { return element.x; },                 set x(v) { element.x = Number(v); },
-            get y() { return element.y; },                 set y(v) { element.y = Number(v); },
-            get width() { return element.width; },         set width(v) { element.width = Number(v); },
-            get height() { return element.height; },       set height(v) { element.height = Number(v); },
-            get text() { return element.text; },           set text(v) { element.text = String(v ?? ''); },
-            get value() { return element.value; },         set value(v) { element.value = Number(v); },
-            get visible() { return element.visible; },     set visible(v) { element.visible = Boolean(v); },
-            get tint() { return element.tint; },           set tint(v) { element.tint = toCss(v); },
-            get background() { return element.background; }, set background(v) { element.background = v == null ? null : toCss(v); },
-            get scale() { return element.scale; },         set scale(v) { element.scale = Number(v); },
-            get anchor() { return element.anchor; },       set anchor(v) { element.anchor = String(v); },
-            get align() { return element.align; },         set align(v) { element.align = String(v); },
-            get padding() { return element.padding; },     set padding(v) { element.padding = Number(v); },
-            get texturePath() { return element.texturePath; }, set texturePath(v) { element.texturePath = String(v ?? ''); },
-            get hovered() { return element.hovered; },
-            get clicked() { return element.clicked; },
-            destroy() { owned.delete(element); canvas()?.remove(element); },
-        };
+        ownCanvas = new UiCanvasClass();
+        // The host sets this every frame, but onStart runs before the first one and a
+        // script that reads UI.width to size something would otherwise get 1280x720.
+        const host = engine();
+        if (host?.canvas2D) ownCanvas.setViewport(host.canvas2D.width, host.canvas2D.height);
+        return ownCanvas;
+    };
+
+    // Cached, so `UI.find("hp") === UI.find("hp")`. The flat UI handed back a fresh
+    // object every call, which made an identity comparison quietly always false.
+    const nodeProxies = new WeakMap();
+
+    // The way back, so setFocus can take a handle. A WeakMap rather than a property on
+    // the proxy, because the parity test compares the handle's own property names against
+    // the contract and a `__node` key would be a member the other engine does not have.
+    const proxyNodes = new WeakMap();
+
+    const wrapNode = (node) => {
+        if (!node) return null;
+
+        const cached = nodeProxies.get(node);
+        if (cached) return cached;
+
+        const proxy = {};
+
+        // Every value member comes from the codec's own list, so a property added there
+        // reaches the script API on both engines without a hand-mirrored edit here.
+        for (const key of SCRIPT_PROPERTIES) {
+            const descriptor = {
+                enumerable: true,
+                configurable: true,
+                get: () => uiRead(node, key),
+            };
+            if (uiIsWritable(key)) descriptor.set = (v) => uiApply(node, key, v);
+            Object.defineProperty(proxy, key, descriptor);
+        }
+
+        Object.defineProperty(proxy, 'parent', {
+            enumerable: true, configurable: true, get: () => wrapNode(node.parent),
+        });
+        Object.defineProperty(proxy, 'children', {
+            enumerable: true, configurable: true, get: () => node.children.map(wrapNode),
+        });
+
+        proxy.add = (spec) => wrapNode(node.add(uiFromObject(spec ?? {})));
+        proxy.find = (name) => wrapNode(node.find(String(name ?? '')));
+        proxy.remove = () => { node.detach(); };
+        proxy.focus = () => { uiCanvas().input.focus.focus(node); };
+
+        nodeProxies.set(node, proxy);
+        proxyNodes.set(proxy, node);
         return proxy;
     };
 
-    const canvas = () => engine()?.ui ?? null;
-
-    const make = (kind, options) => {
-        const target = canvas();
-        if (!target) { log('warn', `UI.${kind}: there is no UI canvas in this host.`); return null; }
-        return wrapElement(target.add(kind, options));
+    const NAV_BY_NAME = {
+        up: NavDirection.Up, down: NavDirection.Down,
+        left: NavDirection.Left, right: NavDirection.Right,
     };
 
     const uiProxy = {
-        get width() { return canvas()?.width ?? 0; },
-        get height() { return canvas()?.height ?? 0; },
+        get width() { return uiCanvas().canvasSize.x; },
+        get height() { return uiCanvas().canvasSize.y; },
 
-        panel(x, y, width, height, options) {
-            return make('panel', { ...options, x: Number(x), y: Number(y), width: Number(width), height: Number(height) });
-        },
-        label(x, y, text, options) {
-            return make('label', { ...options, x: Number(x), y: Number(y), text: String(text ?? ''), width: 0, height: 0 });
-        },
-        bar(x, y, width, height, value, options) {
-            return make('bar', { ...options, x: Number(x), y: Number(y), width: Number(width), height: Number(height), value: Number(value) });
-        },
-        button(x, y, width, height, text, options) {
-            return make('button', { ...options, x: Number(x), y: Number(y), width: Number(width), height: Number(height), text: String(text ?? '') });
-        },
-        image(x, y, width, height, path, options) {
-            return make('image', { ...options, x: Number(x), y: Number(y), width: Number(width), height: Number(height), texturePath: String(path ?? '') });
+        // The area a notch or a television's overscan leaves usable.
+        get safeLeft() { return uiCanvas().safeArea.x; },
+        get safeTop() { return uiCanvas().safeArea.y; },
+        get safeRight() { return uiCanvas().safeArea.z; },
+        get safeBottom() { return uiCanvas().safeArea.w; },
+
+        /** Builds a whole tree in one call and returns its root. Building again replaces it. */
+        build(spec) {
+            const target = uiCanvas();
+            target.adopt(uiFromObject(spec ?? {}));
+            return wrapNode(target.root);
         },
 
-        /** Only this script's elements, so one script cannot wipe another's HUD. */
+        get root() { return wrapNode(uiCanvas().root); },
+
+        find(name) { return wrapNode(uiCanvas().find(String(name ?? ''))); },
+
+        /** Only this script's nodes, so one script cannot wipe another's HUD. */
         clear() {
-            const target = canvas();
-            for (const element of owned) target?.remove(element);
-            owned.clear();
+            if (!ownCanvas) return;
+            for (const child of [...ownCanvas.root.children]) ownCanvas.root.remove(child);
         },
 
-        /** The width one line of text will occupy, for laying a panel out around it. */
+        /** The width one line of text will occupy, for sizing something around it. */
         measure(text, scale) { return measureText(String(text ?? ''), Number(scale) || 1); },
+
+        /** Paint order against the canvases other scripts own. Higher is in front. */
+        get order() { return uiCanvas().order; },
+        set order(v) { uiCanvas().order = Number(v) || 0; },
+
+        // Focus is what lets a script's menu work on a pad, a D-pad or a TV remote.
+        get focused() { return wrapNode(uiCanvas().input.focus.focused); },
+
+        setFocus(node) {
+            const focus = uiCanvas().input.focus;
+            if (node == null) { focus.focus(null); return false; }
+            const target = typeof node === 'string' ? uiCanvas().find(node) : proxyNodes.get(node);
+            return focus.focus(target ?? null);
+        },
+
+        navigate(direction) {
+            const which = NAV_BY_NAME[String(direction ?? '').toLowerCase()];
+            return which ? uiCanvas().input.focus.navigate(which) : false;
+        },
+
+        /** "pointer", "directional" or "touch" -- which device the player is driving with. */
+        get inputMode() { return String(uiCanvas().input.focus.modes.mode).toLowerCase(); },
     };
 
     // ---- Chibi ---------------------------------------------------------------
@@ -679,7 +736,8 @@ export function createScriptGlobals(actor, services = {}) {
             networkUnsubscribes.length = 0;
             for (const unsubscribe of dgUnsubscribes) unsubscribe();
             dgUnsubscribes.length = 0;
-            uiProxy.clear();
+            ownCanvas?.destroy();
+            ownCanvas = null;
         },
     });
 
@@ -718,7 +776,7 @@ function toCss(value) {
 }
 
 /** The width of the widest line, which is what a caller laying out a panel needs. */
-function measureText(text, scale) { return widestLine(text, scale); }
+function measureText(text, scale) { return measureWidest(text, scale); }
 
 /**
  * Builds the `transform3d` accessor a script sees: x/y/z, euler rotation, scale

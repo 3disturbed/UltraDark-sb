@@ -1,9 +1,9 @@
 // -----------------------------------------------------------------------------
 // UiCanvas — one screen-space surface holding a tree of UiNode.
 //
-// The mirror of SexyBiscuit.Engine/UI/UiCanvas.cs, member for member. The flat
-// five-kind surface a script builds through the `UI` global is ScriptUi.js next
-// door; this is the retained tree that UiLayout, UiFocus and UiDocument work on.
+// The mirror of SexyBiscuit.Engine/UI/UiCanvas.cs, member for member. This is the
+// retained tree that UiLayout, UiFocus and UiDocument work on, and what the `UI`
+// script global builds into.
 //
 // The scale and offset computed here are used by *both* painting and hit-testing.
 // The canvas this replaces had a scale matrix that nothing ever called, so pointer
@@ -11,6 +11,9 @@
 // on screen at every window size but one.
 // -----------------------------------------------------------------------------
 
+import { Component } from '../core/Component.js';
+import { PropertyType as P } from '../core/PropertyTypes.js';
+import { registerComponent } from '../core/TypeRegistry.js';
 import { UiNode } from './UiNode.js';
 import { UiKind, UiScaleMode, SafeAreaMode } from './UiEnums.js';
 import { measure as measureLayout, arrange, hitTest as hitTestLayout, deflate } from './UiLayout.js';
@@ -20,8 +23,26 @@ import { fromJson } from './UiDocument.js';
 /** Every canvas that currently exists, for the host's screen-space pass. */
 const all = [];
 
-export class UiCanvas {
+export class UiCanvas extends Component {
+    /**
+     * What a scene file stores: the canvas's settings and the path to its document,
+     * never the tree. Mirrors the public properties of the C# UiCanvas, and
+     * ComponentSchemaParityTests holds the two lists together.
+     */
+    static schema = {
+        scaleMode:           { type: P.Enum, values: ['ConstantPixel', 'ScaleToFit', 'ScaleToFill', 'Match'], default: 'ConstantPixel' },
+        referenceResolution: { type: P.Vector2, default: [1920, 1080] },
+        matchWidthOrHeight:  { type: P.Number, default: 0.5, min: 0, max: 1 },
+        order:               { type: P.Int, default: 0 },
+        document:            { type: P.Asset, assetKind: 'ui', default: '' },
+        safeArea:            { type: P.Vector4, default: [0, 0, 0, 0] },
+        safeAreaMode:        { type: P.Enum, values: ['Ignore', 'Inset', 'InsetX', 'InsetY'], default: 'Ignore' },
+        interactive:         { type: P.Bool, default: true },
+        playerIndex:         { type: P.Int, default: -1 },
+    };
+
     constructor() {
+        super();
         // --- configuration ---
         this.scaleMode = UiScaleMode.ConstantPixel;
         this.referenceResolution = { x: 1920, y: 1080 };
@@ -65,10 +86,18 @@ export class UiCanvas {
     static clearAll() { all.length = 0; }
 
     /** Removes this canvas from the paint list. */
-    destroy() {
+    /**
+     * Deregisters the canvas, so the host stops laying it out and painting it.
+     *
+     * Named for the Component hook the scene calls, which is what the C# side
+     * overrides too; `destroy()` stays as the spelling direct owners already use.
+     */
+    onDestroy() {
         const i = all.indexOf(this);
         if (i >= 0) all.splice(i, 1);
     }
+
+    destroy() { this.onDestroy(); }
 
     // -------------------------------------------------------------------------
     // Input
@@ -236,6 +265,7 @@ export class UiCanvas {
             this.root.remove(this.root.children[i]);
         }
 
+        this.root.name = document.name;
         this.root.layout = document.layout;
         this.root.gap = document.gap;
         this.root.wrap = document.wrap;
@@ -253,3 +283,9 @@ export class UiCanvas {
         this.invalidateLayout();
     }
 }
+
+registerComponent(UiCanvas, {
+    category: 'UI',
+    fullName: 'SexyBiscuit.Engine.UI.UiCanvas',
+    summary: 'A screen-space surface holding a tree of UI nodes.',
+});

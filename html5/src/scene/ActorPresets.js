@@ -23,6 +23,7 @@ import { PlayerStart } from '../gameplay/PlayerStart.js';
 import { ChibiCharacter } from '../chibi/ChibiCharacter.js';
 import { ChibiAnimator } from '../chibi/ChibiAnimator.js';
 import { GameMode } from '../gameplay/GameMode.js';
+import { UiCanvas } from '../ui/UiCanvas.js';
 
 /** One entry in the Place Actors palette. */
 export class ActorPreset {
@@ -249,6 +250,10 @@ export const ActorPresets = [
             collider.restitution = 0.6;
             return actor;
         }),
+
+    // ---- UI -----------------------------------------------------------------
+    new ActorPreset('UI', 'Canvas', 'Screen-space UI root: a tree of nodes, laid out and navigable.',
+        () => { const a = new Actor('Canvas'); a.addComponent(UiCanvas); return a; }),
 ];
 
 /** Finds a preset by name — exactly first, then case-insensitively. */
