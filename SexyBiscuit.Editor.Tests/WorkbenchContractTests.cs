@@ -32,4 +32,15 @@ public class WorkbenchContractTests
         Assert.Contains("ImGuiKey.E", viewport);
         Assert.Contains("ImGuiKey.R", viewport);
     }
+
+    [Fact]
+    public void ContractMakesUnsupportedPropertyEditorsVisible()
+    {
+        using var contract = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepoRoot, "editor-workbench.json")));
+        var coverage = contract.RootElement.GetProperty("propertyTypeCoverage");
+
+        Assert.Equal("read-only-with-reason", coverage.GetProperty("list").GetProperty("native").GetString());
+        Assert.Equal("editable", coverage.GetProperty("list").GetProperty("browser").GetString());
+        Assert.Equal("read-only-with-reason", coverage.GetProperty("material").GetProperty("browser").GetString());
+    }
 }

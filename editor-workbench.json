@@ -21,5 +21,20 @@
     "spaces": ["world", "local"],
     "snapping": ["translate", "rotate", "scale"]
   },
-  "componentStatus": ["editable", "read-only-with-reason", "tracked-missing"]
+  "componentStatus": ["editable", "read-only-with-reason", "tracked-missing"],
+  "propertyTypeCoverage": {
+    "number": { "native": "editable", "browser": "editable" },
+    "int": { "native": "editable", "browser": "editable" },
+    "bool": { "native": "editable", "browser": "editable" },
+    "string": { "native": "editable", "browser": "editable" },
+    "vector2": { "native": "editable", "browser": "editable" },
+    "vector3": { "native": "editable", "browser": "editable" },
+    "vector4": { "native": "editable", "browser": "editable" },
+    "quaternion": { "native": "editable", "browser": "editable" },
+    "color": { "native": "editable", "browser": "editable" },
+    "enum": { "native": "editable", "browser": "editable" },
+    "asset": { "native": "editable", "browser": "editable" },
+    "material": { "native": "read-only-with-reason", "browser": "read-only-with-reason" },
+    "list": { "native": "read-only-with-reason", "browser": "editable" }
+  }
 }

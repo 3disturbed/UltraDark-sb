@@ -941,27 +941,26 @@ Built with **ImGui.NET** — dockable panels, multi-window layout, dark theme by
 ### Scene Viewport
 - 2D and 3D view modes; toggle per scene type
 - **Move / Rotate / Scale gizmos** — click to select, drag to transform; W/E/R shortcuts
-- **Multi-select** — box select or Ctrl+click; transform applied to selection pivot
-- **Grid snap** — configurable snap increment; toggle with Ctrl
-- **Camera** — middle-mouse pan; scroll zoom; Alt+drag orbit in 3D mode
+- 3D centre handle supports camera-plane movement, uniform scale and screen-space rotation; snapping is configurable
+- **Current limitation:** selection is single-actor. Box/Ctrl multi-select, selection pivots, world/local mode in native, plane handles and surface/vertex snapping are not implemented yet.
 
 ### Hierarchy Panel
 - Full tree view of Scene → Layer → Actor → Component
 - Drag actors to reparent
 - Right-click context menu: Add Actor, Add Component, Duplicate, Delete
-- Visibility toggle (eye icon) and lock toggle (lock icon) per actor
+- **Current limitation:** visibility and lock state per actor are not implemented yet.
 
 ### Inspector Panel
 - Displays all components on the selected Actor
-- Edit any serialisable field inline: floats, ints, strings, colours (colour picker), vectors, enums, asset references
+- Edit primitive scalar/vector/colour/enum fields inline; the browser also has validated generic JSON collection editing
 - JS `ScriptComponent` — exposes any property declared in the script's `properties` block as editable fields
 - Add / Remove component buttons
+- **Current limitation:** typed asset/object pickers, maps, nested structures and specialised component inspectors are not implemented yet.
 
 ### Asset Browser
 - File-tree view of the project's `Assets/` folder
-- Thumbnail previews for textures, audio waveform previews, mesh wireframe previews
-- Double-click to open in relevant editor (Animator Editor, Prefab Editor, etc.)
-- Drag asset onto the viewport to add it to the scene; drag onto an Inspector field to assign
+- Thumbnail previews for images only
+- **Current limitation:** audio/mesh previews, typed reference assignment, dependency repair and per-asset editors are not implemented yet.
 
 ### Play / Pause / Step
 - **Play** — starts the game loop inside the editor viewport; full engine systems active
@@ -975,22 +974,13 @@ Built with **ImGui.NET** — dockable panels, multi-window layout, dark theme by
 - Filter by level; search by keyword
 - **JS REPL tab** — evaluate JavaScript against the live game state while paused
 
-### Prefab Editor
-- Open any prefab `.json` in an isolated viewport
-- Edit and save; changes propagate to all instances in open scenes
-- Prefab overrides highlighted in blue in the Inspector on instances
+### Authoring domains not yet implemented
 
-### Animator Editor
-- Node graph view of the `AnimatorController` state machine
-- Drag to create states; right-click to add transitions; click transition to edit conditions
-- Parameters panel — add/rename bool, int, float, trigger parameters
-- Preview pane — plays the selected clip on a placeholder mesh
-
-### Tilemap Painter
-- **Tile Palette** panel — displays all tiles from the loaded tileset
-- Tools: Paint (single tile), Fill (flood fill), Erase, Rectangle fill, Eyedropper
-- Layer selector — paint to any Tilemap layer
-- Stamp tool — paint a multi-tile rectangular selection as one stamp
+Prefab isolation/overrides, animator graphs, material graphs, visual scripting,
+Sequencer-style timelines, tilemap painting, terrain/foliage and world-partition
+authoring are not currently end-to-end editor workflows. Runtime support or a
+documentation section must not be read as a claim that either editor can author
+and round-trip those assets. See [the editor workbench status](wiki/31-editor-workbench.md).
 
 ### Build Settings Panel
 - Platform dropdown; per-platform settings pane (icons, IDs, signing, etc.)
