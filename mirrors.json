@@ -1040,10 +1040,6 @@
         "gravity",
         "airControl"
       ],
-      "Rigidbody3D": [
-        "useGravity",
-        "freezeRotation"
-      ],
       "Skybox": [
         "cubemapPath",
         "exposure"

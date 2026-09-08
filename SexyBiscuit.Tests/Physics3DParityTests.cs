@@ -79,6 +79,126 @@ public class Physics3DParityTests
     }
 
     // -------------------------------------------------------------------------
+    // Rigidbody3D.useGravity and .freezeRotation
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// A body that has switched gravity off stays where it is while its neighbour falls.
+    /// </summary>
+    /// <remarks>
+    /// The browser skips the gravity term for a body whose <c>useGravity</c> is false. Bepu
+    /// applies gravity in the pose integrator, over a whole bundle of bodies with no per-body
+    /// parameter, which is why this engine had no such property at all — so a hovering
+    /// platform or a floating pickup that stood still in the prototype dropped out of the
+    /// world in a native build.
+    /// </remarks>
+    [Fact]
+    public void ABodyThatHasSwitchedGravityOffStaysUpWhileItsNeighbourFalls()
+    {
+        var scene = new Scene("UseGravity");
+
+        var falling = scene.AddActor(new Actor("Falling"));
+        falling.AddComponent<Transform3D>();
+        falling.AddComponent<Rigidbody3D>();
+
+        // Well clear of the first: two unit spheres sharing the origin would push each other
+        // apart and the test would be measuring the contact solver instead.
+        var hovering = scene.AddActor(new Actor("Hovering"));
+        hovering.AddComponent<Transform3D>().Position = new XnaVec3(10f, 0f, 0f);
+        var hoveringBody = hovering.AddComponent<Rigidbody3D>();
+        hoveringBody.UseGravity = false;
+        scene.FlushPendingActors();
+
+        try
+        {
+            for (int step = 0; step < 60; step++) PhysicsSystem3D.Instance.FixedStep(1f / 60f);
+
+            Assert.True(falling.GetComponent<Transform3D>()!.Position.Y < -1f,
+                "the ordinary body should have fallen about five metres in a second");
+            Assert.Equal(0f, hovering.GetComponent<Transform3D>()!.Position.Y, 3);
+            Assert.False(PhysicsSystem3D.Instance.IsGravityEnabled(hoveringBody.Handle));
+        }
+        finally
+        {
+            PhysicsSystem3D.Instance.RemoveBody(falling);
+            PhysicsSystem3D.Instance.RemoveBody(hovering);
+            scene.Destroy();
+        }
+    }
+
+    /// <summary>
+    /// The exemption goes with the body, so a handle Bepu hands out again does not inherit it.
+    /// </summary>
+    [Fact]
+    public void RemovingABodyForgetsThatItHadGravitySwitchedOff()
+    {
+        var scene = new Scene("GravityHandles");
+        var actor = scene.AddActor(new Actor("Hovering"));
+        actor.AddComponent<Transform3D>();
+        var body = actor.AddComponent<Rigidbody3D>();
+        scene.FlushPendingActors();
+
+        try
+        {
+            body.UseGravity = false;
+            var handle = body.Handle;
+            Assert.False(PhysicsSystem3D.Instance.IsGravityEnabled(handle));
+
+            PhysicsSystem3D.Instance.RemoveBody(actor);
+            Assert.True(PhysicsSystem3D.Instance.IsGravityEnabled(handle));
+        }
+        finally
+        {
+            PhysicsSystem3D.Instance.RemoveBody(actor);
+            scene.Destroy();
+        }
+    }
+
+    /// <summary>
+    /// A frozen body cannot be spun by a torque, and taking the lock off gives it back the
+    /// inertia its shape computed rather than an approximation.
+    /// </summary>
+    /// <remarks>
+    /// The browser skips angular integration entirely while <c>freezeRotation</c> is set —
+    /// how a top-down or first-person character stays upright. Without the property, a
+    /// character that stood still in the prototype toppled over natively on its first
+    /// glancing contact.
+    /// </remarks>
+    [Fact]
+    public void AFrozenBodyCannotBeSpunAndThawsBackToItsOwnInertia()
+    {
+        var scene = new Scene("FreezeRotation");
+        var actor = scene.AddActor(new Actor("Upright"));
+        actor.AddComponent<Transform3D>();
+        var body = actor.AddComponent<Rigidbody3D>();
+        scene.FlushPendingActors();
+
+        try
+        {
+            var reference = PhysicsSystem3D.Instance.Simulation.Bodies.GetBodyReference(body.Handle);
+            var before = reference.LocalInertia.InverseInertiaTensor;
+
+            body.FreezeRotation = true;
+            body.AddTorque(new XnaVec3(0f, 5f, 0f));
+            PhysicsSystem3D.Instance.FixedStep(1f / 60f);
+            Assert.Equal(0f, body.AngularVelocity.Length(), 4);
+
+            body.FreezeRotation = false;
+            Assert.Equal(before.YY, reference.LocalInertia.InverseInertiaTensor.YY, 4);
+
+            body.AddTorque(new XnaVec3(0f, 5f, 0f));
+            PhysicsSystem3D.Instance.FixedStep(1f / 60f);
+            Assert.True(body.AngularVelocity.Y > 0.1f,
+                $"an unfrozen body should spin; it turned at {body.AngularVelocity.Y}");
+        }
+        finally
+        {
+            PhysicsSystem3D.Instance.RemoveBody(actor);
+            scene.Destroy();
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // MeshCollider3D.padding
     // -------------------------------------------------------------------------
 

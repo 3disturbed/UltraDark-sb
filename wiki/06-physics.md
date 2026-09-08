@@ -383,6 +383,8 @@ rb.AngularVelocity = Vector3.Zero;
 rb.LinearDamping   = 0.05f;
 rb.AngularDamping  = 0.05f;
 rb.IsKinematic     = false;
+rb.UseGravity      = true;    // false and the body hangs where it is
+rb.FreezeRotation  = false;   // true and nothing can spin it
 
 rb.AddForce(new Vector3(0, 500, 0));
 rb.AddImpulse(new Vector3(0, 6, 0));
@@ -394,6 +396,17 @@ BodyHandle handle = rb.Handle;    // valid when rb.HasHandle
 In `Awake`, `Rigidbody3D` looks for a `Collider3D` on the actor and calls
 `RegisterShape`. **If there is no collider it falls back to a sphere of radius
 0.5** — so a body with no collider still simulates, as a ball.
+
+`UseGravity` is real per-body gravity, not a stored hint: Bepu applies gravity in
+the pose integrator, so switching it off registers the body with
+`PhysicsSystem3D.SetGravityEnabled` and the integrator zeroes that body's share
+of the pull. `Rigidbody2D.GravityScale` is the opposite — Aether has no per-body
+gravity, and that one is stored for game logic only.
+
+`FreezeRotation` locks the body's orientation by zeroing its inverse inertia
+tensor, so `AddTorque` and contacts both land on a body that cannot answer them.
+The tensor is put back when the lock comes off. It is how a character stays
+upright.
 
 ## Collider3D
 

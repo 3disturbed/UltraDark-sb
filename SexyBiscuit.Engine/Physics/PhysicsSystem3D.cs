@@ -81,6 +81,50 @@ internal struct NarrowPhaseCallbacks : INarrowPhaseCallbacks
 }
 
 /// <summary>
+/// The bodies that have opted out of world gravity, shared by reference with the pose
+/// integrator's callback struct.
+/// </summary>
+/// <remarks>
+/// Bepu integrates a bundle of bodies at a time and its callback takes no per-body
+/// parameter, so a per-body switch has to be looked up from inside the integrator. Handles
+/// are stable and the active-set index the integrator is handed is not, so the lookup goes
+/// index → handle → set. It runs only while <see cref="Any"/> is true, which leaves the
+/// ordinary everything-falls case on the single broadcast it always used. Reads happen on
+/// Bepu's worker threads and writes on the thread that owns the component, between steps.
+/// </remarks>
+internal sealed class GravityExemptions
+{
+    private readonly HashSet<int> _handles = new();
+
+    /// <summary>The simulation's body store, for the index → handle lookup.</summary>
+    internal Bodies? Bodies;
+
+    /// <summary>True when at least one body has opted out.</summary>
+    internal bool Any => _handles.Count > 0;
+
+    /// <summary>Switches world gravity on or off for one body.</summary>
+    internal void Set(BodyHandle handle, bool useGravity)
+    {
+        if (useGravity) _handles.Remove(handle.Value);
+        else _handles.Add(handle.Value);
+    }
+
+    /// <summary>True when world gravity still pulls on the body.</summary>
+    internal bool IsEnabled(BodyHandle handle) => !_handles.Contains(handle.Value);
+
+    /// <summary>Drops a handle as its body leaves the simulation.</summary>
+    internal void Forget(BodyHandle handle) => _handles.Remove(handle.Value);
+
+    /// <summary>Gravity's multiplier for one lane of an integration bundle: 1 or 0.</summary>
+    internal float ScaleForActiveIndex(int index)
+    {
+        var bodies = Bodies;
+        if (bodies == null || index < 0 || index >= bodies.ActiveSet.Count) return 1f;
+        return _handles.Contains(bodies.ActiveSet.IndexToHandle[index].Value) ? 0f : 1f;
+    }
+}
+
+/// <summary>
 /// Pose integration callbacks — applies gravity and damping each simulation step.
 /// </summary>
 internal struct PoseIntegratorCallbacks : IPoseIntegratorCallbacks
@@ -98,9 +142,15 @@ internal struct PoseIntegratorCallbacks : IPoseIntegratorCallbacks
     private float          _dtLinearDamping;
     private float          _dtAngularDamping;
 
-    public PoseIntegratorCallbacks(NumVec3 gravity, float linearDamping = 0f, float angularDamping = 0f)
+    // A reference, so the copy of this struct Bepu keeps sees the same table the engine
+    // writes to — the same trick NarrowPhaseCallbacks uses to reach its owner.
+    private readonly GravityExemptions? _exemptions;
+
+    public PoseIntegratorCallbacks(NumVec3 gravity, GravityExemptions? exemptions = null,
+                                   float linearDamping = 0f, float angularDamping = 0f)
     {
         _gravity        = gravity;
+        _exemptions     = exemptions;
         _linearDamping  = linearDamping;
         _angularDamping = angularDamping;
         _dtGravity      = default;
@@ -127,7 +177,24 @@ internal struct PoseIntegratorCallbacks : IPoseIntegratorCallbacks
         Vector<float>  dt,
         ref BodyVelocityWide velocity)
     {
-        velocity.Linear  = (velocity.Linear  + Vector3Wide.Broadcast(_dtGravity)) * new Vector<float>(_dtLinearDamping);
+        var gravity = Vector3Wide.Broadcast(_dtGravity);
+
+        // Rigidbody3D.UseGravity: zero this step's pull for the lanes that opted out. The
+        // bundle is only walked once something has, so a world where everything falls pays
+        // nothing for the feature.
+        if (_exemptions is { Any: true })
+        {
+            Span<float> scales = stackalloc float[Vector<float>.Count];
+            for (int lane = 0; lane < scales.Length; lane++)
+                scales[lane] = _exemptions.ScaleForActiveIndex(bodyIndices[lane]);
+
+            var scale = new Vector<float>(scales);
+            gravity.X *= scale;
+            gravity.Y *= scale;
+            gravity.Z *= scale;
+        }
+
+        velocity.Linear  = (velocity.Linear  + gravity) * new Vector<float>(_dtLinearDamping);
         velocity.Angular =  velocity.Angular * new Vector<float>(_dtAngularDamping);
     }
 }
@@ -212,6 +279,9 @@ public sealed class PhysicsSystem3D : IDisposable
     private readonly Dictionary<Actor,      BodyHandle> _actorToHandle = new();
     private readonly Dictionary<BodyHandle, Actor>      _handleToActor = new();
 
+    // Read by the pose integrator, written by Rigidbody3D.UseGravity.
+    private readonly GravityExemptions _gravityExemptions = new();
+
     // Pending collision events queued from narrow-phase callbacks (which run on worker threads)
     private readonly List<(CollidablePair pair, XnaVec3 point, XnaVec3 normal)> _pendingContacts = new();
     private readonly object _contactLock = new();
@@ -225,13 +295,15 @@ public sealed class PhysicsSystem3D : IDisposable
 
         var narrowPhase = new NarrowPhaseCallbacks { Owner = this };
         var poseIntegrator = new PoseIntegratorCallbacks(
-            new NumVec3(0f, -9.81f, 0f));
+            new NumVec3(0f, -9.81f, 0f), _gravityExemptions);
 
         Simulation = Simulation.Create(
             _pool,
             narrowPhase,
             poseIntegrator,
             new SolveDescription(8, 1));
+
+        _gravityExemptions.Bodies = Simulation.Bodies;
     }
 
     public void Dispose()
@@ -492,8 +564,29 @@ public sealed class PhysicsSystem3D : IDisposable
         if (!_actorToHandle.TryGetValue(actor, out var handle)) return;
         _actorToHandle.Remove(actor);
         _handleToActor.Remove(handle);
+        _gravityExemptions.Forget(handle);
         Simulation.Bodies.Remove(handle);
     }
+
+    // -----------------------------------------------------------------------
+    // Per-body gravity
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Switches world gravity on or off for one body — what <see cref="Rigidbody3D.UseGravity"/>
+    /// is made of.
+    /// </summary>
+    /// <remarks>
+    /// Bepu applies gravity in the pose integrator, over a bundle of bodies at a time and
+    /// with no per-body parameter of its own, so the exemption is held here and the
+    /// integrator zeroes that body's share of the pull. The exemption is dropped with the
+    /// body in <see cref="RemoveBody"/>, so a recycled handle does not inherit it.
+    /// </remarks>
+    public void SetGravityEnabled(BodyHandle handle, bool enabled)
+        => _gravityExemptions.Set(handle, enabled);
+
+    /// <summary>True when world gravity still pulls on the body.</summary>
+    public bool IsGravityEnabled(BodyHandle handle) => _gravityExemptions.IsEnabled(handle);
 
     // -----------------------------------------------------------------------
     // Raycast
