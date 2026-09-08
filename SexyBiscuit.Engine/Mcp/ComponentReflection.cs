@@ -6,8 +6,8 @@ namespace SexyBiscuit.Engine.Mcp;
 
 /// <summary>
 /// The one rule for "a property a person may edit": public getter and setter, a value type
-/// the converter understands, not the plumbing every component shares. Views, <c>set_property</c>
-/// and <c>describe_component_type</c> all use it, so what Claude can change is exactly what the
+/// the converter understands, not the plumbing every component shares. Views, <c>set_properties</c>
+/// and <c>describe_components</c> all use it, so what Claude can change is exactly what the
 /// Details panel can.
 /// </summary>
 public static class ComponentReflection

@@ -37,7 +37,7 @@ public sealed class PlaceActorsPanel
         GameCode.GameCodeHost.TypesChanged += RebuildEntries;
     }
 
-    /// <summary>One list for the palette, the Create menu and the MCP place_actor tool, plus the project's own actor classes.</summary>
+    /// <summary>One list for the palette, the Create menu and spawn_actor's preset, plus the project's own actor classes.</summary>
     private void RebuildEntries()
     {
         _entries.Clear();

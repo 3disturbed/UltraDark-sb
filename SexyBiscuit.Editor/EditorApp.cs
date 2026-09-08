@@ -79,7 +79,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private AssistantHost?  _assistant;
     private AssistantPanel? _assistantPanel;
 
-    // Frames still to simulate while paused (step_frame).
+    // Frames still to simulate while paused (play_mode action 'step').
     private int _pendingSteps;
 
     // Play looks through the game camera; Stop puts the toolbar's choice back.
@@ -220,7 +220,9 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         _code    = new GameCodeHost(_mcp, settings);
         _restart = new EditorRestart(_mcp, _code);
-        _mcp.Registry.RegisterInstance(new GameCodeTools(_mcp, _code, _restart), new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
+        var codeTools = new GameCodeTools(_mcp, _code, _restart);
+        _mcp.Registry.RegisterInstance(codeTools, new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
+        _mcp.EngineRepoInfo = codeTools.EngineRepoInfo;   // get_project_info engineRepo=true
         _mcp.Registry.RegisterInstance(new ShippingTools(), new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
         EditorState.OnProjectOpened += root => _code?.OnProjectOpened(root);
         _codeProject = new CodeProjectPanel(_code);

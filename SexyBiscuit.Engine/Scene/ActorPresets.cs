@@ -14,7 +14,7 @@ public sealed record ActorPreset(string Category, string Name, string Descriptio
 
 /// <summary>
 /// The actors a scene almost always needs, as one-click presets. Shared by the editor's Place
-/// Actors panel, its Create menu and the MCP <c>place_actor</c> tool, so all three offer the
+/// Actors panel, its Create menu and <c>spawn_actor</c>'s <c>preset</c>, so all three offer the
 /// same list.
 /// </summary>
 /// <remarks>

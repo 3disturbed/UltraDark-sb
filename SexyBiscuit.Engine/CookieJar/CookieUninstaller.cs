@@ -33,7 +33,7 @@ public static class CookieUninstaller
     {
         var record = installed.Find(id)
                      ?? throw new CookieException($"Cookie '{id}' is not installed in this project.",
-                                                  "Call list_installed_cookies to see what is.");
+                                                  "Call search_cookies with installed=true to see what is.");
 
         var remove  = new List<string>();
         var kept    = new List<KeptFile>();

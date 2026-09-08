@@ -31,7 +31,7 @@ public class SessionUsageTests
     [Fact] // Why: the meter exists to say which tools fill the context; grouping by tool and keeping the frame's numbers is its whole job.
     public void RecordGroupsResultSizesByToolAndKeepsTheTurnsNumbers()
     {
-        var transcript = TranscriptWithCalls(("get_scene_summary", 5000), ("spawn_primitive", 100), ("spawn_primitive", 120));
+        var transcript = TranscriptWithCalls(("get_scene_summary", 5000), ("spawn_actor", 100), ("spawn_actor", 120));
         var usage = new SessionUsage();
 
         var turn = usage.Record(Result(apiCalls: 4, input: 1000, output: 300, cacheRead: 30000, cacheCreate: 2000), 0.05,
@@ -46,7 +46,7 @@ public class SessionUsageTests
 
         Assert.Equal("get_scene_summary", turn.Tools[0].Tool);   // largest first
         Assert.Equal(5000, turn.Tools[0].ResultChars);
-        Assert.Equal("spawn_primitive", turn.Tools[1].Tool);
+        Assert.Equal("spawn_actor", turn.Tools[1].Tool);
         Assert.Equal(2, turn.Tools[1].Calls);
         Assert.Equal(220, turn.Tools[1].ResultChars);
 
@@ -58,7 +58,7 @@ public class SessionUsageTests
     [Fact] // Why: the display copy is capped at 64K, but the model read all of it; the meter must see the real size.
     public void Transcript_KeepsTheUncappedResultLengthOnAToolCall()
     {
-        var transcript = TranscriptWithCalls(("get_scene_json", 100_000));
+        var transcript = TranscriptWithCalls(("get_scene_summary", 100_000));
         var call = Assert.IsType<ToolCallEntry>(transcript.Entries.Single());
 
         Assert.Equal(100_000, call.ResultChars);
@@ -92,8 +92,8 @@ public class SessionUsageTests
     public void SummaryRanksToolsByResultSizeAcrossTurns()
     {
         var usage = new SessionUsage();
-        usage.Record(Result(1, 100, 50, 1000, 0), 0.01, TranscriptWithCalls(("get_actor", 700), ("read_console", 300)).Entries.OfType<ToolCallEntry>());
-        usage.Record(Result(2, 100, 50, 3000, 0), 0.02, TranscriptWithCalls(("read_console", 900)).Entries.OfType<ToolCallEntry>());
+        usage.Record(Result(1, 100, 50, 1000, 0), 0.01, TranscriptWithCalls(("get_actor", 700), ("console", 300)).Entries.OfType<ToolCallEntry>());
+        usage.Record(Result(2, 100, 50, 3000, 0), 0.02, TranscriptWithCalls(("console", 900)).Entries.OfType<ToolCallEntry>());
 
         var summary = usage.Summary(topTools: 1);
 
@@ -102,7 +102,7 @@ public class SessionUsageTests
         Assert.Equal(1900, summary["resultChars"]!.GetValue<long>());
         var top = summary["topTools"]!.AsArray();
         Assert.Single(top);
-        Assert.Equal("read_console", top[0]!["tool"]!.GetValue<string>());
+        Assert.Equal("console", top[0]!["tool"]!.GetValue<string>());
         Assert.Equal(1200, top[0]!["chars"]!.GetValue<long>());
         Assert.Equal(900, summary["lastTurn"]!["resultChars"]!.GetValue<long>());
         Assert.Contains("2 turns", usage.SummaryLine());
