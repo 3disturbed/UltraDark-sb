@@ -115,7 +115,7 @@ The repository root's `CLAUDE.md` orients either kind of session.
 
 ## The tools
 
-The `sexybiscuit` server exposes 86 tools (`mcp__sexybiscuit__<name>` inside Claude Code). This
+The `sexybiscuit` server exposes 88 tools (`mcp__sexybiscuit__<name>` inside Claude Code). This
 table is generated: `dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --all --markdown`
 prints it without a window (`--all` adds the editor-only classes to the engine tools; the
 running editor serves the same list as the `sexybiscuit://tools` resource). Results are sized

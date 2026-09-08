@@ -54,8 +54,8 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [26. The HTML5 Port](26-html5.md) | The JavaScript engine under `html5/`, shared project files, the Web build target, and three bugs it found |
 | [27. The Game Factory Workflow](27-game-factory-workflow.md) | Making many small games with an agent: the shared scripting contract, the node toolchain (validate, serve, export, upload), the native port, and the token rules |
 | [28. The CookieJar](28-the-cookiejar.md) | The module library: cookies and jars, installing into a project, baking work back out, and the trust gate |
-| [29. MakeChibi](29-makechibi.md) | Characters built from primitives at runtime: the recipe, the sixteen-joint rig, procedural and keyed clips, the `Chibi` scripting global, and the editor panel |
 | [29. Darks Games](29-darksgames.md) | Accounts and social: identity, presence, Join, parties, cloud saves and achievements, in both engines and in the exported build |
+| [30. MakeChibi](30-makechibi.md) | Characters built from primitives at runtime: the recipe, the sixteen-joint rig, procedural and keyed clips, the `Chibi` scripting global, and the editor panel |
 
 ## Reference
 
@@ -109,7 +109,7 @@ rather than hidden.
 
 ## This engine is a moving target
 
-**Verified against commit `407d32c`.** The engine is under active development —
+**Verified against commit `3bde26e`.** The engine is under active development —
 pages here were written by reading the source rather than the design document,
 and the source moves.
 

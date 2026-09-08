@@ -284,7 +284,7 @@ give it a width, and `wrapText: true` breaks it to whatever width the layout han
 ### `Chibi` — MakeChibi's characters
 
 Spawns and drives a character built from primitives. Nothing here takes or returns an object;
-every argument is a scalar or an actor proxy. See [29. MakeChibi](29-makechibi.md).
+every argument is a scalar or an actor proxy. See [30. MakeChibi](30-makechibi.md).
 
 ```js
 var v = Chibi.spawn("Assets/Characters/Villager.chibi", 0, 0, 0);
@@ -562,5 +562,5 @@ callbacks; the script decides *when* to call them.
 ## Next
 
 - [12. Scenes & Prefabs](12-scenes-prefabs.md)
-- [29. MakeChibi](29-makechibi.md) — the `Chibi` global, and what a namespace addition looks like.
+- [30. MakeChibi](30-makechibi.md) — the `Chibi` global, and what a namespace addition looks like.
 - [Tutorial 5: JavaScript Scripting](../tutorials/05-javascript-scripting.md)

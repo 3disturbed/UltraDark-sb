@@ -326,7 +326,7 @@ Practical picks: `OutQuad` for most UI, `OutCubic` for camera moves,
 3D skeletal playback producing a bone palette for a skinning shader.
 
 **For an animated 3D character, you almost certainly want
-[29. MakeChibi](29-makechibi.md) instead.** Nothing in the engine fills a `Skeleton` or a
+[30. MakeChibi](30-makechibi.md) instead.** Nothing in the engine fills a `Skeleton` or a
 `Clips` list — there is no rig importer — the component cannot be saved in a scene file, and
 the browser engine has no counterpart at all. Everything below works only if you hand-author
 the bone table and supply your own skinning shader.
@@ -462,5 +462,5 @@ Tween.Create()
 ## Next
 
 - [11. JavaScript Scripting](11-scripting.md)
-- [29. MakeChibi](29-makechibi.md) — animated 3D characters that need no rig and no assets.
+- [30. MakeChibi](30-makechibi.md) — animated 3D characters that need no rig and no assets.
 - [Tutorial 9: Animation & Tweens](../tutorials/09-animation-and-tweens.md)
