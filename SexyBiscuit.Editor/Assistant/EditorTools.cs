@@ -38,7 +38,7 @@ public sealed class EditorTools
         "Where things stand, in about a hundred tokens: project, scene (name, path, actor count, layers, dirty flag, " +
         "checks), selection, play state, C# project, last build and the last CI run on main. Call this first; get_scene_summary, get_actor and " +
         "get_project_info give more when a task needs it.",
-        Label = "Read the context")]
+        Label = "Read the context", ReadOnly = true)]
     public McpToolResult GetContext()
     {
         var context = new JsonObject();
@@ -95,7 +95,7 @@ public sealed class EditorTools
         "Describe the open project and the editor: root folder, asset/script/scene folders, the open scene and whether it " +
         "has unsaved changes, play mode, the MCP URL, and the templates create_project accepts with descriptions. " +
         "get_context is the cheap version; use this for the folders and the template list.",
-        Label = "Read project info")]
+        Label = "Read project info", ReadOnly = true)]
     public McpToolResult GetProjectInfo() => McpToolResult.Json(ProjectInfo());
 
     internal JsonObject ProjectInfo()
@@ -225,7 +225,7 @@ public sealed class EditorTools
         return McpToolResult.Json(ProjectInfo(), $"Created and opened '{name}' at {projectDir}.");
     }
 
-    [McpTool("list_scenes", "The .scene files in the project, as project-relative paths, marking the open one.")]
+    [McpTool("list_scenes", "The .scene files in the project, as project-relative paths, marking the open one.", ReadOnly = true)]
     public McpToolResult ListScenes()
     {
         RequireProject();
@@ -254,7 +254,7 @@ public sealed class EditorTools
         return McpToolResult.Json(list, $"{list.Count} scene file(s).");
     }
 
-    [McpTool("list_assets", "Files under the project's asset directories with a type: texture, audio, model, script, scene, font or other.")]
+    [McpTool("list_assets", "Files under the project's asset directories with a type: texture, audio, model, script, scene, font or other.", ReadOnly = true)]
     public McpToolResult ListAssets(
         [McpParam("Only this sub-folder of the asset directory")] string? subdirectory = null,
         [McpParam("Only these extensions, e.g. ['.png', '.wav']")] string[]? extensions = null,
@@ -328,7 +328,7 @@ public sealed class EditorTools
         return McpToolResult.Json(SceneViews.ActorRow(target));
     }
 
-    [McpTool("get_selection", "The actor and layer currently selected in the editor, if any.")]
+    [McpTool("get_selection", "The actor and layer currently selected in the editor, if any.", ReadOnly = true)]
     public McpToolResult GetSelection()
     {
         var selected = EditorState.SelectedActor;
@@ -360,7 +360,7 @@ public sealed class EditorTools
         });
     }
 
-    [McpTool("get_editor_camera", "The editor camera's pose and which view mode the viewport is in.")]
+    [McpTool("get_editor_camera", "The editor camera's pose and which view mode the viewport is in.", ReadOnly = true)]
     public McpToolResult GetEditorCamera()
     {
         var camera = App.EditorCameraTransform ?? throw new McpToolException("The editor camera is not ready.");
@@ -521,7 +521,7 @@ public sealed class EditorTools
         return McpToolResult.Json(PlayState());
     }
 
-    [McpTool("get_play_state", "Playing and paused flags, fps, frame count, time scale and the scene name.")]
+    [McpTool("get_play_state", "Playing and paused flags, fps, frame count, time scale and the scene name.", ReadOnly = true)]
     public McpToolResult GetPlayState() => McpToolResult.Json(PlayState());
 
     private static JsonObject PlayState() => new()
@@ -631,7 +631,7 @@ public sealed class EditorTools
         "This session's token meter, about seventy tokens: turns, context per API call, cache share, output tokens, " +
         "the size of the tool results, cost, the last turn, and the tools that returned the most. Read it to see what " +
         "a task cost before repeating the pattern.",
-        MainThread = false)]
+        MainThread = false, ReadOnly = true)]
     public McpToolResult GetSessionUsage([McpParam("How many tools to list")] int topTools = 5)
     {
         var host = AssistantHost.Instance;
@@ -654,7 +654,7 @@ public sealed class EditorTools
     [McpTool("read_console",
         "Read the editor's Output Log. Pass the latestSequence from the previous result as sinceSequence to get only new " +
         "entries. level filters to that severity and above: info, warning, error.",
-        MainThread = false)]
+        MainThread = false, ReadOnly = true)]
     public McpToolResult ReadConsole(
         [McpParam("Only entries after this sequence number")] long sinceSequence = 0,
         [McpParam("Minimum level: info, warning or error")] string? level = null,

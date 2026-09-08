@@ -84,7 +84,7 @@ public sealed class ComponentTools
     [McpTool("list_component_types",
         "The component types that can be added, grouped by category (Rendering, Physics, Gameplay, Audio, Animation, " +
         "AI, UI, Scripting…). Names only by default; namesOnly=false adds a one-line description, required companions " +
-        "and whether each comes from the engine or the project.")]
+        "and whether each comes from the engine or the project.", ReadOnly = true)]
     public McpToolResult ListComponentTypes(
         [McpParam("Only this category")] string? category = null,
         [McpParam("Case-insensitive substring of the type name")] string? search = null,
@@ -123,7 +123,7 @@ public sealed class ComponentTools
 
     [McpTool("describe_component_type",
         "The editable properties of a component type: name, type, enum values, default value, documentation, and whether " +
-        "the property is saved in the scene file.")]
+        "the property is saved in the scene file.", ReadOnly = true)]
     public McpToolResult DescribeComponentType([McpParam("Component type name")] string componentType)
     {
         var type = ResolveComponentTypeOrThrow(componentType);
@@ -221,7 +221,7 @@ public sealed class ComponentTools
         });
     }
 
-    [McpTool("get_property", "Read one property of a component (or of the actor itself with componentType 'Actor').")]
+    [McpTool("get_property", "Read one property of a component (or of the actor itself with componentType 'Actor').", ReadOnly = true)]
     public McpToolResult GetProperty(
         [McpParam("Actor id or name")] string actor,
         [McpParam("Component type name, or 'Actor'")] string componentType,

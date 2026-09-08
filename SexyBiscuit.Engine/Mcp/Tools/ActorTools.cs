@@ -154,7 +154,7 @@ public sealed class ActorTools
         return result;
     }
 
-    [McpTool("list_actor_presets", "The palette presets with category, description and the components each one creates.")]
+    [McpTool("list_actor_presets", "The palette presets with category, description and the components each one creates.", ReadOnly = true)]
     public McpToolResult ListActorPresets()
     {
         var list = new JsonArray();

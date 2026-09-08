@@ -125,6 +125,13 @@ for an agent: one compact JSON text block led by a summary line, stubs (`id`, `n
 list of edits in one call and one undo step; `run_scene_report`, `run_tests` and
 `export_build` return counts and one-line-per-target reports instead of logs.
 
+Each entry also carries the hints a client reads before calling: `readOnlyHint` for a tool that
+changes nothing anywhere (the `get_`, `list_` and `describe_` family, 27 of the 88), and
+`destructiveHint` for one worth confirming. `readOnlyHint` used to be inferred from whether a
+tool edited the *scene*, which meant everything that wrote a file, spawned a process or published
+a build claimed to be read-only — `publish_build` among them, and `uninstall_cookie` claiming
+both at once. It is opt-in now.
+
 | Tool | Description | Parameters |
 |---|---|---|
 | `add_component` | Add a component to an actor by type name (short names such as 'Light3D' work). Companion components the type requires are added automatically and reported. properties sets initial values by property name. | `actor`: string<br>`componentType`: string<br>`properties`: any JSON value (optional) (optional) |

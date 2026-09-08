@@ -49,7 +49,7 @@ public sealed class MaterialTools
         return McpToolResult.Json(MaterialView(target.Name, materialIndex, material), $"Updated material {materialIndex} on '{target.Name}'.");
     }
 
-    [McpTool("get_material", "Read a MeshRenderer material.")]
+    [McpTool("get_material", "Read a MeshRenderer material.", ReadOnly = true)]
     public McpToolResult GetMaterial(
         [McpParam("Actor id or name")] string actor,
         [McpParam("Material slot")] int materialIndex = 0)

@@ -236,7 +236,7 @@ public sealed class ShippingTools
     [McpTool("get_build_report",
         "The report of an export_build run — the latest when jobId is omitted: state, and one line per target with the " +
         "archive, its size, and the upload URL or the first errors.",
-        MainThread = false)]
+        MainThread = false, ReadOnly = true)]
     public McpToolResult GetBuildReport([McpParam("A job id from export_build")] string? jobId = null)
     {
         var job = jobId == null ? _latest : _jobs.GetValueOrDefault(jobId);

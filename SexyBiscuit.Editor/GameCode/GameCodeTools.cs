@@ -30,7 +30,7 @@ public sealed class GameCodeTools
         "Describe the open project's C# code project: csproj path, Source/ files, output DLL, the loaded assembly " +
         "generation, whether it was compiled against the engine build this editor runs, and the last build. Read-only; " +
         "use create_code_project to add one.",
-        MainThread = false)]
+        MainThread = false, ReadOnly = true)]
     public McpToolResult GetCodeProject()
     {
         var project = _code.Project;
@@ -292,7 +292,7 @@ public sealed class GameCodeTools
         "Status and diagnostics of a build started by build_project, reload_game_code, create_code_project, run_standalone " +
         "or rebuild_engine_and_restart (the latest when build_id is omitted). For an engine rebuild, state 'restarting' " +
         "means the editor is about to restart — stop calling tools, wait 15-30 seconds, then call get_context.",
-        MainThread = false)]
+        MainThread = false, ReadOnly = true)]
     public McpToolResult GetBuildStatus([McpParam("A build id from an earlier result")] string? buildId = null)
     {
         var job = _code.FindJob(buildId);
@@ -360,7 +360,7 @@ public sealed class GameCodeTools
 
     [McpTool("list_actor_classes",
         "Actor classes you can place or name in spawn_actor's class: the engine's gameplay classes (Actor, GameMode, " +
-        "Character, PlayerController…) and the project's own, with source 'engine' or 'project', base class and doc summary.")]
+        "Character, PlayerController…) and the project's own, with source 'engine' or 'project', base class and doc summary.", ReadOnly = true)]
     public McpToolResult ListActorClasses([McpParam("'engine', 'project' or omit for both")] string? source = null)
     {
         var list = new JsonArray();
@@ -491,7 +491,7 @@ public sealed class GameCodeTools
         "Where the engine source is (repository root, engine/editor/test projects, solution), whether it is a git " +
         "checkout and on which branch, the running editor's engine build id, and the exact dotnet commands to build the " +
         "engine, the editor and the tests. Read this before editing engine code.",
-        MainThread = false)]
+        MainThread = false, ReadOnly = true)]
     public McpToolResult GetEngineRepo()
     {
         var repo = _code.Repo;
