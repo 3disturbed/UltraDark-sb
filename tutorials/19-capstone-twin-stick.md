@@ -169,12 +169,11 @@ public class Game : SBEngine
         return a;
     }
 
-    public Canvas CreateCanvas(Scene scene, string name = "UI")
+    public UiCanvas CreateCanvas(Scene scene, string name = "UI")
     {
         var actor  = new Actor(name);
-        var canvas = actor.AddComponent<Canvas>();
-        canvas.Font                = Font;
-        canvas.ScaleMode           = CanvasScaleMode.PixelPerfect;
+        var canvas = actor.AddComponent<UiCanvas>();
+        canvas.ScaleMode           = UiScaleMode.ConstantPixel;
         canvas.ReferenceResolution = new Vector2(Config.WindowWidth, Config.WindowHeight);
         scene.AddActor(actor, "ui");
         return canvas;
@@ -685,33 +684,35 @@ namespace MyGame.UI;
 
 public static class UpgradeScreen
 {
-    public static void Show(Game game, Canvas canvas)
+    public static void Show(Game game, UiCanvas canvas)
     {
         Time.TimeScale = 0f;                 // freeze gameplay; UI stays live
 
-        var panel = canvas.AddWidget<Panel>();
-        panel.Position          = new Vector2(390, 160);
-        panel.Size              = new Vector2(500, 400);
-        panel.BackgroundTexture = game.WhiteTexture;
-        panel.BackgroundColor   = new Color(14, 16, 28, 242);
-        panel.LayoutMode        = PanelLayoutMode.Vertical;
-        panel.Padding           = 10f;
-
-        var header = new Label
+        // Centred and sized to its rows: adding a choice grows the panel instead of
+        // clipping out of it, and nothing here knows the window size.
+        UiNode panel = canvas.Root.Add(new UiNode
         {
-            Text      = $"WAVE {Progress.Wave - 1} CLEARED",
-            Size      = new Vector2(480, 36),
-            Alignment = TextAlignment.Center,
-            TextColor = new Color(255, 220, 120),
-        };
-        panel.AddChild(header);
+            Positioning = PositionMode.Absolute, Anchor = UiAnchor.Center,
+            WidthMode = SizeMode.Fixed, Width = 500f,
+            Layout = LayoutMode.Column, Gap = new Vector2(0f, 8f),
+            Padding = new Vector4(10f, 10f, 10f, 10f),
+            CrossAlign = AlignMode.Stretch,
+            Background = new Color(14, 16, 28, 242),
+            Modal = true, Order = 100,
+        });
 
-        var crumbs = new Label
+        panel.Add(new UiNode
         {
-            Size = new Vector2(480, 28), Alignment = TextAlignment.Center,
-            TextColor = Color.White,
-        };
-        panel.AddChild(crumbs);
+            Kind = UiKind.Label,
+            Text = $"WAVE {Progress.Wave - 1} CLEARED",
+            TextAlign = AlignMode.Center,
+            Tint = new Color(255, 220, 120),
+        });
+
+        UiNode crumbs = panel.Add(new UiNode
+        {
+            Kind = UiKind.Label, TextAlign = AlignMode.Center, Tint = Color.White,
+        });
 
         void Refresh() => crumbs.Text = $"{Progress.Crumbs} crumbs";
         Refresh();
@@ -798,40 +799,39 @@ namespace MyGame.UI;
 
 public sealed class Hud
 {
-    private readonly ProgressBar _health;
-    private readonly Label       _stats;
-    private readonly Label       _wave;
+    private readonly UiNode _health;
+    private readonly UiNode _stats;
+    private readonly UiNode _wave;
 
-    public Hud(Game game, Canvas canvas, Health playerHealth, WaveDirector waves)
+    public Hud(Game game, UiCanvas canvas, Health playerHealth, WaveDirector waves)
     {
-        _health = canvas.AddWidget<ProgressBar>();
-        _health.Position          = new Vector2(20, 20);
-        _health.Size              = new Vector2(260, 20);
-        _health.MaxValue          = playerHealth.Max;
-        _health.Value             = playerHealth.Current;
-        _health.BackgroundTexture = game.WhiteTexture;
-        _health.FillTexture       = game.WhiteTexture;
-        _health.BackgroundColor   = new Color(28, 30, 44);
-        _health.FillColor         = new Color(110, 220, 140);
+        canvas.Adopt(UiDocument.FromJson("""
+        {
+          "children": [
+            { "name": "health", "kind": "bar", "absolute": true, "anchor": "topleft",
+              "x": 20, "y": 20, "width": 260, "height": 20,
+              "tint": "#6edc8c", "background": "#1c1e2c" },
 
-        _stats = canvas.AddWidget<Label>();
-        _stats.Position  = new Vector2(0, 20);
-        _stats.Size      = new Vector2(1260, 24);
-        _stats.Alignment = TextAlignment.Right;
+            { "name": "stats", "kind": "label", "absolute": true, "anchor": "topright",
+              "x": -20, "y": 20, "align": "right" },
 
-        _wave = canvas.AddWidget<Label>();
-        _wave.Position  = new Vector2(0, 48);
-        _wave.Size      = new Vector2(1260, 24);
-        _wave.Alignment = TextAlignment.Right;
-        _wave.TextColor = new Color(180, 190, 220);
+            { "name": "wave", "kind": "label", "absolute": true, "anchor": "topright",
+              "x": -20, "y": 48, "align": "right", "tint": "#b4bedc" }
+          ]
+        }
+        """));
+
+        _health = canvas.Find("health")!;
+        _stats  = canvas.Find("stats")!;
+        _wave   = canvas.Find("wave")!;
 
         playerHealth.Changed += (current, max) =>
         {
-            _health.MaxValue  = max;
-            _health.Value     = current;
-            _health.FillColor = current > max * 0.5f  ? new Color(110, 220, 140)
-                              : current > max * 0.25f ? new Color(235, 195, 90)
-                              :                         new Color(225, 90, 90);
+            // A bar is a fraction from 0 to 1; there is no MaxValue to keep in step.
+            _health.Value = max <= 0f ? 0f : Math.Clamp(current / max, 0f, 1f);
+            _health.Tint  = current > max * 0.5f  ? new Color(110, 220, 140)
+                          : current > max * 0.25f ? new Color(235, 195, 90)
+                          :                         new Color(225, 90, 90);
         };
 
         Refresh();
@@ -860,43 +860,34 @@ namespace MyGame.UI;
 
 public static class GameOverScreen
 {
-    public static void Show(Game game, Canvas canvas)
+    public static void Show(Game game, UiCanvas canvas)
     {
         Time.TimeScale = 0f;
 
-        var dim = canvas.AddWidget<Image>();
-        dim.Texture = game.WhiteTexture;
-        dim.Tint    = new Color(0, 0, 0, 190);
-        dim.Size    = new Vector2(game.Config.WindowWidth, game.Config.WindowHeight);
-
-        var panel = canvas.AddWidget<Panel>();
-        panel.Position          = new Vector2(440, 220);
-        panel.Size              = new Vector2(400, 300);
-        panel.BackgroundTexture = game.WhiteTexture;
-        panel.BackgroundColor   = new Color(16, 18, 30, 244);
-        panel.LayoutMode        = PanelLayoutMode.Vertical;
-        panel.Padding           = 12f;
-
-        panel.AddChild(new Label
+        // Stretch covers the screen and keeps covering it; no window size involved.
+        canvas.Root.Add(new UiNode
         {
-            Text = "CRUMBLED", Size = new Vector2(376, 44),
-            Alignment = TextAlignment.Center, TextColor = new Color(235, 110, 90),
+            WidthMode = SizeMode.Stretch, HeightMode = SizeMode.Stretch,
+            Background = new Color(0, 0, 0, 190), Order = 99,
         });
 
-        panel.AddChild(new Label
+        UiNode panel = canvas.Root.Add(UiDocument.FromJson($$"""
         {
-            Text = $"Score {Progress.Score:N0}   Wave {Progress.Wave}",
-            Size = new Vector2(376, 28),
-            Alignment = TextAlignment.Center, TextColor = Color.White,
-        });
-
-        panel.AddChild(new Label
-        {
-            Text = Progress.IsNewHigh ? "NEW HIGH SCORE" : $"Best {Progress.HighScore:N0}",
-            Size = new Vector2(376, 28),
-            Alignment = TextAlignment.Center,
-            TextColor = Progress.IsNewHigh ? new Color(255, 220, 120) : Color.Gray,
-        });
+          "absolute": true, "anchor": "center", "width": 400, "modal": true, "order": 100,
+          "layout": "column", "gap": 8, "padding": 12, "crossAlign": "stretch",
+          "background": "#10121ef4",
+          "children": [
+            { "kind": "label", "text": "CRUMBLED", "scale": 2,
+              "align": "center", "tint": "#eb6e5a" },
+            { "kind": "label", "text": "Score {{Progress.Score:N0}}   Wave {{Progress.Wave}}",
+              "align": "center" },
+            { "kind": "label", "text": "{{(Progress.IsNewHigh ? "NEW HIGH SCORE" : $"Best {Progress.HighScore:N0}")}}",
+              "align": "center", "tint": "{{(Progress.IsNewHigh ? "#ffdc78" : "#808080")}}" },
+            { "name": "retry", "kind": "button", "text": "Retry", "height": 52,
+              "background": "#ffffff14", "align": "center", "autoFocus": true }
+          ]
+        }
+        """));
 
         panel.AddChild(game.MakeButton("Retry", Vector2.Zero, new Vector2(376, 52), () =>
         {
@@ -932,34 +923,31 @@ public static class MainMenuScene
 
         var canvas = game.CreateCanvas(scene, "MenuUI");
 
-        var title = canvas.AddWidget<Label>();
-        title.Text      = "BISCUIT BLASTER";
-        title.Position  = new Vector2(0, 140);
-        title.Size      = new Vector2(1280, 64);
-        title.Alignment = TextAlignment.Center;
-        title.TextColor = new Color(255, 220, 120);
+        canvas.Adopt(UiDocument.FromJson($$"""
+        {
+          "layout": "column", "mainAlign": "center", "crossAlign": "center", "gap": 20,
+          "width": "*", "height": "*",
+          "children": [
+            { "kind": "label", "text": "BISCUIT BLASTER", "scale": 4, "tint": "#ffdc78" },
+            { "kind": "label", "text": "Best: {{Progress.HighScore:N0}}", "tint": "#a0aac8" }
+          ]
+        }
+        """));
 
-        var best = canvas.AddWidget<Label>();
-        best.Text      = $"Best: {Progress.HighScore:N0}";
-        best.Position  = new Vector2(0, 210);
-        best.Size      = new Vector2(1280, 28);
-        best.Alignment = TextAlignment.Center;
-        best.TextColor = new Color(160, 170, 200);
-
-        var panel = canvas.AddWidget<Panel>();
-        panel.Position          = new Vector2(480, 280);
-        panel.Size              = new Vector2(320, 220);
-        panel.BackgroundTexture = game.WhiteTexture;
-        panel.BackgroundColor   = new Color(0, 0, 0, 140);
-        panel.LayoutMode        = PanelLayoutMode.Vertical;
-        panel.Padding           = 12f;
-
-        panel.AddChild(game.MakeButton("Play", Vector2.Zero, new Vector2(296, 56),
-                                       () => ArenaScene.Load(game)));
-        panel.AddChild(game.MakeButton("Options", Vector2.Zero, new Vector2(296, 56),
-                                       () => OptionsPanel.Show(game, canvas, panel)));
-        panel.AddChild(game.MakeButton("Quit", Vector2.Zero, new Vector2(296, 56),
-                                       game.Exit));
+        UiNode panel = canvas.Root.Add(UiDocument.FromJson("""
+        {
+          "name": "menu", "width": 320, "background": "#0000008c",
+          "layout": "column", "gap": 8, "padding": 12, "crossAlign": "stretch",
+          "children": [
+            { "name": "play",    "kind": "button", "text": "Play",    "height": 56,
+              "background": "#ffffff14", "align": "center", "autoFocus": true },
+            { "name": "options", "kind": "button", "text": "Options", "height": 56,
+              "background": "#ffffff14", "align": "center" },
+            { "name": "quit",    "kind": "button", "text": "Quit",    "height": 56,
+              "background": "#ffffff14", "align": "center" }
+          ]
+        }
+        """));
 
         game.Music.Play("Assets/Audio/menu.wav");
     }
@@ -1002,13 +990,16 @@ Wave-cleared banner:
 ```csharp
 waves.WaveCleared += wave =>
 {
-    var banner = canvas.AddWidget<Label>();
-    banner.Text      = $"WAVE {wave} CLEARED";
-    banner.Position  = new Vector2(0, 300);
-    banner.Size      = new Vector2(1280, 48);
-    banner.Alignment = TextAlignment.Center;
-    banner.TextColor = new Color(255, 220, 120);
-    banner.Opacity   = 0f;
+    UiNode banner = canvas.Root.Add(new UiNode
+    {
+        Kind        = UiKind.Label,
+        Text        = $"WAVE {wave} CLEARED",
+        Tint        = new Color(255, 220, 120),
+        Opacity     = 0f,
+        Positioning = PositionMode.Absolute,
+        Anchor      = UiAnchor.Center,
+        TextAlign   = AlignMode.Center,
+    });
 
     Tween.Create()
          .TweenValue(() => banner.Opacity, v => banner.Opacity = v, 1f, 0.25f, EaseType.OutQuad)

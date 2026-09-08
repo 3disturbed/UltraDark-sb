@@ -186,46 +186,25 @@ moving parent (local, not world). Put content that must not be Y-sorted against
 each other on separate layers, and use `SpriteRenderer.LayerDepth` for
 fine-grained order.
 
-### UI scrolls with the camera
+### A canvas is painted by the host, not by `Component.Draw`
 
-`Canvas.Draw` runs inside the camera-transformed scene batch. Hide the `ui`
-layer during the world pass and draw it in its own screen-space batch — see
-[9. UI](09-ui.md#drawing-the-canvas).
+`UiCanvas` is a component but it does not draw through the component pass, which runs
+inside the camera-transformed scene batch. The host collects every canvas and paints it
+afterwards, in screen space, ordered by `UiCanvas.Order`. That is why a HUD does not pan,
+zoom or shake with the camera — the UI this replaced did all three.
 
-### `Canvas` hit-testing ignores the scale matrix
+### A bar is a fraction, not a value
 
-`Canvas.Update` reads `Mouse.GetState()` in raw screen pixels while rendering
-applies `GetScaleMatrix`. With `ScaleWithScreen` at a viewport that differs from
-`ReferenceResolution`, clicks land in the wrong place. Use `PixelPerfect`, or
-set `ReferenceResolution` to the actual back-buffer size.
+`UiNode.Value` on a `Bar` is 0 to 1. There is no `MaxValue`: divide it out yourself. A
+health bar handed 87 out of 100 draws full, and nothing complains.
 
-### Widgets that render nothing
+### An empty container does not take clicks
 
-`Widget` provides `FillRect` / `StrokeRect` helpers over a shared 1×1 pixel, and
-the newer widgets (`ProgressBar`, `TextInput`, `Checkbox`, `Dropdown`,
-`ScrollView`, `TabView`) use them — they are visible with no assets. The older
-ones are not:
+A node with no background and no texture is a layout row, and the hit test walks straight
+through it to whatever is behind. That is deliberate — an invisible container that ate
+clicks would be impossible to debug — but it means a panel you meant to be a click target
+needs a `background`, even a transparent one.
 
-- `Label` draws nothing when `Canvas.Font` is null.
-- `Panel.BackgroundColor` is only a **tint for `BackgroundTexture`** — no
-  texture, no fill.
-- `Button` with no `NormalTexture` draws only its text.
-- `Image` needs a `Texture`; `Slider` needs `TrackTexture` / `ThumbTexture`.
-
-A 1×1 white texture solves all of them:
-
-```csharp
-var white = new Texture2D(GraphicsDevice, 1, 1);
-white.SetData(new[] { Color.White });
-```
-
-Full table on [9. UI](09-ui.md#which-widgets-need-textures).
-
-### `Widget.Bounds` ignores `AnchorMax`
-
-Stretch anchors only take effect through `AnchorLayout.Apply(child, parent)`,
-which rewrites `Position` and `Size`. `Bounds` on its own uses `AnchorMin`
-plus the literal `Size`.
 
 ### A black 3D scene is a missing camera
 

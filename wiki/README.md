@@ -31,7 +31,7 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [6. Physics](06-physics.md) | Aether 2D + Bepu 3D, colliders, rigidbodies, character controllers, raycasts, units |
 | [7. Input](07-input.md) | Action maps, keyboard/mouse/gamepad/touch, rebinding, cursor control |
 | [8. Audio](08-audio.md) | `AudioManager`, buses, `AudioSource`, handles, fades, effects |
-| [9. UI](09-ui.md) | `Canvas`, widgets, layout, themes, world-space UI |
+| [9. UI](09-ui.md) | `UiCanvas`, the node tree, layout, focus and navigation |
 | [10. Animation](10-animation.md) | Sprite animation, animator state machines, tweens, skeletal animation |
 | [11. JavaScript Scripting](11-scripting.md) | The real script API, lifecycle hooks, hot reload, extending the bridge |
 | [12. Scenes & Prefabs](12-scenes-prefabs.md) | Scene JSON format, serialisation, prefabs, world streaming |

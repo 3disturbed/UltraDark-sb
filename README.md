@@ -602,65 +602,85 @@ Per source or per bus:
 
 ## 10. UI System
 
-### Canvas
-Root of all UI. Attach a `Canvas` component to a Layer:
+One retained widget tree, shared by both engines and reachable from a game script. A UI is
+a tree of nodes laid out by rows, columns and grids, painted in screen space, and navigable
+with a mouse, a finger, a gamepad or a TV remote.
 
-```csharp
-canvas.ScaleMode = CanvasScaleMode.ScaleWithScreen;  // or PixelPerfect / ConstantSize
-canvas.ReferenceResolution = new Vector2(1920, 1080);
+### A whole screen in one call
+
+```js
+UI.build({
+    name: "hud", layout: "column", gap: 8, padding: 12, background: "#161920e6",
+    children: [
+        { name: "title", kind: "label", text: "JAKE01", scale: 3 },
+        { layout: "row", gap: 6, crossAlign: "center", children: [
+            { kind: "label", text: "HP", width: 34 },
+            { name: "hp", kind: "bar", grow: 1, height: 8, tint: "#c63832" },
+        ]},
+    ],
+});
+
+UI.find("hp").value = health / maxHealth;
 ```
 
-### Widgets
+The same document loads from a `.ui` file or a `UiCanvas` component in a scene, and C# builds
+it the same way with `UiDocument.FromJson`.
 
-| Widget | Description |
+### Sizing
+
+| Written | Means |
 |---|---|
-| `Label` | Text with font, size, colour, alignment, wrapping |
-| `Button` | Clickable; normal/hover/pressed/disabled states |
-| `Image` | Texture, tint, 9-patch support |
-| `Slider` | Min/max, step, orientation |
-| `ProgressBar` | Value, fill direction, background/fill textures |
-| `Checkbox` | Boolean toggle with label |
-| `Toggle` / `RadioGroup` | Exclusive options |
-| `TextInput` | Single-line text entry; virtual keyboard on mobile |
-| `Dropdown` | Options list; searchable option |
-| `Panel` | Container with background, padding, border radius |
-| `ScrollView` | Scrollable content container; momentum scrolling |
-| `TabView` | Tab bar + content panels |
+| `width: 240` | pixels |
+| `width: "auto"` | as wide as the content |
+| `width: "*"` | fill the parent — what "cover the screen" means |
+| `width: "50%"` | a share of the parent |
+| `grow: 1` | take the leftover space along the main axis |
 
-### Layout
-- `StackLayout` — horizontal or vertical; gap, alignment, padding
-- `GridLayout` — rows × columns; fixed or flexible cell sizing
-- `AnchorLayout` — 9-point anchor + pixel/percentage offset; stretches with parent
+### Kinds
 
-### Themes / Skins
-JSON skin files define the complete visual style:
-```json
-{
-  "Button": {
-    "normal":   { "texture": "UI/btn_normal.png",   "textColour": "#FFFFFF" },
-    "hover":    { "texture": "UI/btn_hover.png",    "textColour": "#FFFF00" },
-    "pressed":  { "texture": "UI/btn_pressed.png",  "textColour": "#CCCCCC" },
-    "disabled": { "texture": "UI/btn_disabled.png", "textColour": "#666666" },
-    "font": "Fonts/Inter.ttf",
-    "fontSize": 18
-  }
-}
+`panel` `label` `bar` `button` `image` `slider` `toggle` `textField` `dropdown` `scrollView`
+`tabStrip` `spacer` — laid out by `row`, `column`, `grid` or `flow`, with `gap`, `padding`,
+`margin`, `mainAlign` and `crossAlign`.
+
+### Anchors, for what you would rather place than lay out
+
+`absolute: true` plus an anchor, which is both where on the parent the node hangs and which of
+its own corners hangs there:
+
+```js
+UI.root.add({ kind: "label", text: "v1.0.1", absolute: true, anchor: "bottomright", x: -12, y: -12 });
 ```
-Swap skins at runtime: `UIManager.SetSkin("Skins/dark.json")`.
 
-### UI Events
-```csharp
-button.OnClick += () => SceneManager.LoadScene("GameScene");
-slider.OnValueChanged += v => AudioBus.Master.Volume = v;
-textInput.OnSubmit += text => SendChatMessage(text);
+### Focus, so a menu works on a pad
+
+Any button is focusable and the engine walks between them spatially — no per-button wiring.
+
+```js
+UI.setFocus(UI.find("resume"));
+UI.navigate("down");        // false when there is nothing that way
+UI.inputMode;               // "pointer" | "directional" | "touch"
 ```
-All events also fire in attached JS scripts.
 
-### World-Space UI
-`WorldCanvas` component — UI rendered in 3D/2D world space anchored to an Actor:
-- Health bars above enemies
-- Floating damage numbers (tweened upward and faded)
-- Interaction prompts that billboard toward the camera
+`modal: true` traps focus inside a node, so a pause menu cannot lose the cursor to the HUD
+behind it, and a click outside it misses rather than pressing what it lands on.
+
+### Interaction is polled, not called back
+
+`clicked`, `hovered`, `pressed` and `focused` are flags read each frame. A JS function held by
+the C# side marshals differently on the two engines; a boolean does not.
+
+```js
+if (UI.find("start").clicked) { Scene.load("Scenes/Level1"); }
+```
+
+### Text
+
+One 5×7 bitmap font in `html5/src/ui/font5x7.json`, imported by the browser and embedded by
+the C# engine, so the two cannot render different text. A label sizes itself unless given a
+width, and `wrapText: true` breaks it to whatever the layout hands it.
+
+Full reference: [`wiki/09-ui.md`](wiki/09-ui.md) and [`wiki/11-scripting.md`](wiki/11-scripting.md).
+
 
 ---
 

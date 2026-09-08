@@ -413,41 +413,49 @@ public override void OnCollisionEnter(CollisionData data)
 ### Floating damage number
 
 ```csharp
-void SpawnDamageNumber(Scene scene, Vector2 worldPos, int amount, SpriteFont font)
+void SpawnDamageNumber(UiCanvas canvas, Vector2 screenPos, int amount)
 {
-    var a = new Actor($"dmg{amount}");
-    a.Transform.Position = worldPos;
+    UiNode label = canvas.Root.Add(new UiNode
+    {
+        Kind        = UiKind.Label,
+        Text        = amount.ToString(),
+        Tint        = Color.OrangeRed,
+        Positioning = PositionMode.Absolute,
+        Offset      = screenPos,
+        TextAlign   = AlignMode.Center,
+    });
 
-    var wc = a.AddComponent<WorldCanvas>();
-    wc.Canvas.Font = font;
-    var label = wc.Canvas.AddWidget<Label>();
-    label.Text      = amount.ToString();
-    label.TextColor = Color.OrangeRed;
-
-    scene.AddActor(a, "foreground");
-
-    var tw = Tween.Create();
-    tw.BoundActor = a;
-    tw.TweenPosition(a.Transform, worldPos + new Vector2(0, -48), 0.8f, EaseType.OutCubic)
-      .OnComplete(() => a.Destroy())
-      .Play();
+    Tween.Create()
+         .TweenFloat(label, nameof(label.Opacity), 0f, 0.8f, EaseType.Linear)
+         .TweenValue(() => label.Offset.Y,
+                     y => label.Offset = new Vector2(label.Offset.X, y),
+                     screenPos.Y - 48f, 0.8f, EaseType.OutCubic)
+         .OnComplete(label.Detach)
+         .Play();
 }
 ```
+
+`Camera2D.WorldToScreen` turns a world position into the screen one this wants. There is no
+world-space canvas: a number that follows an actor is a node whose offset you write each frame.
 
 ### Fade a scene in
 
 ```csharp
-var overlay = canvas.AddWidget<Image>();
-overlay.Texture = whitePixel;
-overlay.Tint    = Color.Black;
-overlay.Size    = new Vector2(1920, 1080);
-overlay.Opacity = 1f;
+UiNode overlay = canvas.Root.Add(new UiNode
+{
+    WidthMode = SizeMode.Stretch,
+    HeightMode = SizeMode.Stretch,
+    Background = Color.Black,
+    Order = 1000,
+});
 
 Tween.Create()
      .TweenValue(() => overlay.Opacity, v => overlay.Opacity = v, 0f, 0.75f, EaseType.OutQuad)
-     .OnComplete(() => canvas.RemoveWidget(overlay))
+     .OnComplete(overlay.Detach)
      .Play();
 ```
+
+`Stretch` on both axes is what covers the screen, and it keeps covering it through a resize.
 
 ---
 

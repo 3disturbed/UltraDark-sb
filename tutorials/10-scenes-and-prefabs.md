@@ -438,16 +438,18 @@ public static class SceneTransition
         var scene  = game.SceneManager.ActiveScene!;
         var canvas = game.CreateCanvas(scene, "Transition");
 
-        var fade = canvas.AddWidget<Image>();
-        fade.Texture = game.WhiteTexture;
-        fade.Tint    = Color.Black;
-        fade.Opacity = 0f;
-        fade.Size    = new Vector2(game.Config.WindowWidth, game.Config.WindowHeight);
+        // Stretch on both axes covers the screen and keeps covering it through a resize,
+        // so there is no size to keep in step with the window.
+        var fade = canvas.Root.Add(new UiNode
+        {
+            WidthMode = SizeMode.Stretch, HeightMode = SizeMode.Stretch,
+            Background = Color.Black, Opacity = 0f, Order = 1000,
+        });
 
         game.Coroutines.Start(Run(game, fade, swap, duration));
     }
 
-    private static IEnumerator Run(Game game, Image fade, Action swap, float duration)
+    private static IEnumerator Run(Game game, UiNode fade, Action swap, float duration)
     {
         float t = 0f;
         while (t < duration)
@@ -461,11 +463,11 @@ public static class SceneTransition
 
         // The old canvas died with the old scene, so build a fresh overlay.
         var canvas = game.CreateCanvas(game.SceneManager.ActiveScene!, "Transition");
-        var fadeIn = canvas.AddWidget<Image>();
-        fadeIn.Texture = game.WhiteTexture;
-        fadeIn.Tint    = Color.Black;
-        fadeIn.Opacity = 1f;
-        fadeIn.Size    = fade.Size;
+        var fadeIn = canvas.Root.Add(new UiNode
+        {
+            WidthMode = SizeMode.Stretch, HeightMode = SizeMode.Stretch,
+            Background = Color.Black, Opacity = 1f, Order = 1000,
+        });
 
         t = 0f;
         while (t < duration)

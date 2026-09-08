@@ -130,10 +130,12 @@ HTML5 development builds go on the server as a Game Card instead.
 
 Rules for this phase, and the reason for each:
 
-- **A game has real UI now.** `UI.panel/label/bar/button/image` are screen-space and anchored, and
-  `UI.width`/`UI.height` are the viewport the contract went years without. Text works on both
-  engines. Do not build another HUD out of world-space sprites over the player's head; reach for
-  the `hud-kit` cookie, and `screen-effects` for shake, flash, fade and hit-stop.
+- **A game has a real UI tree now.** `UI.build({...})` takes a whole screen in one call: nodes
+  that contain nodes, laid out in rows, columns and grids, sized `auto`, `grow` or `"*"`, and
+  navigable with a pad or a TV remote because any button is focusable. Text works on both engines.
+  Do not build another HUD out of world-space sprites over the player's head, and do not hand-place
+  rows by adding up glyph heights; reach for the `hud-kit` cookie, and `screen-effects` for shake,
+  flash, fade and hit-stop. `wiki/11-scripting.md` is the reference.
 - **Do not read the engine source to write a game.** Read `wiki/11-scripting.md` and the
   template's own scripts. The engine is over 50,000 lines of C#; putting it in context is the
   single most expensive thing a session can do.
@@ -189,11 +191,10 @@ renderer will and fail if any layer is not strictly behind the next.
 `SpriteSortMode.BackToFront`, whose convention is the reverse. If that is right, a scene using
 `LayerDepth` renders inside-out between the two engines, and no test on either side references it.
 
-**There is no viewport in the scripting contract.** No window size, no camera bounds. A script
-therefore cannot pin anything to a screen corner or size a full-screen quad, which rules out a
-conventional HUD, a screen-space overlay and mouse-to-world aiming. The way through is to put it
-in world space and follow an actor: status bars above the player's head, and a tint large enough
-to cover any view centred on them. Both are in the CookieJar.
+**A full-screen overlay is `width: "*"`, not a panel resized every frame.** The layout engine
+fills the parent for you, through a resize, a rotation or going fullscreen. Sizing something from
+`UI.width` each frame is the shape this had before there was a tree, and it is now a per-frame
+loop that does nothing.
 
 **The bundled smoke test proves less than it looks like.** It runs sixty frames with no physics
 host and no asset loader — so it never reaches a day/night transition, and it never loads a script
@@ -608,14 +609,14 @@ JavaScript ones are:
 | Cookie | What it gives you |
 |---|---|
 | `noise-and-hearing` | enemies that hunt by ear: a sound is a position and a radius, and they walk to where it *was* |
-| `floating-status-bars` | meters in world space above an actor's head — the answer to having no viewport |
+| `floating-status-bars` | meters in world space above an actor's head — for other things; a player's own HUD wants `hud-kit` |
 | `day-night-cycle` | a clock publishing a 0–1 darkness curve and a day number, plus the overlay that dims the world |
 | `wave-director` | endless escalating waves and a boss cadence, where a wave is a *budget* rather than a headcount — plus the stall-breaker, without which one rooted enemy in a corner is a wave that never ends |
 | `entity-ledger` | forty enemies in one script instead of forty script engines — and the four rules that make a ledger safe: removal swaps, iterate backwards, a cascade must not recurse, and colliders exist so projectiles can find what they hit |
 | `stacking-upgrades` | upgrades that stack, recomputed from scratch every time and never deduplicated, with the effects as a data table so the cards read what the maths reads |
 | `pickup-drops` | coins and hearts on the floor: pooled, blinking before they expire, magnetised by an upgrade the collector holds, collected with one call |
 | `projectile-pool` | hundreds of projectiles in one script over a pool, swept so a fast one cannot step over its target between frames |
-| `draft-picker` | one of N cards between rounds, in world space and said in colour and pips, because the contract has neither a viewport nor a font |
+| `draft-picker` | one of N cards between rounds, in screen space with real text, laid out as a centred row |
 
 A cookie summary costs about thirty tokens. Deriving the same module again costs thousands, in
 every game that needs it. See `wiki/28-the-cookiejar.md`.
