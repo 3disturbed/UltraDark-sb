@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { fromObject } from '../src/ui/UiDocument.js';
 import { measure, arrange, hitTest } from '../src/ui/UiLayout.js';
 import { UiNode } from '../src/ui/UiNode.js';
+import { UiCanvas } from '../src/ui/UiCanvas.js';
 import { UiKind, LayoutMode, SizeMode, PositionMode, ScrollMode, UiAnchor } from '../src/ui/UiEnums.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -211,4 +212,40 @@ test('no background is not the same as a black background', () => {
     assert.equal(fromObject({}).background, null);
     assert.equal(fromObject({ background: null }).background, null);
     assert.equal(fromObject({ background: '#000' }).background, '#000000');
+});
+
+test('a panel built hidden lays out when it is shown', () => {
+    // `invalidateMeasure` stops at the first node already fully dirty, which is only
+    // sound while a dirty node implies dirty ancestors. Nothing cleared a subtree the
+    // layout pass never reached, so a node under a hidden one stayed dirty for ever;
+    // the next change inside it broke out of that walk at once, the root was never
+    // marked, and UiCanvas.layout() skipped the pass. A panel built hidden and shown
+    // later therefore never laid out at all -- zero rect, invisible, un-clickable --
+    // which is what a pause menu, a dialog and a card picker all are.
+    UiCanvas.clearAll();
+    const canvas = new UiCanvas();
+    canvas.setViewport(1280, 720);
+    canvas.adopt(fromObject({
+        name: 'root', layout: 'column',
+        children: [{
+            name: 'card', visible: false, width: 200, height: 100, layout: 'column',
+            children: [{ name: 'title', kind: 'label', text: 'x' }],
+        }],
+    }));
+
+    canvas.layout();
+
+    const card = canvas.find('card');
+    const title = canvas.find('title');
+    assert.equal(title.measureDirty, false,
+        'a node under a hidden one was left dirty, so nothing below it can ever mark the root');
+
+    // What opening a menu does: fill the labels in, then show it.
+    title.text = 'Dash Nova';
+    card.visible = true;
+    assert.equal(canvas.root.measureDirty, true, 'showing a panel did not reach the root');
+
+    canvas.layout();
+    assert.equal(card.rect.width, 200, 'the panel was shown and still has no size');
+    assert.ok(title.rect.width > 0, 'the label inside it was never measured');
 });

@@ -429,6 +429,23 @@ export class UiNode {
         this.arrangeDirty = false;
     }
 
+    /**
+     * Clears this node and everything under it.
+     *
+     * `invalidateMeasure` stops at the first node already fully dirty, which is
+     * only sound while a dirty node implies dirty ancestors. A subtree the layout
+     * pass never reaches -- one under a hidden node -- would otherwise keep the
+     * flags it was born with for ever, and the next change inside it would break
+     * out of that walk immediately and never mark the root. The canvas would then
+     * skip the pass, so a panel built hidden and shown later never lays out at
+     * all: it stays at a zero rect, invisible and un-clickable, which is what a
+     * pause menu, a dialog and a card picker all are.
+     */
+    clearDirtyTree() {
+        this.clearDirty();
+        for (const child of this.children) child.clearDirtyTree();
+    }
+
     toString() { return this._name ? `${this._kind}[${this._name}]` : String(this._kind); }
 
     // -------------------------------------------------------------------------

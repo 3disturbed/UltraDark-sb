@@ -180,7 +180,7 @@ export function arrange(node, final, parentClip) {
     node.clipRect = clips(node) ? intersect(parentClip, final) : parentClip;
 
     if (!node.visible) {
-        node.clearDirty();
+        node.clearDirtyTree();
         return;
     }
 
@@ -217,6 +217,14 @@ export function arrange(node, final, parentClip) {
         if (child.visible && child.positioning === PositionMode.Absolute) {
             arrange(child, anchorRect(child, node.contentRect), node.clipRect);
         }
+    }
+
+    // A child that is not visible is skipped by both passes above -- flowChildren
+    // filters it out and the absolute loop tests the same flag -- so nothing has
+    // cleared its subtree. Leaving it dirty breaks the invariant invalidateMeasure
+    // relies on, and the symptom is a whole panel that never appears.
+    for (const child of node.children) {
+        if (!child.visible) child.clearDirtyTree();
     }
 
     node.clearDirty();
