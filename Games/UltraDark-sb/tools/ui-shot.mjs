@@ -60,11 +60,19 @@ try {
 // one case a sweep like this exists to look past. What overflows is what the
 // player would see off the edge.
 //
-// A node with no size is skipped rather than reported: a layout row is a
-// container, and an empty container at 0x0 is not a thing hanging off the screen.
-const out = g.ui.nodes()
-    .map((n) => ({ kind: n.kind, name: n.name, text: n.text, ...n.screen }))
-    .filter((n) => n.width > 0 && n.height > 0);
+const all = g.ui.nodes().map((n) => ({ kind: n.kind, name: n.name, text: n.text, ...n.screen }));
+
+// A container at 0x0 is not a fault -- an empty layout row is legitimately
+// nothing. A BAR at 0x0 is, and so is a label with words in it: both are things
+// the player is meant to read, and a zero rect is the exact shape of "grow: 1
+// with nothing to grow into" or "a percentage of a parent sized by its content".
+//
+// Skipping them, which is what this did first, is how the HUD shipped with five
+// bars of no width and a boss bar pinned to its minimum at every window size --
+// visible only in a native frame, and only because somebody looked.
+const collapsed = all.filter((n) => (n.kind === 'bar' || n.text) && (n.width <= 0 || n.height <= 0));
+
+const out = all.filter((n) => n.width > 0 && n.height > 0);
 
 fs.writeFileSync('/tmp/ui-rects.json', JSON.stringify({ state, W, H, elements: out }, null, 1));
 
@@ -73,7 +81,12 @@ const SLACK = 2;
 const outside = out.filter((e) => e.x < -SLACK || e.y < -SLACK
     || e.x + e.width > W + SLACK || e.y + e.height > H + SLACK);
 
-console.log(`  ${state.padEnd(7)} ${String(W).padStart(5)}x${String(H).padEnd(5)} ${String(out.length).padStart(3)} visible, ${outside.length} outside`);
+console.log(`  ${state.padEnd(7)} ${String(W).padStart(5)}x${String(H).padEnd(5)} `
+    + `${String(out.length).padStart(3)} visible, ${outside.length} outside, ${collapsed.length} collapsed`);
+for (const n of collapsed.slice(0, 8)) {
+    console.log(`    COLLAPSED ${n.kind} "${n.name}" ${JSON.stringify(n.text).slice(0, 30)} `
+        + `is ${n.width}x${n.height}`);
+}
 for (const e of outside.slice(0, 12)) {
     console.log(`    OUTSIDE ${e.kind.padEnd(6)} "${e.text.slice(0, 18)}" x=${Math.round(e.x)} y=${Math.round(e.y)} w=${Math.round(e.width)} h=${Math.round(e.height)}`);
 }
@@ -82,4 +95,4 @@ if (out.length === 0) {
     console.log('    FAIL: nothing was drawn at all');
     process.exit(1);
 }
-if (outside.length > 0) { process.exit(1); }
+if (outside.length > 0 || collapsed.length > 0) { process.exit(1); }

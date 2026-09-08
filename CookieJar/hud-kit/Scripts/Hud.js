@@ -178,7 +178,10 @@ function build() {
                 name: "panel", absolute: true, anchor: anchor,
                 x: signedX(marginX), y: signedY(marginY),
                 width: panelWidth, height: "auto",
-                layout: "column", gap: 4, padding: 10,
+                // stretch, or every row is only as wide as its own content and the
+                // bar's `grow: 1` has nothing left to take -- a HUD of labels and
+                // numbers with no bars between them, which is what this drew.
+                layout: "column", gap: 4, padding: 10, crossAlign: "stretch",
                 background: panelColour,
                 children: children,
             },
@@ -187,7 +190,16 @@ function build() {
                 absolute: true, anchor: "bottom", y: -marginY - 6,
                 scale: 2, tint: textColour,
             },
-            { name: "trackers", absolute: true, anchor: "top", y: trackerTop,
+            // A STRETCH anchor across the top, not a point anchor at top-centre.
+            //
+            // The bar inside is a percentage, and a percentage of a container sized
+            // to its own content is circular: it measured against the canvas and
+            // was then arranged against the 538 that measurement produced, so
+            // "42% of the viewport" came out as 42% of 42% and the bar sat on its
+            // minimum at every window size. anchorMin.x != anchorMax.x is what
+            // makes a node span its parent rather than hang off a point in it.
+            { name: "trackers", absolute: true, anchorMin: [0, 0], anchorMax: [1, 0],
+              y: trackerTop,
               layout: "column", gap: trackerGap, crossAlign: "center", children: [] },
         ],
     });
@@ -265,8 +277,10 @@ function buildTrackers() {
         // computed per row -- that trailing `8 * scale + 4` was this file's guess at how
         // tall a label is, which is a thing the layout engine can simply measure.
         var group = host.add({
+            // Full width, so the percentage below resolves against the screen and
+            // crossAlign centres the bar inside it.
             name: "tracker" + i, layout: "column", gap: 2, crossAlign: "center",
-            visible: false,
+            width: "*", visible: false,
             children: [
                 // A fraction of the viewport, clamped, which used to be four lines of
                 // imperative arithmetic re-run sixty times a second in updateTrackers.
