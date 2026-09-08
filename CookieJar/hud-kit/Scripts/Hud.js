@@ -111,6 +111,7 @@ var statRows = [];             // { label, valueLabel, source, script, prefix, s
 var trackerRows = [];          // { bar, nameLabel, tag, source, name, flag, flagText }
 var messageLabel = null;
 var messageTimer = 0;
+var built = 0;
 
 var overlay = null;
 var overlayTitle = null;
@@ -121,7 +122,26 @@ function onStart() {
     player = Scene.findFirstByTag(targetTag);
     if (player) { playerScript = player.getComponent("ScriptComponent"); }
 
-    build();
+    // ensureBuilt, not build: something may already have spoken to this HUD from
+    // its own onStart, and building again would replace the root it landed on.
+    ensureBuilt();
+}
+
+/**
+ * Builds the tree if it is not there yet.
+ *
+ * Every entry point below goes through this, because a manager that says
+ * something to the HUD from its OWN onStart is ordinary -- a Director that opens
+ * on a menu does exactly that -- and start order between two actors in one scene
+ * is not something to rely on.
+ *
+ * With the flat UI a too-early call merely added an element. `UI.build` REPLACES
+ * this script's root, so an overlay added before it was silently thrown away the
+ * moment this script started: the game opened on a menu with no menu on it, and
+ * nothing anywhere said so.
+ */
+function ensureBuilt() {
+    if (!built) { build(); }
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +149,8 @@ function onStart() {
 // ---------------------------------------------------------------------------
 
 function build() {
+    built = 1;
+
     // A column sized to its own content. This used to be a hand-summed height --
     // `marginY + (title ? 22 : 0) + rows * rowHeight + 10` -- which had to be kept
     // in step with every row added below it, and a bar whose width was
@@ -201,7 +223,7 @@ function statRow(stat, index) {
             { name: "statLabel" + index, kind: "label", text: stat.label,
               width: labelWidth, scale: textScale, tint: dimColour },
             { name: "statValue" + index, kind: "label", text: "-", grow: 1,
-              align: "right", scale: textScale, tint: textColour },
+              align: "end", scale: textScale, tint: textColour },
         ],
     };
 }
@@ -216,7 +238,7 @@ function barRow(row, index) {
             { name: "bar" + index, kind: "bar", grow: 1, height: 8, value: 1,
               tint: row.colour, background: trackColour },
             { name: "barValue" + index, kind: "label", text: "100", width: 30,
-              align: "right", scale: textScale, tint: dimColour },
+              align: "end", scale: textScale, tint: dimColour },
         ],
     };
 }
@@ -395,6 +417,7 @@ function format(value, decimals) {
 
 /** Change the panel's heading — a class, a level name, whoever is being played. */
 function setTitle(text) {
+    ensureBuilt();
     if (!titleLabel) { return 0; }      // built with title "", so there is no row to write to
     titleLabel.text = String(text);
     return 1;
@@ -402,6 +425,7 @@ function setTitle(text) {
 
 /** One line along the bottom of the screen, gone a few seconds later. */
 function say(text) {
+    ensureBuilt();
     if (!messageLabel) { return; }
     messageLabel.text = String(text);
     messageLabel.visible = true;
@@ -410,6 +434,7 @@ function say(text) {
 
 /** The pause / game-over overlay. `hint` is the small line under the heading. */
 function setPaused(on, heading, hint) {
+    ensureBuilt();
     paused = Boolean(on);
 
     if (!paused) {
