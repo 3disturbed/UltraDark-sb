@@ -17,6 +17,7 @@ import { ConsolePanel } from './panels/Console.js';
 import { PalettePanel } from './panels/Palette.js';
 import { ChibiPanel } from './panels/Chibi.js';
 import { AssetsPanel } from './panels/Assets.js';
+import { EditorHistory } from './EditorHistory.js';
 
 import * as SB from '../src/index.js';
 import { EngineHost, EngineConfig } from '../src/EngineHost.js';
@@ -41,6 +42,7 @@ export class Editor {
         this.engine = null;
         this._sceneSnapshot = null;
         this._directoryHandle = null;
+        this.history = new EditorHistory(this);
     }
 
     /** The scene being edited or played. */
@@ -188,6 +190,17 @@ export class Editor {
             el('div.sb-toolgroup.sb-transport', {},
                 this._playButton, this._pauseButton, this._stopButton),
 
+            el('div.sb-toolgroup.sb-transform-tools', {},
+                button('W', 'Move selection  (W)', () => { this.state.gizmoMode = 'translate'; }),
+                button('E', 'Rotate selection  (E)', () => { this.state.gizmoMode = 'rotate'; }),
+                button('R', 'Scale selection  (R)', () => { this.state.gizmoMode = 'scale'; }),
+                button('World', 'Toggle world/local transform space', () => {
+                    this.state.transformSpace = this.state.transformSpace === 'world' ? 'local' : 'world';
+                }),
+                button('Snap', 'Toggle transform snapping', () => {
+                    this.state.snapEnabled = !this.state.snapEnabled;
+                })),
+
             el('div.sb-toolgroup', {},
                 el('label.sb-toggle', {},
                     el('input', {
@@ -227,6 +240,7 @@ export class Editor {
         const scene = (builders[template] ?? createEmpty)('Untitled');
 
         this._adopt(scene);
+        this.history.clear();
         this.state.currentScenePath = null;
         this.state.markClean();
         this.state.info(`New ${template} scene.`);
@@ -237,6 +251,7 @@ export class Editor {
         try {
             const text = await this.engine.assets.loadText(path);
             this._adopt(deserialize(text, { flush: false, onWarning: (m) => this.state.warn(m) }));
+            this.history.clear();
             this.state.currentScenePath = path;
             this.state.markClean();
             this.state.info(`Opened ${path}`);
@@ -249,6 +264,7 @@ export class Editor {
     loadSceneFromText(text, label = 'scene') {
         try {
             this._adopt(deserialize(text, { flush: false, onWarning: (m) => this.state.warn(m) }));
+            this.history.clear();
             this.state.currentScenePath = label;
             this.state.markClean();
             this.state.info(`Opened ${label}`);
@@ -412,6 +428,19 @@ export class Editor {
         this.assets.refresh();
     }
 
+    /** A history snapshot deliberately preserves only editor-owned scene state. */
+    captureHistorySnapshot() {
+        return { scene: serialize(this.scene), path: this.state.currentScenePath };
+    }
+
+    /** Restores a snapshot without clearing the undo stack that asked for it. */
+    restoreHistorySnapshot(snapshot) {
+        this._adopt(deserialize(snapshot.scene, { flush: false, onWarning: (m) => this.state.warn(m) }));
+        this.state.currentScenePath = snapshot.path;
+        this.state.markDirty();
+        this.inspector.render();
+    }
+
     // -------------------------------------------------------------------------
     // Play mode
     // -------------------------------------------------------------------------
@@ -494,9 +523,13 @@ export class Editor {
 
     /** Adds a preset actor in front of the editor camera and selects it. */
     placeActor(preset) {
-        const scene = this.scene;
-        if (!scene) return null;
+        if (!this.scene) return null;
 
+        return this.history.snapshot(`Add ${preset.name}`, () => this._placeActor(preset));
+    }
+
+    _placeActor(preset) {
+        const scene = this.scene;
         const actor = preset.build();
 
         // Drop it where the camera is looking, not at the origin, so it lands in
@@ -522,9 +555,13 @@ export class Editor {
 
     /** Copies an actor through the serialiser, so components come with it. */
     duplicateActor(actor) {
-        const scene = this.scene;
-        if (!scene || !actor) return null;
+        if (!this.scene || !actor) return null;
 
+        return this.history.snapshot(`Duplicate ${actor.name}`, () => this._duplicateActor(actor));
+    }
+
+    _duplicateActor(actor) {
+        const scene = this.scene;
         const copy = buildActor(buildActorDto(actor), (m) => this.state.warn(m));
         copy.name = `${actor.name} copy`;
 
@@ -540,23 +577,24 @@ export class Editor {
 
     deleteActor(actor) {
         if (!actor) return;
-        if (this.state.selectedActor === actor) this.state.selectActor(null);
-
-        actor.destroy();
-        this.scene?.flushPendingActors();
-
-        this.state.markDirty();
-        this.state.notifyHierarchy();
+        this.history.snapshot(`Delete ${actor.name}`, () => {
+            if (this.state.selectedActor === actor) this.state.selectActor(null);
+            actor.destroy();
+            this.scene?.flushPendingActors();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
     }
 
     renameActor(actor) {
         const name = prompt('Actor name', actor.name);
         if (name == null) return;
-
-        actor.name = name;
-        this.state.markDirty();
-        this.state.notifyHierarchy();
-        this.inspector.render();
+        this.history.snapshot(`Rename ${actor.name}`, () => {
+            actor.name = name;
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+            this.inspector.render();
+        });
     }
 
     /**
@@ -565,35 +603,40 @@ export class Editor {
      */
     attachActor(child, parent) {
         if (!child) return;
-        try {
-            child.attachTo(parent ?? null);
-        } catch (err) {
-            this.state.warn(err.message);
-            return;
-        }
-
-        // Attachment can move a child between layers when the two differ; the scene keeps
-        // the subtree together, so the outliner has to be rebuilt from scratch.
-        this.scene?.flushPendingActors();
-        this.state.markDirty();
-        this.state.notifyHierarchy();
+        this.history.snapshot(`Attach ${child.name}`, () => {
+            try {
+                child.attachTo(parent ?? null);
+            } catch (err) {
+                this.state.warn(err.message);
+                return;
+            }
+            // Attachment can move a child between layers when the two differ; the scene keeps
+            // the subtree together, so the outliner has to be rebuilt from scratch.
+            this.scene?.flushPendingActors();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
     }
 
     /** Detaches an actor from its parent, or (with `children`) detaches its children. */
     detachActor(actor, children = false) {
         if (!actor) return;
-        if (children) actor.detachChildren();
-        else actor.detach();
-
-        this.state.markDirty();
-        this.state.notifyHierarchy();
+        this.history.snapshot(children ? `Detach children of ${actor.name}` : `Detach ${actor.name}`, () => {
+            if (children) actor.detachChildren();
+            else actor.detach();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
     }
 
     moveActorToLayer(actor, layerName) {
-        this.scene?.moveActor(actor, layerName);
-        this.scene?.flushPendingActors();
-        this.state.markDirty();
-        this.state.notifyHierarchy();
+        if (!actor) return;
+        this.history.snapshot(`Move ${actor.name} to ${layerName}`, () => {
+            this.scene?.moveActor(actor, layerName);
+            this.scene?.flushPendingActors();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
     }
 
     focusOnActor(actor) { this.viewport.focusOn(actor); }
@@ -618,7 +661,18 @@ export class Editor {
             else if (e.key === 'F7') { e.preventDefault(); this.stop(); }
             else if (e.key === 'F8') { e.preventDefault(); this.stepFrame(); }
             else if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); this.saveScene(); }
-            else if (meta && e.key.toLowerCase() === 'd' && this.state.selectedActor) {
+            else if (meta && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) this.history.redo(); else this.history.undo();
+            } else if (meta && e.key.toLowerCase() === 'y') {
+                e.preventDefault(); this.history.redo();
+            } else if (e.key.toLowerCase() === 'w') {
+                this.state.gizmoMode = 'translate';
+            } else if (e.key.toLowerCase() === 'e') {
+                this.state.gizmoMode = 'rotate';
+            } else if (e.key.toLowerCase() === 'r') {
+                this.state.gizmoMode = 'scale';
+            } else if (meta && e.key.toLowerCase() === 'd' && this.state.selectedActor) {
                 e.preventDefault();
                 this.duplicateActor(this.state.selectedActor);
             } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.selectedActor) {

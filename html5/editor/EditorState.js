@@ -23,6 +23,8 @@ export class EditorState {
 
         /** 'translate' | 'rotate' | 'scale' */
         this.gizmoMode = 'translate';
+        /** Whether transform axes follow the world or the selected actor. */
+        this.transformSpace = 'world';
         this.snapEnabled = false;
         this.translateSnap = 0.25;
         this.rotateSnap = 15;

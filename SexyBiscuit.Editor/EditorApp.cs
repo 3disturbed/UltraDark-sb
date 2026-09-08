@@ -1012,11 +1012,11 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         ImGui.TextDisabled("|");
         ImGui.SameLine();
 
-        GizmoButton("Move",   GizmoMode.Translate, "Translate (G)");
+        GizmoButton("Move",   GizmoMode.Translate, "Move (W)");
         ImGui.SameLine();
-        GizmoButton("Rotate", GizmoMode.Rotate,    "Rotate (R)");
+        GizmoButton("Rotate", GizmoMode.Rotate,    "Rotate (E)");
         ImGui.SameLine();
-        GizmoButton("Scale",  GizmoMode.Scale,     "Scale (S)");
+        GizmoButton("Scale",  GizmoMode.Scale,     "Scale (R)");
 
         ImGui.SameLine();
         ImGui.TextDisabled("|");

@@ -40,6 +40,7 @@ export class ViewportPanel {
         this._dragging = null;
         this._pointerStart = null;
         this._pinchStart = null;
+        this._gizmoDrag = null;
     }
 
     /** The camera the renderer draws through while editing. */
@@ -143,12 +144,21 @@ export class ViewportPanel {
             surface.setPointerCapture(e.pointerId);
             this._pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() };
 
+            // Transform handles get first refusal. Without this guard a handle
+            // drag also begins an orbit, which makes the object appear to run
+            // away from the cursor rather than move with it.
+            if (this._startGizmo(e)) return;
+
             // Middle button or Shift pans; anything else orbits. A touch drag
             // orbits, and two fingers pinch to zoom.
             this._dragging = (e.button === 1 || e.shiftKey) ? 'pan' : 'orbit';
         });
 
         surface.addEventListener('pointermove', (e) => {
+            if (this._gizmoDrag) {
+                this._updateGizmo(e);
+                return;
+            }
             if (!this._dragging || this.state.isPlaying) return;
 
             const dx = e.movementX ?? 0;
@@ -159,6 +169,11 @@ export class ViewportPanel {
 
         surface.addEventListener('pointerup', (e) => {
             const start = this._pointerStart;
+            if (this._gizmoDrag) {
+                this._finishGizmo();
+                this._pointerStart = null;
+                return;
+            }
             this._dragging = null;
             this._pointerStart = null;
             if (!start || this.state.isPlaying) return;
@@ -168,7 +183,10 @@ export class ViewportPanel {
             if (moved < 5 && performance.now() - start.time < 600) this._pick(e);
         });
 
-        surface.addEventListener('pointercancel', () => { this._dragging = null; });
+        surface.addEventListener('pointercancel', () => {
+            this._dragging = null;
+            this._finishGizmo(true);
+        });
 
         surface.addEventListener('wheel', (e) => {
             if (this.state.isPlaying) return;
@@ -285,7 +303,7 @@ export class ViewportPanel {
         return best;
     }
 
-    /** Draws the selection outline over the finished frame. */
+    /** Draws the selection outline and editor gizmo over the finished frame. */
     drawOverlay() {
         const actor = this.state.selectedActor;
         const ctx = this.engine?.ctx;
@@ -332,7 +350,232 @@ export class ViewportPanel {
             minX - padding, minY - padding,
             (maxX - minX) + padding * 2, (maxY - minY) + padding * 2);
         ctx.restore();
+
+        this._drawGizmo(ctx, t3d);
     }
+
+    // -------------------------------------------------------------------------
+    // Transform gizmo
+    // -------------------------------------------------------------------------
+
+    /** Returns the canvas-space point for a pointer event. */
+    _canvasPoint(event) {
+        const rect = this.surface.getBoundingClientRect();
+        return {
+            x: (event.clientX - rect.left) * this.engine.canvas2D.width / rect.width,
+            y: (event.clientY - rect.top) * this.engine.canvas2D.height / rect.height,
+        };
+    }
+
+    _gizmoGeometry(transform) {
+        if (!this._camera || !this.engine) return null;
+        const width = this.engine.canvas2D.width;
+        const height = this.engine.canvas2D.height;
+        const origin = this._camera.worldToScreen(transform.position, width, height);
+        if (!origin) return null;
+
+        const bases = [Vector3.right, Vector3.up, Vector3.forward];
+        const colours = ['#e86a5f', '#6fbf73', '#5b8dd9'];
+        const axes = bases.map((basis, index) => {
+            const world = this.state.transformSpace === 'local'
+                ? Vector3.transform(basis, transform.rotation)
+                : basis;
+            const probe = this._camera.worldToScreen(
+                Vector3.add(transform.position, world), width, height);
+            if (!probe) return { world, colour: colours[index], screen: null, end: origin, worldPerPixel: 0 };
+
+            const dx = probe.x - origin.x;
+            const dy = probe.y - origin.y;
+            const length = Math.hypot(dx, dy);
+            if (length < 0.5) return { world, colour: colours[index], screen: null, end: origin, worldPerPixel: 0 };
+
+            const screen = { x: dx / length, y: dy / length };
+            return {
+                world, colour: colours[index], screen,
+                end: { x: origin.x + screen.x * 76, y: origin.y + screen.y * 76 },
+                worldPerPixel: 1 / length,
+            };
+        });
+        return { origin, axes };
+    }
+
+    _drawGizmo(ctx, transform) {
+        const geometry = this._gizmoGeometry(transform);
+        if (!geometry) return;
+
+        const mode = this.state.gizmoMode;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.lineWidth = 3;
+        ctx.setLineDash([]);
+
+        for (const axis of geometry.axes) {
+            if (!axis.screen) continue;
+            ctx.strokeStyle = axis.colour;
+            if (mode === 'rotate') {
+                ctx.beginPath();
+                ctx.arc(geometry.origin.x, geometry.origin.y, 38, 0, Math.PI * 2);
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(geometry.origin.x, geometry.origin.y);
+                ctx.lineTo(axis.end.x, axis.end.y);
+                ctx.stroke();
+                ctx.fillStyle = axis.colour;
+                ctx.beginPath();
+                ctx.arc(axis.end.x, axis.end.y, mode === 'scale' ? 6 : 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#14161c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(geometry.origin.x, geometry.origin.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    _pickGizmo(point, geometry) {
+        if (Math.hypot(point.x - geometry.origin.x, point.y - geometry.origin.y) <= 11)
+            return 'free';
+
+        let chosen = null;
+        let best = 10;
+        for (let index = 0; index < geometry.axes.length; index++) {
+            const axis = geometry.axes[index];
+            if (!axis.screen) continue;
+            const distance = distanceToSegment(point, geometry.origin, axis.end);
+            if (distance < best) { best = distance; chosen = index; }
+        }
+        return chosen;
+    }
+
+    _startGizmo(event) {
+        if (!this.state.viewport3D || event.button === 1 || this.state.isPlaying) return false;
+        const actor = this.state.selectedActor;
+        const transform = actor?.getComponent(Transform3D);
+        if (!actor || !transform) return false;
+
+        const geometry = this._gizmoGeometry(transform);
+        if (!geometry) return false;
+        const axis = this._pickGizmo(this._canvasPoint(event), geometry);
+        if (axis == null) return false;
+
+        this._gizmoDrag = {
+            actor,
+            transform,
+            axis,
+            startPoint: this._canvasPoint(event),
+            start: snapshotTransform(transform),
+        };
+        return true;
+    }
+
+    _updateGizmo(event) {
+        const drag = this._gizmoDrag;
+        if (!drag) return;
+        const geometry = this._gizmoGeometry(drag.transform);
+        if (!geometry) return;
+
+        const point = this._canvasPoint(event);
+        const delta = { x: point.x - drag.startPoint.x, y: point.y - drag.startPoint.y };
+        const mode = this.state.gizmoMode;
+
+        if (mode === 'translate') {
+            let move;
+            if (drag.axis === 'free') {
+                const camera = this._camera.getTransform3D();
+                const scale = this._orbitDistance * 0.0022;
+                move = Vector3.add(Vector3.scale(camera.right, -delta.x * scale),
+                    Vector3.scale(camera.up, delta.y * scale));
+            } else {
+                const axis = geometry.axes[drag.axis];
+                const pixels = delta.x * axis.screen.x + delta.y * axis.screen.y;
+                move = Vector3.scale(axis.world, pixels * axis.worldPerPixel);
+            }
+            let position = Vector3.add(drag.start.position, move);
+            if (this.state.snapEnabled) position = snapVector(position, this.state.translateSnap);
+            drag.transform.position = position;
+        } else if (mode === 'rotate') {
+            const degrees = snapValue((delta.x - delta.y) * 0.45,
+                this.state.snapEnabled ? this.state.rotateSnap : 0);
+            const euler = drag.start.euler.clone();
+            if (drag.axis === 'free') euler.y += degrees;
+            else if (drag.axis === 0) euler.x += degrees;
+            else if (drag.axis === 1) euler.y += degrees;
+            else euler.z += degrees;
+            drag.transform.eulerAngles = euler;
+        } else {
+            const amount = (delta.x - delta.y) / 100;
+            const scaleFactor = Math.max(0.01, 1 + amount);
+            let scale = drag.start.scale.clone();
+            if (drag.axis === 'free') scale.scale(scaleFactor);
+            else if (drag.axis === 0) scale.x *= scaleFactor;
+            else if (drag.axis === 1) scale.y *= scaleFactor;
+            else scale.z *= scaleFactor;
+            if (this.state.snapEnabled) scale = snapVector(scale, this.state.scaleSnap);
+            drag.transform.localScale = scale;
+        }
+        this.state.markDirty();
+    }
+
+    _finishGizmo(cancel = false) {
+        const drag = this._gizmoDrag;
+        if (!drag) return;
+        this._gizmoDrag = null;
+
+        const end = snapshotTransform(drag.transform);
+        if (cancel) {
+            applyTransform(drag.transform, drag.start);
+            return;
+        }
+        if (sameTransform(drag.start, end)) return;
+
+        this.editor.history.push(`Transform ${drag.actor.name}`,
+            () => { applyTransform(drag.transform, drag.start); this.inspectorRefresh(); },
+            () => { applyTransform(drag.transform, end); this.inspectorRefresh(); });
+        this.inspectorRefresh();
+    }
+
+    inspectorRefresh() { this.editor.inspector?.render(); }
+}
+
+function snapshotTransform(transform) {
+    return {
+        position: transform.position.clone(),
+        scale: transform.localScale.clone(),
+        euler: transform.eulerAngles.clone(),
+    };
+}
+
+function applyTransform(transform, value) {
+    transform.position = value.position;
+    transform.localScale = value.scale;
+    transform.eulerAngles = value.euler;
+}
+
+function sameTransform(a, b) {
+    return a.position.equals(b.position) && a.scale.equals(b.scale) && a.euler.equals(b.euler);
+}
+
+function snapValue(value, increment) {
+    return increment > 0 ? Math.round(value / increment) * increment : value;
+}
+
+function snapVector(value, increment) {
+    return new Vector3(snapValue(value.x, increment), snapValue(value.y, increment), snapValue(value.z, increment));
+}
+
+function distanceToSegment(point, start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSq = dx * dx + dy * dy;
+    if (lengthSq < 1e-6) return Math.hypot(point.x - start.x, point.y - start.y);
+    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSq));
+    return Math.hypot(point.x - (start.x + dx * t), point.y - (start.y + dy * t));
 }
 
 /** The eight corners of an axis-aligned box. */
