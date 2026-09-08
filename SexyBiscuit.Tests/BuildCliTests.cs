@@ -169,6 +169,31 @@ public class BuildCliTests
         Assert.Null(GitInfo.TryReadHeadSha(Path.GetTempPath()));
     }
 
+    /// <summary>
+    /// A linked worktree is a checkout. <c>git worktree add</c> — and Claude Code's own
+    /// <c>--worktree</c>, which is where a background task runs — writes <c>.git</c> as a file
+    /// pointing at the real folder, so a locator testing only for a directory calls every worktree
+    /// "not a checkout": the engine-repo report loses its branch and commit, and this suite's own
+    /// GitInfo test fails, because GitInfo follows the pointer and the locator did not.
+    /// </summary>
+    [Fact]
+    public void ALinkedWorktreeCountsAsAGitCheckout()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "sb-worktree-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "SexyBiscuit.Engine"));
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "SexyBiscuit.sln"), "");
+            File.WriteAllText(Path.Combine(root, "SexyBiscuit.Engine", "SexyBiscuit.Engine.csproj"), "");
+
+            Assert.False(EngineRepoLocator.Probe(root)!.IsGitCheckout);          // no .git at all
+
+            File.WriteAllText(Path.Combine(root, ".git"), "gitdir: /somewhere/.git/worktrees/x\n");
+            Assert.True(EngineRepoLocator.Probe(root)!.IsGitCheckout);           // .git as a file
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     [Fact]
     public void APngIsWrittenWithTheRightSignatureAndDimensions()
     {
