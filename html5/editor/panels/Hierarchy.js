@@ -104,7 +104,7 @@ export class HierarchyPanel {
             dataset: { actorId: String(actor.id) },
             title: `${actor.hierarchyPath}  (${actor.tag})`,
             style: depth > 0 ? { paddingLeft: `${8 + depth * 14}px` } : null,
-            onclick: () => this.state.selectActor(actor),
+            onclick: (event) => this._selectActor(actor, layer, event),
             ondblclick: () => this.editor.focusOnActor(actor),
 
             // Drag an actor onto another to attach it. The id rides in the drag data
@@ -167,6 +167,27 @@ export class HierarchyPanel {
             for (const actor of layer.actors) if (actor.id === id) return actor;
         }
         return null;
+    }
+
+    /** UE-style outliner rules: Ctrl/Cmd toggles; Shift selects a layer range. */
+    _selectActor(actor, layer, event) {
+        if (event.ctrlKey || event.metaKey) {
+            this.state.toggleActor(actor);
+            return;
+        }
+
+        const primary = this.state.selectedActor;
+        if (event.shiftKey && primary && layer.actors.includes(primary)) {
+            const start = layer.actors.indexOf(primary);
+            const end = layer.actors.indexOf(actor);
+            if (start >= 0 && end >= 0) {
+                const [from, to] = start < end ? [start, end] : [end, start];
+                this.state.selectActors(layer.actors.slice(from, to + 1));
+                return;
+            }
+        }
+
+        this.state.selectActor(actor);
     }
 
     _menu(actor, layer, event) {
@@ -243,9 +264,9 @@ export class HierarchyPanel {
     }
 
     _highlight() {
-        const selectedId = this.state.selectedActor?.id;
+        const selectedIds = new Set(this.state.selectedActors.map((actor) => actor.id));
         for (const row of this.root.querySelectorAll('.sb-actor-row')) {
-            row.classList.toggle('is-selected', Number(row.dataset.actorId) === selectedId);
+            row.classList.toggle('is-selected', selectedIds.has(Number(row.dataset.actorId)));
         }
     }
 }

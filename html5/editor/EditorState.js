@@ -11,8 +11,8 @@ import { SBEvent } from '../src/core/SBEvent.js';
 /** The editor's shared state. */
 export class EditorState {
     constructor() {
-        /** @type {?import('../src/core/Actor.js').Actor} */
-        this._selectedActor = null;
+        /** Ordered selection: the last item is the primary actor shown in Details. */
+        this._selectedActors = [];
         /** @type {?import('../src/core/Layer.js').Layer} */
         this.selectedLayer = null;
         /** @type {?string} */
@@ -50,13 +50,40 @@ export class EditorState {
         this.logged = new SBEvent();
     }
 
-    get selectedActor() { return this._selectedActor; }
+    /** The primary selected actor, retained for existing single-selection panels. */
+    get selectedActor() { return this._selectedActors.at(-1) ?? null; }
 
-    /** Selects an actor, or null to clear. Broadcasts only on a real change. */
+    /** A read-only copy so panels cannot accidentally reorder shared selection. */
+    get selectedActors() { return [...this._selectedActors]; }
+
+    /** Replaces the selection with one actor, or clears it for null. */
     selectActor(actor) {
-        if (this._selectedActor === actor) return;
-        this._selectedActor = actor && !actor.isDestroyed ? actor : null;
-        this.selectionChanged.broadcast(this._selectedActor);
+        this.selectActors(actor ? [actor] : []);
+    }
+
+    /** Replaces the ordered selection, ignoring null, destroyed and duplicate actors. */
+    selectActors(actors) {
+        const next = [];
+        for (const actor of actors ?? []) {
+            if (!actor || actor.isDestroyed || next.includes(actor)) continue;
+            next.push(actor);
+        }
+        if (sameActors(next, this._selectedActors)) return;
+        this._selectedActors = next;
+        // SBEvent intentionally carries one payload. Existing panels receive the
+        // primary actor as before and can read selectedActors when they need the
+        // full ordered set.
+        this.selectionChanged.broadcast(this.selectedActor);
+    }
+
+    /** Adds/removes an actor while retaining deterministic insertion order. */
+    toggleActor(actor) {
+        if (!actor || actor.isDestroyed) return;
+        const next = this.selectedActors;
+        const index = next.indexOf(actor);
+        if (index >= 0) next.splice(index, 1);
+        else next.push(actor);
+        this.selectActors(next);
     }
 
     /** Marks the scene as edited, so the title bar and the save button update. */
@@ -83,6 +110,10 @@ export class EditorState {
     info(...parts) { this.log('info', ...parts); }
     warn(...parts) { this.log('warn', ...parts); }
     error(...parts) { this.log('error', ...parts); }
+}
+
+function sameActors(left, right) {
+    return left.length === right.length && left.every((actor, index) => actor === right[index]);
 }
 
 function stringify(value) {

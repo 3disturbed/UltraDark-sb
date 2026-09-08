@@ -21,6 +21,12 @@
     "spaces": ["world", "local"],
     "snapping": ["translate", "rotate", "scale"]
   },
+  "selection": {
+    "ordered": true,
+    "primary": "last",
+    "multiSelect": ["toggle", "range"],
+    "hierarchyOperationPolicy": "selected-roots"
+  },
   "componentStatus": ["editable", "read-only-with-reason", "tracked-missing"],
   "propertyTypeCoverage": {
     "number": { "native": "editable", "browser": "editable" },

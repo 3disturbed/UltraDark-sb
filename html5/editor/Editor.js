@@ -222,7 +222,7 @@ export class Editor {
 
     /** Named commands are the browser workbench's single dispatch surface. */
     commandDefinitions() {
-        const selected = () => Boolean(this.state.selectedActor);
+        const selected = () => this.state.selectedActors.length > 0;
         return [
             { id: 'editor.transform.translate', label: 'Move Selection', shortcut: 'W',
                 run: () => { this.state.gizmoMode = 'translate'; } },
@@ -237,9 +237,9 @@ export class Editor {
             { id: 'editor.redo', label: 'Redo', shortcut: 'Ctrl/Cmd+Y', enabled: () => this.history.canRedo,
                 run: () => this.history.redo() },
             { id: 'editor.duplicate', label: 'Duplicate Selection', shortcut: 'Ctrl/Cmd+D', enabled: selected,
-                run: () => this.duplicateActor(this.state.selectedActor) },
+                run: () => this.duplicateSelection() },
             { id: 'editor.delete', label: 'Delete Selection', shortcut: 'Delete', enabled: selected,
-                run: () => this.deleteActor(this.state.selectedActor) },
+                run: () => this.deleteSelection() },
             { id: 'editor.play.toggle', label: this.state.isPlaying ? 'Stop Play' : 'Play', shortcut: 'F5',
                 run: () => this.togglePlay() },
             { id: 'editor.save', label: 'Save Scene', shortcut: 'Ctrl/Cmd+S', run: () => this.saveScene() },
@@ -655,7 +655,19 @@ export class Editor {
         return this.history.snapshot(`Duplicate ${actor.name}`, () => this._duplicateActor(actor));
     }
 
-    _duplicateActor(actor) {
+    /** Duplicates the ordered selection in one reversible operation. */
+    duplicateSelection() {
+        const actors = this._selectionRoots();
+        if (!this.scene || !actors.length) return [];
+        const label = actors.length === 1 ? `Duplicate ${actors[0].name}` : `Duplicate ${actors.length} actors`;
+        return this.history.snapshot(label, () => {
+            const copies = actors.map((actor) => this._duplicateActor(actor, { select: false }));
+            this.state.selectActors(copies);
+            return copies;
+        });
+    }
+
+    _duplicateActor(actor, { select = true } = {}) {
         const scene = this.scene;
         const copy = buildActor(buildActorDto(actor), (m) => this.state.warn(m));
         copy.name = `${actor.name} copy`;
@@ -666,7 +678,7 @@ export class Editor {
 
         this.state.markDirty();
         this.state.notifyHierarchy();
-        this.state.selectActor(copy);
+        if (select) this.state.selectActor(copy);
         return copy;
     }
 
@@ -679,6 +691,26 @@ export class Editor {
             this.state.markDirty();
             this.state.notifyHierarchy();
         });
+    }
+
+    /** Deletes every selected root, never double-deleting an included child. */
+    deleteSelection() {
+        const actors = this._selectionRoots();
+        if (!actors.length) return;
+        const label = actors.length === 1 ? `Delete ${actors[0].name}` : `Delete ${actors.length} actors`;
+        this.history.snapshot(label, () => {
+            this.state.selectActor(null);
+            for (const actor of actors) actor.destroy();
+            this.scene?.flushPendingActors();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
+    }
+
+    /** Selection roots make hierarchy actions deterministic when parent and child are both selected. */
+    _selectionRoots() {
+        const selected = this.state.selectedActors;
+        return selected.filter((actor) => !selected.some((other) => other !== actor && actor.isDescendantOf(other)));
     }
 
     renameActor(actor) {
@@ -776,10 +808,10 @@ export class Editor {
                 this.executeCommand('editor.transform.rotate');
             } else if (e.key.toLowerCase() === 'r') {
                 this.executeCommand('editor.transform.scale');
-            } else if (meta && e.key.toLowerCase() === 'd' && this.state.selectedActor) {
+            } else if (meta && e.key.toLowerCase() === 'd' && this.state.selectedActors.length) {
                 e.preventDefault();
                 this.executeCommand('editor.duplicate');
-            } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.selectedActor) {
+            } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.selectedActors.length) {
                 e.preventDefault();
                 this.executeCommand('editor.delete');
             } else if (e.key === 'f' && this.state.selectedActor) {

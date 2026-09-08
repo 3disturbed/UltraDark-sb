@@ -238,11 +238,19 @@ export class ViewportPanel {
 
         if (this.state.viewport3D) {
             const found = this._pick3D(scene, point);
-            this.state.selectActor(found);
+            this._selectPicked(found, event);
             return;
         }
 
-        this.state.selectActor(this._pick2D(scene, point));
+        this._selectPicked(this._pick2D(scene, point), event);
+    }
+
+    _selectPicked(actor, event) {
+        if (event.ctrlKey || event.metaKey) {
+            if (actor) this.state.toggleActor(actor);
+            return;
+        }
+        this.state.selectActor(actor);
     }
 
     _pick3D(scene, point) {

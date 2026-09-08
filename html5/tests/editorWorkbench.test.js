@@ -27,6 +27,8 @@ test('the workbench reserves one UE-style transform vocabulary for both editors'
     assert.equal(workbench.commands['editor.transform.rotate'].shortcut, 'E');
     assert.equal(workbench.commands['editor.transform.scale'].shortcut, 'R');
     assert.deepEqual(workbench.transform.spaces, ['world', 'local']);
+    assert.equal(workbench.selection.primary, 'last');
+    assert.deepEqual(workbench.selection.multiSelect, ['toggle', 'range']);
 });
 
 test('every browser schema property type has an explicit cross-client capability status', () => {
@@ -42,7 +44,7 @@ test('every browser schema property type has an explicit cross-client capability
 
 test('browser command dispatch exposes every contracted command identifier', () => {
     const editor = Object.create(Editor.prototype);
-    editor.state = { selectedActor: null, isPlaying: false, gizmoMode: 'translate' };
+    editor.state = { selectedActor: null, selectedActors: [], isPlaying: false, gizmoMode: 'translate' };
     editor.history = { canUndo: false, canRedo: false };
     const ids = editor.commandDefinitions().map((command) => command.id);
 
