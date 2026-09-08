@@ -17,6 +17,7 @@ fixtures in both editor test suites reject a shortcut or property-status drift.
 | Workflow | Native editor | HTML5 editor | Status |
 |---|---|---|---|
 | Default information architecture | Dockable, resizable ImGui panels with persisted layout | Fixed responsive regions and tabs | Partial — same regions, browser docking/persistence missing |
+| Command surface | Menu bar and toolbar commands | Searchable `Ctrl/Cmd+P` command palette backed by named commands | Partial — command registry and palette parity are still incomplete |
 | Actor selection | One actor | One actor | Partial — no ordered multi-select, box select or selection locks |
 | 3D transform | Local axis translation/rotation/scale; centre camera-plane move, screen-space rotate and uniform scale; snapping | World/local visual axes; axis/free translate, rotate, scale; snapping | Partial — no transform parity spec implementation for planes, pivots, advanced snapping or 2D visual parity |
 | Undo/redo | MCP/assistant scene history; panel changes are not consistently transactions | Structural actor/component actions, focused Inspector field commits, and completed 3D gizmo drags | Partial — one transaction layer and stable actor identities are still required |
@@ -29,6 +30,8 @@ fixtures in both editor test suites reject a shortcut or property-status drift.
 
 - Shared workbench contract, with a layout-region and command vocabulary.
 - Shared `W` / `E` / `R` transform commands in both clients.
+- Browser `Ctrl/Cmd+P` command palette dispatches the shared transform, focus,
+  undo/redo, duplicate and delete IDs, plus save and play.
 - Browser reversible history for structural actor/component actions, completed
   Inspector field edits and complete 3D gizmo drags; Escape cancels an active
   browser gizmo drag or Inspector field edit.

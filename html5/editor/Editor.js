@@ -130,6 +130,8 @@ export class Editor {
                 ])),
             el('footer.sb-statusbar', {}, this._status));
 
+        this._buildCommandPalette();
+
         this._installDropTarget();
     }
 
@@ -190,6 +192,9 @@ export class Editor {
             el('div.sb-toolgroup.sb-transport', {},
                 this._playButton, this._pauseButton, this._stopButton),
 
+            el('div.sb-toolgroup', {},
+                button('⌘P', 'Command palette  (Ctrl/Cmd+P)', () => this.toggleCommandPalette())),
+
             el('div.sb-toolgroup.sb-transform-tools', {},
                 button('W', 'Move selection  (W)', () => { this.state.gizmoMode = 'translate'; }),
                 button('E', 'Rotate selection  (E)', () => { this.state.gizmoMode = 'rotate'; }),
@@ -213,6 +218,96 @@ export class Editor {
                         title: 'Look through the scene’s own camera',
                         onchange: (e) => { this.state.useGameCamera = e.target.checked; },
                     }), 'Game camera')));
+    }
+
+    /** Named commands are the browser workbench's single dispatch surface. */
+    commandDefinitions() {
+        const selected = () => Boolean(this.state.selectedActor);
+        return [
+            { id: 'editor.transform.translate', label: 'Move Selection', shortcut: 'W',
+                run: () => { this.state.gizmoMode = 'translate'; } },
+            { id: 'editor.transform.rotate', label: 'Rotate Selection', shortcut: 'E',
+                run: () => { this.state.gizmoMode = 'rotate'; } },
+            { id: 'editor.transform.scale', label: 'Scale Selection', shortcut: 'R',
+                run: () => { this.state.gizmoMode = 'scale'; } },
+            { id: 'editor.focus', label: 'Focus Selection', shortcut: 'F', enabled: selected,
+                run: () => this.focusOnActor(this.state.selectedActor) },
+            { id: 'editor.undo', label: 'Undo', shortcut: 'Ctrl/Cmd+Z', enabled: () => this.history.canUndo,
+                run: () => this.history.undo() },
+            { id: 'editor.redo', label: 'Redo', shortcut: 'Ctrl/Cmd+Y', enabled: () => this.history.canRedo,
+                run: () => this.history.redo() },
+            { id: 'editor.duplicate', label: 'Duplicate Selection', shortcut: 'Ctrl/Cmd+D', enabled: selected,
+                run: () => this.duplicateActor(this.state.selectedActor) },
+            { id: 'editor.delete', label: 'Delete Selection', shortcut: 'Delete', enabled: selected,
+                run: () => this.deleteActor(this.state.selectedActor) },
+            { id: 'editor.play.toggle', label: this.state.isPlaying ? 'Stop Play' : 'Play', shortcut: 'F5',
+                run: () => this.togglePlay() },
+            { id: 'editor.save', label: 'Save Scene', shortcut: 'Ctrl/Cmd+S', run: () => this.saveScene() },
+        ];
+    }
+
+    executeCommand(id) {
+        const command = this.commandDefinitions().find((entry) => entry.id === id);
+        if (!command || command.enabled?.() === false) return false;
+        command.run();
+        return true;
+    }
+
+    _buildCommandPalette() {
+        const query = el('input.sb-command-query', {
+            type: 'search', placeholder: 'Type a command…', autocomplete: 'off',
+        });
+        const results = el('div.sb-command-results');
+        const root = el('div.sb-command-overlay', { role: 'dialog', 'aria-label': 'Command palette' },
+            el('section.sb-command-palette', {},
+                el('header.sb-command-head', {},
+                    el('span', { text: 'Command Palette' }),
+                    el('kbd', { text: 'Esc' })),
+                query,
+                results));
+        this.mount.append(root);
+
+        this._commandPalette = { root, query, results };
+        query.addEventListener('input', () => this._renderCommandPalette());
+        query.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            const first = results.querySelector('button:not(:disabled)');
+            first?.click();
+        });
+        root.addEventListener('pointerdown', (event) => {
+            if (event.target === root) this.toggleCommandPalette(false);
+        });
+    }
+
+    toggleCommandPalette(force = null) {
+        const palette = this._commandPalette;
+        if (!palette) return;
+        const open = force ?? !palette.root.classList.contains('is-open');
+        palette.root.classList.toggle('is-open', open);
+        if (!open) return;
+        palette.query.value = '';
+        this._renderCommandPalette();
+        palette.query.focus();
+    }
+
+    _renderCommandPalette() {
+        const palette = this._commandPalette;
+        if (!palette) return;
+        const term = palette.query.value.trim().toLowerCase();
+        const commands = this.commandDefinitions().filter((command) =>
+            !term || `${command.label} ${command.id} ${command.shortcut}`.toLowerCase().includes(term));
+        clear(palette.results);
+        for (const command of commands) {
+            const enabled = command.enabled?.() !== false;
+            palette.results.append(el('button.sb-command-row', {
+                type: 'button', disabled: !enabled,
+                onclick: () => {
+                    if (this.executeCommand(command.id)) this.toggleCommandPalette(false);
+                },
+            }, el('span', { text: command.label }),
+            el('span.sb-command-shortcut', { text: command.shortcut })));
+        }
+        if (!commands.length) palette.results.append(el('div.sb-empty', { text: 'No matching command.' }));
     }
 
     _updateStatus() {
@@ -647,6 +742,17 @@ export class Editor {
 
     _installShortcuts() {
         window.addEventListener('keydown', (e) => {
+            const meta = e.ctrlKey || e.metaKey;
+            if (meta && e.key.toLowerCase() === 'p') {
+                e.preventDefault();
+                this.toggleCommandPalette();
+                return;
+            }
+            if (this._commandPalette?.root.classList.contains('is-open')) {
+                if (e.key === 'Escape') this.toggleCommandPalette(false);
+                return;
+            }
+
             // Never steal a key from a field the user is typing in.
             const tag = document.activeElement?.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
@@ -654,32 +760,30 @@ export class Editor {
                 return;
             }
 
-            const meta = e.ctrlKey || e.metaKey;
-
-            if (e.key === 'F5') { e.preventDefault(); this.togglePlay(); }
+            if (e.key === 'F5') { e.preventDefault(); this.executeCommand('editor.play.toggle'); }
             else if (e.key === 'F6') { e.preventDefault(); this.togglePause(); }
             else if (e.key === 'F7') { e.preventDefault(); this.stop(); }
             else if (e.key === 'F8') { e.preventDefault(); this.stepFrame(); }
-            else if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); this.saveScene(); }
+            else if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); this.executeCommand('editor.save'); }
             else if (meta && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
-                if (e.shiftKey) this.history.redo(); else this.history.undo();
+                this.executeCommand(e.shiftKey ? 'editor.redo' : 'editor.undo');
             } else if (meta && e.key.toLowerCase() === 'y') {
-                e.preventDefault(); this.history.redo();
+                e.preventDefault(); this.executeCommand('editor.redo');
             } else if (e.key.toLowerCase() === 'w') {
-                this.state.gizmoMode = 'translate';
+                this.executeCommand('editor.transform.translate');
             } else if (e.key.toLowerCase() === 'e') {
-                this.state.gizmoMode = 'rotate';
+                this.executeCommand('editor.transform.rotate');
             } else if (e.key.toLowerCase() === 'r') {
-                this.state.gizmoMode = 'scale';
+                this.executeCommand('editor.transform.scale');
             } else if (meta && e.key.toLowerCase() === 'd' && this.state.selectedActor) {
                 e.preventDefault();
-                this.duplicateActor(this.state.selectedActor);
+                this.executeCommand('editor.duplicate');
             } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.selectedActor) {
                 e.preventDefault();
-                this.deleteActor(this.state.selectedActor);
+                this.executeCommand('editor.delete');
             } else if (e.key === 'f' && this.state.selectedActor) {
-                this.focusOnActor(this.state.selectedActor);
+                this.executeCommand('editor.focus');
             } else if (e.key === 'Escape') {
                 this.state.selectActor(null);
             }

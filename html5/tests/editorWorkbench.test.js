@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { EditorHistory } from '../editor/EditorHistory.js';
+import { Editor } from '../editor/Editor.js';
 import { InspectorPanel } from '../editor/panels/Inspector.js';
 import { PropertyType } from '../src/core/PropertyTypes.js';
 
@@ -37,6 +38,18 @@ test('every browser schema property type has an explicit cross-client capability
     }
     assert.equal(coverage.list.browser, 'editable');
     assert.equal(coverage.material.browser, 'read-only-with-reason');
+});
+
+test('browser command dispatch exposes every contracted command identifier', () => {
+    const editor = Object.create(Editor.prototype);
+    editor.state = { selectedActor: null, isPlaying: false, gizmoMode: 'translate' };
+    editor.history = { canUndo: false, canRedo: false };
+    const ids = editor.commandDefinitions().map((command) => command.id);
+
+    for (const id of Object.keys(workbench.commands)) assert.ok(ids.includes(id), id);
+    assert.equal(editor.executeCommand('editor.transform.rotate'), true);
+    assert.equal(editor.state.gizmoMode, 'rotate');
+    assert.equal(editor.executeCommand('editor.delete'), false);
 });
 
 test('a structural browser edit is restored as one named history operation', () => {
