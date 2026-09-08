@@ -50,6 +50,8 @@ usage line, and is importable — `tests/tools.test.js` runs them end to end.
 | `export.js <projectDir> [--pwa] [--out <dir>] [--version <v>] [--config <c>] [--no-zip]` | Stages a web build — the runtime, the project's files and the page — into `dist/Web/`, zips it beside the folder and writes `build-report.json`. `--pwa` adds a manifest, icons and a service worker so the build installs to a home screen and runs offline. |
 | `upload.js <archive> [--app-slug <s>] [--title <n>] [--version <v>] [--platform windows\|macos\|linux] [--channel alpha\|beta\|demo] [--notes <t>] [--hidden] [--config <BuildSettings.json>] [--dry-run]` | Publishes one **native** archive to DarksGames: a POST whose body is the raw bytes with the metadata in a base64url `X-Build-Meta` header. The token is `$DG_BUILD_TOKEN` or the first line of `~/.sexybiscuit/dg-token`. Prints `publish <platform> <status> <url>`. The C# pipeline sends the identical request. |
 | `check.js` | The lint: parses every module and checks the shader sources. |
+| `gen-dts.js [--check]` | Writes `src/scripting/sb-engine.d.ts` from the contract (`npm run gen`); `--check` exits 1 when the checked-in file is stale, and `npm run lint` runs it. The C# assembly embeds the generated file. |
+| `mirror-check.js [--base <ref>] [--allow <name>] [--of <file>] [--list]` | Every engine feature exists twice; `/mirrors.json` names each C# file's JavaScript twin. Fails a change that touched one side of a strict pair and not the other, unless a commit trailer `Mirror-only: cs\|js <name>` excuses it; `--of` prints a file's twin (`npm run mirror`). |
 
 The exporter and the C# `BuildPlatform.Web` fill the same page templates under
 `runtime/export/` (`index.html.tmpl`, `manifest.webmanifest.tmpl`, `sw.js.tmpl`), so the
@@ -141,9 +143,9 @@ these explicitly rather than presenting an empty box.
 
 ## Scripting
 
-Project `.js` files run unchanged. Everything
-`Scripting/TypeScriptDefinitions.cs` declares is present with the same names and
-shapes: the `actor`, `transform`, `Input`, `Audio`, `Scene`, `Debug` and
+Project `.js` files run unchanged. Everything `src/scripting/sb-engine.d.ts`
+(generated from `src/scripting/bridge-api.json`) declares is present with the same
+names and shapes: the `actor`, `transform`, `Input`, `Audio`, `Scene`, `Debug` and
 `Vector2` globals, and the `onAwake` / `onStart` / `onUpdate` / `onFixedUpdate` /
 `onLateUpdate` / `onDestroy` / `onCollisionEnter` / `onTriggerEnter` hooks.
 

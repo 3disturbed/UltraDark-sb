@@ -437,10 +437,17 @@ miserable to reproduce.
 ```csharp
 private void AddServerRow(LanServerInfo info)
 {
-    string label = $"{info.ServerName}  {info.PlayerCount}/{info.MaxPlayers}  {info.Address}";
-    var btn = MakeButton(label, Vector2.Zero, new Vector2(560, 52),
-                         () => _session.Join(info.Address));
-    _serverList.AddChild(btn);
+    UiNode row = _serverList.Add(new UiNode
+    {
+        Kind       = UiKind.Button,
+        Text       = $"{info.ServerName}  {info.PlayerCount}/{info.MaxPlayers}  {info.Address}",
+        HeightMode = SizeMode.Fixed, Height = 52f,
+        Background = new Color(255, 255, 255, 20),
+        TextAlign  = AlignMode.Center,
+    });
+
+    // Clicked is a flag, so remember which row is which and read them in Update.
+    _rows.Add((row, info.Address));
 }
 ```
 
@@ -452,33 +459,40 @@ public static class LobbyScene
     public static void Load(Game game)
     {
         var scene  = game.SceneManager.CreateScene("Lobby");
-        var canvas = game.CreateCanvas(scene, "LobbyUI");
 
-        var title = canvas.AddWidget<Label>();
-        title.Text = "MULTIPLAYER";
-        title.Position = new Vector2(0, 60);
-        title.Size = new Vector2(1280, 48);
-        title.Alignment = TextAlignment.Center;
+        var actor  = new Actor("LobbyUI");
+        var canvas = actor.AddComponent<UiCanvas>();
+        canvas.ScaleMode = UiScaleMode.Match;
+        canvas.ReferenceResolution = new Vector2(1280f, 720f);
 
-        canvas.AddWidget(game.MakeButton("Host Game", new Vector2(80, 140),
-            new Vector2(240, 56), () =>
+        canvas.Adopt(UiDocument.FromJson("""
+        {
+          "layout": "column", "gap": 16, "padding": 24, "width": "*", "height": "*",
+          "children": [
+            { "kind": "label", "text": "MULTIPLAYER", "scale": 3, "align": "center" },
             {
-                game.Session.Host($"{game.PlayerName}'s Game");
-                ArenaScene.Load(game);
-            }));
+              "layout": "row", "gap": 16, "grow": 1, "crossAlign": "stretch",
+              "children": [
+                {
+                  "width": 240, "layout": "column", "gap": 12,
+                  "children": [
+                    { "name": "host",    "kind": "button", "text": "Host Game", "height": 56,
+                      "background": "#ffffff14", "align": "center", "autoFocus": true },
+                    { "name": "refresh", "kind": "button", "text": "Refresh",   "height": 56,
+                      "background": "#ffffff14", "align": "center" }
+                  ]
+                },
+                { "name": "servers", "grow": 1, "background": "#0c0e18dc",
+                  "layout": "column", "gap": 4, "padding": 8, "crossAlign": "stretch",
+                  "scroll": "Vertical" }
+              ]
+            }
+          ]
+        }
+        """));
 
-        canvas.AddWidget(game.MakeButton("Refresh", new Vector2(80, 210),
-            new Vector2(240, 56), () => game.RefreshServerList()));
-
-        var list = canvas.AddWidget<Panel>();
-        list.Position          = new Vector2(360, 140);
-        list.Size              = new Vector2(840, 480);
-        list.BackgroundTexture = game.WhiteTexture;
-        list.BackgroundColor   = new Color(12, 14, 24, 220);
-        list.LayoutMode        = PanelLayoutMode.Vertical;
-        list.Padding           = 8f;
-        game.SetServerList(list);
-
+        scene.AddActor(actor, "ui");
+        game.SetServerList(canvas.Find("servers")!);
         game.RefreshServerList();
     }
 }

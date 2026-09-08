@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SexyBiscuit.Engine.Code;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.Scripting;
@@ -117,5 +118,45 @@ public class ScriptBridgeParityTests
             string method = "O" + hook.Substring(1);
             Assert.NotNull(typeof(ScriptComponent).GetMethod(method));
         }
+    }
+
+    /// <summary>
+    /// The declarations an editor and the MCP scripting resource show are generated from the
+    /// contract, so every global, member and hook the contract names is declared. Until this
+    /// existed the hand-written file was missing thirty-odd members and two whole globals, and
+    /// the agent reading it could not see them.
+    /// </summary>
+    [Fact]
+    public void TheGeneratedDeclarationsNameEveryGlobalMemberAndHook()
+    {
+        using var contract = Contract();
+        string dts = TypeScriptDefinitions.Generate();
+        Assert.StartsWith("// ====", dts);
+        Assert.Contains("Generated from html5/src/scripting/bridge-api.json", dts);
+
+        var meta = contract.RootElement.GetProperty("meta").GetProperty("globals");
+        foreach (var global in contract.RootElement.GetProperty("globals").EnumerateObject())
+        {
+            string block;
+            if (meta.GetProperty(global.Name).TryGetProperty("interface", out var iface))
+            {
+                var m = Regex.Match(dts, @"declare interface " + iface.GetString() + @"\s*\{(.*?)\n\}", RegexOptions.Singleline);
+                Assert.True(m.Success, $"no interface {iface.GetString()} for the {global.Name} global");
+                block = m.Groups[1].Value;
+            }
+            else
+            {
+                var m = Regex.Match(dts, @"declare const " + global.Name + @": \{(.*?)\n\};", RegexOptions.Singleline);
+                Assert.True(m.Success, $"no declaration for the {global.Name} global");
+                block = m.Groups[1].Value;
+            }
+
+            foreach (var member in global.Value.EnumerateObject())
+                Assert.True(Regex.IsMatch(block, @"^\s*(readonly )?" + member.Name + @"\b", RegexOptions.Multiline),
+                    $"{global.Name}.{member.Name} is not declared");
+        }
+
+        foreach (var hook in contract.RootElement.GetProperty("hooks").EnumerateObject())
+            Assert.Contains($"declare function {hook.Name}(", dts);
     }
 }

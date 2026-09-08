@@ -39,3 +39,9 @@ dist/
 
 ## Per-project scratch folders (generated player project, usage logs, autosaves)
 .sexybiscuit/
+
+## Claude Code worktrees (created by --worktree / EnterWorktree)
+.claude/worktrees/
+
+## Per-machine Claude Code permissions
+.claude/settings.local.json

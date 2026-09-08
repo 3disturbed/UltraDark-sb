@@ -37,6 +37,7 @@ public sealed record McpToolDescriptor(
     bool       MainThread,
     bool       Mutating,
     bool       Destructive,
+    bool       ReadOnly,
     string?    LabelTemplate,
     string     Source,
     MethodInfo Method,
@@ -116,7 +117,7 @@ public sealed class McpToolRegistry
 
             var descriptor = new McpToolDescriptor(
                 name, attr.Description, McpSchema.ForMethod(method),
-                attr.MainThread, attr.Mutating, attr.Destructive, attr.Label, options.Source,
+                attr.MainThread, attr.Mutating, attr.Destructive, attr.ReadOnly, attr.Label, options.Source,
                 method, method.IsStatic ? null : target);
 
             lock (_lock)
@@ -399,8 +400,10 @@ public sealed class McpToolRegistry
                 ["inputSchema"] = tool.InputSchema.DeepClone(),
             };
 
+            // readOnlyHint says the call changes nothing anywhere, which is not the same question
+            // as Mutating (does it edit the scene, so snapshot undo first). A tool has to say so.
             var annotations = new JsonObject();
-            if (!tool.Mutating)   annotations["readOnlyHint"]    = true;
+            if (tool.ReadOnly)    annotations["readOnlyHint"]    = true;
             if (tool.Destructive) annotations["destructiveHint"] = true;
             if (annotations.Count > 0) entry["annotations"] = annotations;
 

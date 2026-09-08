@@ -19,7 +19,7 @@ public sealed class McpTestTools
 {
     public int NothingCalls;
 
-    [McpTool("echo", "Echoes text.")]
+    [McpTool("echo", "Echoes text.", ReadOnly = true)]
     public string Echo([McpParam("Text to echo")] string text) => text;
 
     [McpTool("add", "Adds two integers.")]

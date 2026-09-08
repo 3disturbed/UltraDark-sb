@@ -1,0 +1,76 @@
+{
+  "$comment": "Golden UI.build cases, read by BOTH engines: SexyBiscuit.Tests/UiDocumentTests.cs and html5/tests/uiDocument.test.js. Each case feeds one spec through the codec and compares the tree written back out. This is the strongest parity check available for the script-facing UI, because it exercises the whole path a script takes -- loose spellings, colour forms, size shorthand, nesting -- and compares a canonical serialisation rather than a member list, which is the one thing a regex over the other engine's source could never see. `expect` is the exact JSON both engines must produce.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "loose spellings and shorthand normalise to one canonical form",
+      "why": "A script writes `align`, `scale` and `bottom-right`; a .ui file written by the editor must say the same thing the same way, or the two authors of one format disagree.",
+      "spec": {
+        "name": "root", "layout": "column", "gap": 8, "padding": [12, 16],
+        "background": "#161920e6",
+        "children": [
+          { "name": "title", "kind": "label", "text": "PAUSED", "scale": 3, "align": "center" },
+          { "name": "bar", "kind": "bar", "width": "*", "height": 10, "value": 0.72, "tint": [198, 56, 50] },
+          { "name": "ok", "kind": "button", "text": "Resume", "width": "50%", "grow": 1, "anchor": "bottom-right" }
+        ]
+      },
+      "expect": {
+        "name": "root", "padding": [12, 16, 12, 16], "layout": "Column", "gap": [8, 8],
+        "background": "#161920e6",
+        "children": [
+          { "name": "title", "kind": "Label", "text": "PAUSED", "textScale": 3, "textAlign": "Center" },
+          { "name": "bar", "kind": "Bar", "width": "*", "height": 10, "tint": "#c63832", "value": 0.72 },
+          { "name": "ok", "kind": "Button", "width": "50%", "grow": 1, "anchor": "BottomRight", "text": "Resume" }
+        ]
+      }
+    },
+    {
+      "name": "every colour form the contract accepts arrives as the same colour",
+      "why": "The native bridge documented the [r,g,b] array form and did not implement it -- an array fell through to the object branch, every channel read undefined, and the result was opaque black. Routing colours through one codec is what fixes that, so the array form is pinned here.",
+      "spec": { "background": "#fff", "tint": { "R": 255, "G": 128, "B": 64 }, "borderColour": "#ff8040c0" },
+      "expect": { "background": "#ffffff", "tint": "#ff8040", "borderColour": "#ff8040c0" }
+    },
+    {
+      "name": "a translucent colour keeps its alpha through a round trip",
+      "why": "The flat UI's hex writer dropped alpha unconditionally, so reading a panel written #161920e6 and writing it back turned it opaque.",
+      "spec": { "background": "#161920e6" },
+      "expect": { "background": "#161920e6" }
+    },
+    {
+      "name": "a node still at its defaults writes nothing at all",
+      "why": "A document should say only what it changed, or every .ui file carries sixty properties nobody set.",
+      "spec": { "kind": "panel", "visible": true, "opacity": 1 },
+      "expect": {}
+    },
+    {
+      "name": "focus, navigation and options survive the round trip",
+      "spec": {
+        "kind": "dropdown", "modal": true, "focusable": "yes",
+        "navUp": "a", "options": ["Low", "High"], "selectedIndex": 1
+      },
+      "expect": {
+        "kind": "Dropdown", "focusable": "Yes", "modal": true,
+        "navUp": "a", "selectedIndex": 1, "options": ["Low", "High"]
+      }
+    },
+    {
+      "name": "a named anchor does not write the three vectors it already implies",
+      "why": "anchor sets anchorMin, anchorMax and pivot together, so writing all four would put three redundant arrays into every anchored node a human has to read.",
+      "spec": { "anchor": "center", "width": 200, "height": 44 },
+      "expect": { "width": 200, "height": 44, "anchor": "Center" }
+    },
+    {
+      "name": "a custom anchor does write its vectors, because nothing else implies them",
+      "spec": { "anchorMin": [0, 0], "anchorMax": [1, 0], "pivot": [0, 0], "offsetMax": [-16, 0], "height": 40 },
+      "expect": {
+        "height": 40, "anchor": "Custom", "anchorMax": [1, 0], "offsetMax": [-16, 0]
+      }
+    },
+    {
+      "name": "an unknown property is refused rather than silently ignored",
+      "why": "The flat UI ended its options switch with a silent default, so a typo did nothing and said nothing. In a tree a mistyped \"childern\" would drop every node below it and leave no trace.",
+      "spec": { "widht": 100 },
+      "throws": "not a UI node property"
+    }
+  ]
+}

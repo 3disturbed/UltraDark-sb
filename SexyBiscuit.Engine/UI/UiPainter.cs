@@ -556,7 +556,7 @@ public static class UiPainter
                (byte)Math.Clamp(c.G * gain, 0f, 255f),
                (byte)Math.Clamp(c.B * gain, 0f, 255f), c.A);
 
-    /// <summary>The hover shade, matching <see cref="ScriptUi"/> and the browser's `lighten`.</summary>
+    /// <summary>The hover shade, matching the browser's `lighten`.</summary>
     private static Color Lighten(Color c)
     {
         static byte Up(byte v) => (byte)Math.Min(255, (int)Math.Round(v * HoverGain) + 12);

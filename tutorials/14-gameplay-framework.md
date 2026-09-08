@@ -425,34 +425,34 @@ namespace MyGame.UI;
 public sealed class Scoreboard
 {
     private readonly Panel _panel;
-    private readonly List<Label> _rows = new();
+    private readonly List<UiNode> _rows = new();
     private readonly GameState _state;
 
-    public Scoreboard(Game game, Canvas canvas, GameState state)
+    public Scoreboard(Game game, UiCanvas canvas, GameState state)
     {
         _state = state;
 
-        _panel = canvas.AddWidget<Panel>();
-        _panel.Position          = new Vector2(340, 140);
-        _panel.Size              = new Vector2(600, 420);
-        _panel.BackgroundTexture = game.WhiteTexture;
-        _panel.BackgroundColor   = new Color(10, 12, 22, 225);
-        _panel.LayoutMode        = PanelLayoutMode.Vertical;
-        _panel.Padding           = 8f;
-        _panel.Visible           = false;
-
-        _panel.AddChild(new Label
+        // Centred, sized to its rows, with no numbers to keep in step: adding a row
+        // grows the panel rather than clipping out of it.
+        _panel = canvas.Root.Add(new UiNode
         {
-            Text = "SCOREBOARD", Size = new Vector2(584, 36),
-            Alignment = TextAlignment.Center, TextColor = Color.White,
+            Positioning = PositionMode.Absolute, Anchor = UiAnchor.Center,
+            WidthMode = SizeMode.Fixed, Width = 600f,
+            Layout = LayoutMode.Column, Gap = new Vector2(0f, 4f),
+            Padding = new Vector4(8f, 8f, 8f, 8f),
+            CrossAlign = AlignMode.Stretch,
+            Background = new Color(10, 12, 22, 225),
+            Visible = false,
+        });
+
+        _panel.Add(new UiNode
+        {
+            Kind = UiKind.Label, Text = "SCOREBOARD",
+            TextAlign = AlignMode.Center, Tint = Color.White,
         });
 
         for (int i = 0; i < 8; i++)
-        {
-            var row = new Label { Size = new Vector2(584, 28), TextColor = Color.LightGray };
-            _rows.Add(row);
-            _panel.AddChild(row);
-        }
+            _rows.Add(_panel.Add(new UiNode { Kind = UiKind.Label, Tint = Color.LightGray }));
 
         state.MatchStateChanged.Add(_ => Refresh());
     }

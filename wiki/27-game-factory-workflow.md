@@ -99,10 +99,12 @@ tools that returned the most text; the editor writes the same per turn to
 `get_session_usage` with it in about seventy tokens. The benchmark is one fixed brief ("Hello
 World: add a coin the player collects, ship a web build") run before and after a change.
 
-One fixed cost is already measured: the full tool catalogue is 49,800 characters of compact
-JSON (about 12,500 tokens), paid once per session when Claude Code loads the tool set, and
-held under 60,000 by `--dump-mcp-tools --all --budget` in CI. The planned tool-surface merge
-(about 55 tools with descriptions under 120 characters) would bring it near 20,000.
+One fixed cost is already measured: the full tool catalogue is 47,400 characters of compact
+JSON (about 11,800 tokens), paid once per session when Claude Code loads the tool set, and held
+under 48,000 by `--dump-mcp-tools --all --budget` in CI and by `SexyBiscuit.Editor.Tests`. Half
+of that is parameter schemas and half descriptions; the descriptions no longer restate what the
+schema already says. The planned tool-surface merge (about 55 tools instead of 88) would bring
+it near 30,000, and is the remaining work here.
 
 ## Per-game checklist
 

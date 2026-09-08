@@ -10,6 +10,7 @@ import { SBEvent } from '../core/SBEvent.js';
 export const MatchState = Object.freeze({
     WaitingToStart: 'WaitingToStart',
     InProgress: 'InProgress',
+    Paused: 'Paused',          // the C# enum has it; a state file crosses engines with it
     Ended: 'Ended',
 });
 

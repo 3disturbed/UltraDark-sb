@@ -260,3 +260,237 @@ function num(v) {
     if (Number.isFinite(parsed)) return parsed;
     throw new UiDocumentError(`Expected a number, not ${JSON.stringify(v)}.`);
 }
+
+// =============================================================================
+// Reading — the mirror of apply()
+// =============================================================================
+
+/**
+ * Reads one property back off a node, in the same spelling `apply` accepts.
+ *
+ * The other half of the codec, and the reason a script handle does not need sixty-odd
+ * hand-written getters on each engine: a handle wires `get` here and `set` to `apply`,
+ * so a property added to one switch reaches both engines' script API at once instead
+ * of needing five hand-mirrored edits.
+ *
+ * Structural members -- `parent`, `children` and the functions -- are not here. They
+ * hand back node handles rather than values, which only a bridge can build.
+ */
+export function read(node, key) {
+    switch (canonical(key)) {
+        // --- identity ---
+        case 'name':        return node.name;
+        case 'kind':
+        case 'type':        return node.kind;
+        case 'visible':     return node.visible;
+        case 'interactive': return node.interactive;
+        case 'order':       return node.order;
+        case 'style':       return node.style;
+
+        // --- size ---
+        case 'width':      return readSize(node.widthMode, node.width);
+        case 'height':     return readSize(node.heightMode, node.height);
+        case 'widthmode':  return node.widthMode;
+        case 'heightmode': return node.heightMode;
+        case 'minwidth':   return node.minWidth;
+        case 'minheight':  return node.minHeight;
+        case 'maxwidth':   return node.maxWidth;
+        case 'maxheight':  return node.maxHeight;
+        case 'grow':       return node.grow;
+        case 'shrink':     return node.shrink;
+        case 'padding':    return fromEdges(node.padding);
+        case 'margin':     return fromEdges(node.margin);
+
+        // --- container ---
+        case 'layout':     return node.layout;
+        case 'gap':        return fromVec2(node.gap);
+        case 'wrap':       return node.wrap;
+        case 'mainalign':  return node.mainAlign;
+        case 'crossalign': return node.crossAlign;
+        case 'columns':    return node.columns;
+        case 'cellsize':   return fromVec2(node.cellSize);
+
+        // --- placement ---
+        case 'positioning': return node.positioning;
+        case 'absolute':    return node.positioning === PositionMode.Absolute;
+        case 'anchor':      return node.anchor;
+        case 'anchormin':   return fromVec2(node.anchorMin);
+        case 'anchormax':   return fromVec2(node.anchorMax);
+        case 'pivot':       return fromVec2(node.pivot);
+        case 'offset':      return fromVec2(node.offset);
+        case 'offsetmax':   return fromVec2(node.offsetMax);
+        case 'x':           return node.offset.x;
+        case 'y':           return node.offset.y;
+
+        // --- text ---
+        case 'text':          return node.text;
+        case 'scale':
+        case 'textscale':     return node.textScale;
+        case 'align':
+        case 'textalign':     return node.textAlign;
+        case 'verticalalign': return node.verticalAlign;
+        case 'wraptext':      return node.wrapText;
+        case 'linespacing':   return node.lineSpacing;
+
+        // --- paint ---
+        case 'background':  return node.background ?? null;
+        case 'tint':        return node.tint;
+        case 'opacity':     return node.opacity;
+        case 'bordercolour':
+        case 'bordercolor': return node.borderColour ?? null;
+        case 'borderwidth': return node.borderWidth;
+        case 'texturepath': return node.texturePath;
+        case 'sourcerect':  return fromEdges(node.sourceRect);
+        case 'ninepatch':   return fromEdges(node.ninePatch);
+
+        // --- clipping and scrolling ---
+        case 'clip':           return node.clip;
+        case 'scroll':         return node.scroll;
+        case 'scrolloffset':   return fromVec2(node.scrollOffset);
+        case 'ignoresafearea': return node.ignoreSafeArea;
+
+        // --- focus and navigation ---
+        case 'focusable': return node.focusable;
+        case 'modal':     return node.modal;
+        case 'navup':     return node.navUp;
+        case 'navdown':   return node.navDown;
+        case 'navleft':   return node.navLeft;
+        case 'navright':  return node.navRight;
+        case 'autofocus': return node.autoFocus;
+
+        // --- payload ---
+        case 'value':         return node.value;
+        case 'minvalue':      return node.minValue;
+        case 'maxvalue':      return node.maxValue;
+        case 'step':          return node.step;
+        case 'checked':       return node.checked;
+        case 'selectedindex': return node.selectedIndex;
+        case 'options':       return node.options.slice();
+
+        // --- resolved by layout, read-only ---
+        case 'rect': return {
+            x: node.rect.x, y: node.rect.y,
+            width: node.rect.width, height: node.rect.height,
+        };
+
+        // --- written by the input router, read-only ---
+        case 'hovered':  return node.hovered;
+        case 'pressed':  return node.pressed;
+        case 'clicked':  return node.clicked;
+        case 'focused':  return node.focused;
+        case 'expanded': return node.expanded;
+
+        default:
+            throw new UiDocumentError(`"${key}" is not a UI node property.`);
+    }
+}
+
+/** True when a key names something a node can be told, rather than only asked. */
+export function isWritable(key) {
+    return !['rect', 'hovered', 'pressed', 'clicked', 'focused', 'expanded']
+        .includes(canonical(key));
+}
+
+// =============================================================================
+// Writing
+// =============================================================================
+
+/**
+ * The properties a document round-trip writes, in a fixed order.
+ *
+ * Only the ones that survive a reload: layout results and interaction flags are
+ * recomputed every frame, and the aliases (`x`, `y`, `size`, `type`, `scale`, `align`,
+ * `absolute`) would each write a second copy of a property already listed.
+ */
+const WRITABLE_KEYS = Object.freeze([
+    'name', 'kind', 'visible', 'interactive', 'order', 'style',
+    'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'grow', 'shrink',
+    'padding', 'margin',
+    'layout', 'gap', 'wrap', 'mainAlign', 'crossAlign', 'columns', 'cellSize',
+    'positioning', 'anchor', 'anchorMin', 'anchorMax', 'pivot', 'offset', 'offsetMax',
+    'text', 'textScale', 'textAlign', 'verticalAlign', 'wrapText', 'lineSpacing',
+    'background', 'tint', 'opacity', 'borderColour', 'borderWidth', 'texturePath',
+    'sourceRect', 'ninePatch',
+    'clip', 'scroll', 'scrollOffset', 'ignoreSafeArea',
+    'focusable', 'modal', 'navUp', 'navDown', 'navLeft', 'navRight', 'autoFocus',
+    'value', 'minValue', 'maxValue', 'step', 'checked', 'selectedIndex', 'options',
+]);
+
+/**
+ * Convenience spellings a handle carries as well as the property they set.
+ *
+ * Every existing script positions with `x`/`y` and sizes text with `scale`, so the tree
+ * keeps those rather than making a migration rewrite arithmetic it did not need to change.
+ * `size`, `type` and `absolute` are spec-only shorthand and are deliberately not handle
+ * members: each writes a property the handle already exposes.
+ */
+const ALIAS_KEYS = Object.freeze(['x', 'y', 'scale', 'align']);
+
+/** What layout and the input router work out, which a script may read but not set. */
+const RESULT_KEYS = Object.freeze(['rect', 'hovered', 'pressed', 'clicked', 'focused', 'expanded']);
+
+/**
+ * Every value member a script handle exposes, in order.
+ *
+ * Both bridges build their handle by looping this, wiring `get` to read() and `set` to
+ * apply(). A property added to the codec therefore reaches both engines' script API by
+ * being named here once, instead of the five hand-mirrored edits the flat UI needed.
+ * A test pins this list against the contract in both directions.
+ */
+export const SCRIPT_PROPERTIES = Object.freeze([...WRITABLE_KEYS, ...ALIAS_KEYS, ...RESULT_KEYS]);
+
+/**
+ * Writes a tree back out as the same JSON `fromObject` reads.
+ *
+ * Properties still at their default are omitted, so a document says only what it changed
+ * and a round-trip does not bloat. The C# engine writes the identical shape, which is what
+ * lets one fixture build a tree on both engines and compare the two serialisations.
+ */
+export function toObject(node) {
+    const reference = new UiNode();
+    const result = {};
+
+    for (const key of WRITABLE_KEYS) {
+        // A named anchor already implies its min, max and pivot, so writing all three
+        // would put three redundant arrays into every anchored node of a .ui file.
+        if (skipDerivedAnchor(node, key)) continue;
+
+        const mine = read(node, key);
+        const theirs = read(reference, key);
+        if (same(mine, theirs)) continue;
+        result[key] = mine;
+    }
+
+    if (node.children.length > 0) result.children = node.children.map(toObject);
+    return result;
+}
+
+/** The tree as JSON text. */
+export function toJson(node) { return JSON.stringify(toObject(node)); }
+
+function same(a, b) { return JSON.stringify(a ?? null) === JSON.stringify(b ?? null); }
+
+function skipDerivedAnchor(node, key) {
+    return node.anchor !== UiAnchor.Custom
+        && (key === 'anchorMin' || key === 'anchorMax' || key === 'pivot');
+}
+
+// -----------------------------------------------------------------------------
+// Reading a value back out
+// -----------------------------------------------------------------------------
+
+/**
+ * A size reads back in the spelling it was written in, so a round-trip is lossless:
+ * a number for a fixed size, and the word for the three modes that have one.
+ */
+function readSize(mode, size) {
+    if (mode === SizeMode.Auto) return 'auto';
+    if (mode === SizeMode.Stretch) return '*';
+    if (mode === SizeMode.Percent) return `${trimZeros(size * 100)}%`;
+    return size;
+}
+
+function trimZeros(n) { return String(Math.round(n * 10000) / 10000); }
+
+function fromVec2(v) { return [v.x, v.y]; }
+function fromEdges(v) { return [v.x, v.y, v.z, v.w]; }

@@ -1,20 +1,27 @@
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
 using SexyBiscuit.Engine.Input;
 using SexyBiscuit.Engine.UI;
 
 namespace Cookies.TouchControls;
 
 /// <summary>
-/// A thumb stick drawn on screen. Claims one pointer inside its region and drives two named axes
-/// through the player's virtual input layer for as long as that pointer is down.
+/// A thumb stick drawn on screen. Claims one finger inside its region and drives two named axes
+/// through the player's virtual input layer for as long as that finger is down.
 /// </summary>
 /// <remarks>
+/// <para>
 /// It drives named actions rather than the engine's built-in touch joysticks, which claim half the
 /// screen each. That works for one stick and falls apart the moment a game wants a stick and two
 /// buttons on the same side.
+/// </para>
+/// <para>
+/// The visuals are nodes on a <see cref="UiCanvas"/>, so the painter puts them in screen space
+/// with everything else. The <em>input</em> comes straight from <see cref="TouchManager"/> rather
+/// than through the canvas, because the tree routes one pointer and a pad needs a finger per
+/// stick at the same time.
+/// </para>
 /// </remarks>
-public sealed class TouchStick : Widget
+public sealed class TouchStick
 {
     /// <summary>The action the horizontal axis drives.</summary>
     public string ActionX { get; set; } = "MoveX";
@@ -34,6 +41,9 @@ public sealed class TouchStick : Widget
     /// <summary>Who is pushing it.</summary>
     public PlayerInput? Player { get; set; }
 
+    /// <summary>The centre of the region a thumb may land in.</summary>
+    public Vector2 Home { get; set; }
+
     /// <summary>Where the stick is anchored right now: its home, or wherever a floating thumb landed.</summary>
     public Vector2 Origin { get; private set; }
 
@@ -41,48 +51,95 @@ public sealed class TouchStick : Widget
     public Vector2 Value { get; private set; }
 
     /// <summary>True while a thumb is on it.</summary>
-    public bool IsActive => _pointerId != null;
+    public bool IsActive => _fingerId != null;
 
-    private int? _pointerId;
-
-    public override void HandlePointer(in Pointer pointer)
+    /// <summary>Whether the stick is drawn and takes input at all.</summary>
+    public bool Visible
     {
-        if (!Visible || !Interactable) return;
+        get => _base.Visible;
+        set { _base.Visible = value; _knob.Visible = value; }
+    }
 
-        if (_pointerId == null)
+    private readonly UiNode _base;
+    private readonly UiNode _knob;
+    private int? _fingerId;
+
+    public TouchStick(UiNode parent, Color tint, float opacity)
+    {
+        _base = parent.Add(Disc(Radius * 2f, tint, opacity * 0.5f));
+        _knob = parent.Add(Disc(Radius * 0.84f, tint, opacity));
+    }
+
+    private static UiNode Disc(float size, Color tint, float opacity) => new()
+    {
+        Kind = UiKind.Panel,
+        Positioning = PositionMode.Absolute,
+        WidthMode = SizeMode.Fixed, Width = size,
+        HeightMode = SizeMode.Fixed, Height = size,
+        Background = tint,
+        Opacity = opacity,
+    };
+
+    /// <summary>
+    /// Reads this frame's touches and drives the axes.
+    /// </summary>
+    /// <param name="touches">Every finger currently on the screen.</param>
+    /// <param name="claimed">Fingers other controls have already taken.</param>
+    public void Update(IReadOnlyList<TouchPoint> touches, HashSet<int> claimed)
+    {
+        if (!Visible) { Release(); Layout(); return; }
+
+        if (_fingerId == null)
         {
-            if (!pointer.JustPressed || !ContainsPoint(pointer.Position)) return;
+            foreach (TouchPoint touch in touches)
+            {
+                if (claimed.Contains(touch.Id)) continue;
+                if (touch.Phase != TouchPhase.Began) continue;
+                if (Vector2.Distance(touch.Position, Home) > Radius * 1.5f) continue;
 
-            _pointerId = pointer.Id;
-            Origin     = Floating ? pointer.Position : Centre;
-        }
-        else if (pointer.Id != _pointerId)
-        {
-            return;   // somebody else's finger
+                _fingerId = touch.Id;
+                Origin = Floating ? touch.Position : Home;
+                break;
+            }
+
+            if (_fingerId == null) { Layout(); return; }
         }
 
-        if (pointer.JustReleased || !pointer.IsDown)
+        TouchPoint? held = null;
+        foreach (TouchPoint touch in touches)
+            if (touch.Id == _fingerId) { held = touch; break; }
+
+        if (held is not { } finger || finger.Phase is TouchPhase.Ended or TouchPhase.Cancelled)
         {
             Release();
+            Layout();
             return;
         }
 
-        var offset = pointer.Position - Origin;
+        claimed.Add(finger.Id);
+
+        Vector2 offset = finger.Position - Origin;
         float distance = offset.Length();
 
-        var value = distance <= 0.0001f ? Vector2.Zero : offset / MathF.Max(distance, Radius) * MathF.Min(distance / Radius, 1f);
+        Vector2 value = distance <= 0.0001f
+            ? Vector2.Zero
+            : offset / MathF.Max(distance, Radius) * MathF.Min(distance / Radius, 1f);
+
         if (value.Length() < DeadZone) value = Vector2.Zero;
 
         // Screen y grows downward; every action axis in this engine has up as positive.
         Value = new Vector2(value.X, -value.Y);
         Push();
+        Layout();
     }
 
     /// <summary>Drops the thumb and zeroes the axes, for a scene change or losing focus.</summary>
     public void Release()
     {
-        _pointerId = null;
-        Value      = Vector2.Zero;
+        if (_fingerId == null && Value == Vector2.Zero) return;
+
+        _fingerId = null;
+        Value = Vector2.Zero;
         Push();
     }
 
@@ -94,47 +151,13 @@ public sealed class TouchStick : Widget
         Player.SetVirtualAxis(ActionY, Value.Y);
     }
 
-    private Vector2 Centre
+    /// <summary>Moves the two nodes to where the stick currently is.</summary>
+    private void Layout()
     {
-        get
-        {
-            var bounds = Bounds;
-            return new Vector2(bounds.X + bounds.Width * 0.5f, bounds.Y + bounds.Height * 0.5f);
-        }
-    }
+        Vector2 anchor = IsActive ? Origin : Home;
+        Vector2 knob = anchor + new Vector2(Value.X, -Value.Y) * Radius;
 
-    public override void Draw(SpriteBatch sb, SpriteFont? font)
-    {
-        if (!Visible) return;
-
-        var home = IsActive ? Origin : Centre;
-        var knob = home + new Vector2(Value.X, -Value.Y) * Radius;
-
-        DrawRing(sb, home, Radius, Tint * (Opacity * 0.5f));
-        DrawDisc(sb, knob, Radius * 0.42f, Tint * Opacity);
-    }
-
-    /// <summary>A filled circle from axis-aligned spans, so no texture is needed.</summary>
-    private static void DrawDisc(SpriteBatch sb, Vector2 centre, float radius, Color colour)
-    {
-        int r = (int)radius;
-        for (int y = -r; y <= r; y++)
-        {
-            int half = (int)MathF.Sqrt(MathF.Max(0f, radius * radius - y * y));
-            if (half <= 0) continue;
-
-            FillRect(sb, new Rectangle((int)centre.X - half, (int)centre.Y + y, half * 2, 1), colour);
-        }
-    }
-
-    private static void DrawRing(SpriteBatch sb, Vector2 centre, float radius, Color colour)
-    {
-        const int Segments = 48;
-        for (int i = 0; i < Segments; i++)
-        {
-            float angle = MathF.Tau * i / Segments;
-            var point = centre + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * radius;
-            FillRect(sb, new Rectangle((int)point.X - 2, (int)point.Y - 2, 4, 4), colour);
-        }
+        _base.Offset = anchor - new Vector2(_base.Width, _base.Height) * 0.5f;
+        _knob.Offset = knob - new Vector2(_knob.Width, _knob.Height) * 0.5f;
     }
 }

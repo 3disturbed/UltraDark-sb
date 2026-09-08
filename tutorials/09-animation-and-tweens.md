@@ -440,15 +440,18 @@ public void SpawnDamageNumber(Scene scene, Vector2 worldPos, int amount)
     actor.Transform.Position = worldPos;
     actor.LifeSpan = 1.0f;                       // automatic cleanup
 
-    var wc = actor.AddComponent<WorldCanvas>();
-    wc.Canvas.Font = Font;
-    wc.Offset      = new Vector2(0, -20);
-
-    var label = wc.Canvas.AddWidget<Label>();
-    label.Text      = amount.ToString();
-    label.TextColor = new Color(255, 210, 120);
-    label.Size      = new Vector2(60, 24);
-    label.Alignment = TextAlignment.Center;
+    // The number lives on the UI canvas, in screen space, and follows the actor by
+    // being written each frame. There is no world-space canvas: a camera that pans
+    // must not take a HUD with it, and one that does is the bug that rule exists for.
+    UiNode label = canvas.Root.Add(new UiNode
+    {
+        Kind        = UiKind.Label,
+        Text        = amount.ToString(),
+        Tint        = new Color(255, 210, 120),
+        Positioning = PositionMode.Absolute,
+        Offset      = Camera2D.Main!.WorldToScreen(worldPos, graphicsDevice) - new Vector2(0f, 20f),
+        TextAlign   = AlignMode.Center,
+    });
 
     scene.AddActor(actor, "foreground");
 
@@ -509,7 +512,7 @@ You have:
 - Sprite animation driven by movement, with non-interruptible clips
 - A reusable game-feel library: pop, squash, flash, shake, hit-stop, fade-out
 - Tween lifetime discipline
-- Floating damage numbers combining `LifeSpan`, `WorldCanvas` and tweens
+- Floating damage numbers combining `LifeSpan`, a `UiCanvas` node and tweens
 
 ## Exercises
 

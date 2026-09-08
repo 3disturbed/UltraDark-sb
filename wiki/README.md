@@ -31,7 +31,7 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [6. Physics](06-physics.md) | Aether 2D + Bepu 3D, colliders, rigidbodies, character controllers, raycasts, units |
 | [7. Input](07-input.md) | Action maps, keyboard/mouse/gamepad/touch, rebinding, cursor control |
 | [8. Audio](08-audio.md) | `AudioManager`, buses, `AudioSource`, handles, fades, effects |
-| [9. UI](09-ui.md) | `Canvas`, widgets, layout, themes, world-space UI |
+| [9. UI](09-ui.md) | `UiCanvas`, the node tree, layout, focus and navigation |
 | [10. Animation](10-animation.md) | Sprite animation, animator state machines, tweens, skeletal animation |
 | [11. JavaScript Scripting](11-scripting.md) | The real script API, lifecycle hooks, hot reload, extending the bridge |
 | [12. Scenes & Prefabs](12-scenes-prefabs.md) | Scene JSON format, serialisation, prefabs, world streaming |
@@ -54,8 +54,8 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [26. The HTML5 Port](26-html5.md) | The JavaScript engine under `html5/`, shared project files, the Web build target, and three bugs it found |
 | [27. The Game Factory Workflow](27-game-factory-workflow.md) | Making many small games with an agent: the shared scripting contract, the node toolchain (validate, serve, export, upload), the native port, and the token rules |
 | [28. The CookieJar](28-the-cookiejar.md) | The module library: cookies and jars, installing into a project, baking work back out, and the trust gate |
-| [29. MakeChibi](29-makechibi.md) | Characters built from primitives at runtime: the recipe, the sixteen-joint rig, procedural and keyed clips, the `Chibi` scripting global, and the editor panel |
 | [29. Darks Games](29-darksgames.md) | Accounts and social: identity, presence, Join, parties, cloud saves and achievements, in both engines and in the exported build |
+| [30. MakeChibi](30-makechibi.md) | Characters built from primitives at runtime: the recipe, the sixteen-joint rig, procedural and keyed clips, the `Chibi` scripting global, and the editor panel |
 
 ## Reference
 
@@ -109,7 +109,7 @@ rather than hidden.
 
 ## This engine is a moving target
 
-**Verified against commit `407d32c`.** The engine is under active development —
+**Verified against commit `3bde26e`.** The engine is under active development —
 pages here were written by reading the source rather than the design document,
 and the source moves.
 

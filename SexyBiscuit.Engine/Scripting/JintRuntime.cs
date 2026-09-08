@@ -36,16 +36,10 @@ public sealed class JintRuntime
 
     /// <summary>
     /// The lifecycle functions a script may define. Nothing else is ever called by the engine;
-    /// anything else a script defines is reachable through <see cref="Invoke"/>. The browser
-    /// runtime's <c>SCRIPT_HOOKS</c> is the same list, and a test on each side pins them together.
+    /// anything else a script defines is reachable through <see cref="Invoke"/>. Read from the
+    /// embedded contract, so this is the list the browser runtime's <c>SCRIPT_HOOKS</c> is pinned to.
     /// </summary>
-    public static readonly string[] KnownHooks =
-    {
-        "onAwake", "onStart", "onUpdate", "onFixedUpdate", "onLateUpdate", "onDestroy",
-        "onCollisionEnter", "onCollisionStay", "onCollisionExit",
-        "onTriggerEnter", "onTriggerStay", "onTriggerExit",
-        "onNetworkMessage",
-    };
+    public static readonly string[] KnownHooks = ScriptContract.HookNames();
 
     // -------------------------------------------------------------------------
     // Fields

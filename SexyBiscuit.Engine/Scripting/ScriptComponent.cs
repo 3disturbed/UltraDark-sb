@@ -167,6 +167,7 @@ public sealed class ScriptComponent : Component
         // arrives, which is a leak that only shows up as a growing stall.
         Runtime?.Bridge.DisposeNetwork();
         Runtime?.Bridge.DisposeDarksGames();
+        Runtime?.Bridge.DisposeUi();
     }
 
     public override void OnCollisionEnter(CollisionData data) => DispatchCollision("onCollisionEnter", data);

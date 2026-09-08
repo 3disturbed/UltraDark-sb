@@ -115,7 +115,7 @@ The repository root's `CLAUDE.md` orients either kind of session.
 
 ## The tools
 
-The `sexybiscuit` server exposes 86 tools (`mcp__sexybiscuit__<name>` inside Claude Code). This
+The `sexybiscuit` server exposes 88 tools (`mcp__sexybiscuit__<name>` inside Claude Code). This
 table is generated: `dotnet run --project SexyBiscuit.Editor -- --dump-mcp-tools --all --markdown`
 prints it without a window (`--all` adds the editor-only classes to the engine tools; the
 running editor serves the same list as the `sexybiscuit://tools` resource). Results are sized
@@ -124,6 +124,13 @@ for an agent: one compact JSON text block led by a summary line, stubs (`id`, `n
 `get_context` for the state of things in about a hundred tokens. `apply_scene_edits` runs a
 list of edits in one call and one undo step; `run_scene_report`, `run_tests` and
 `export_build` return counts and one-line-per-target reports instead of logs.
+
+Each entry also carries the hints a client reads before calling: `readOnlyHint` for a tool that
+changes nothing anywhere (the `get_`, `list_` and `describe_` family, 27 of the 88), and
+`destructiveHint` for one worth confirming. `readOnlyHint` used to be inferred from whether a
+tool edited the *scene*, which meant everything that wrote a file, spawned a process or published
+a build claimed to be read-only — `publish_build` among them, and `uninstall_cookie` claiming
+both at once. It is opt-in now.
 
 | Tool | Description | Parameters |
 |---|---|---|

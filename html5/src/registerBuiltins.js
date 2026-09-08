@@ -42,6 +42,7 @@ import './gameplay/PlayerStart.js';
 
 import './chibi/ChibiCharacter.js';
 import './chibi/ChibiAnimator.js';
+import './ui/UiCanvas.js';
 
 /** True once the built-ins have registered. Importing this module is what does it. */
 export const BUILTINS_REGISTERED = true;

@@ -268,3 +268,54 @@ packages, per-game activity and app delegate, signing); until then, ship the web
 - [26. The HTML5 Port](26-html5.md) — the web build's runtime and the node exporter
 - [27. The Game Factory Workflow](27-game-factory-workflow.md) — where this fits
 - [19. Steam](19-steam.md)
+
+---
+
+## Android: every publish carries an APK
+
+
+`--all` builds one, and it is the build most testers will actually take — most people who will
+try a prototype have a phone in their hand and no desktop open.
+
+```
+web        ok         0.1s  jake01-1.0.0-web.zip (188 KB)
+win-x64    ok         8.3s  jake01-1.0.0-win-x64.zip (33.7 MB)
+osx-arm64  ok         6.2s  jake01-1.0.0-osx-arm64.tar.gz (31.3 MB)
+linux-x64  ok         6.1s  jake01-1.0.0-linux-x64.tar.gz (34.0 MB)
+android    ok        68.1s  jake01-1.0.0-android.apk (35.6 MB)
+```
+
+The APK is the artifact, not a zip around one: a phone can install what it downloads. It is
+signed with the SDK's debug key, which is correct for a build installed by hand — name a
+keystore in `BuildSettings.json` only when signing for Play.
+
+**How it works, because it is not a RID.** There is no `dotnet publish -r android`, so Android
+does not go through `DesktopPublisher`. `AndroidPublisher` writes a head project under
+`.sexybiscuit/android/` — an Activity, a manifest, launcher icons, and the staged game as
+`AndroidAsset` — and publishes that. The engine grows a second target framework only when asked
+(`-p:SexyBiscuitAndroid=true`), so a machine with no `android` workload still builds the engine,
+runs the tests and opens the editor exactly as before.
+
+**The generated Activity unpacks the game on first run.** Assets inside an APK are not files, and
+the engine reads its project with ordinary file IO. Rather than thread a stream provider through
+all of it for one platform, the Activity copies the packaged project into app-private storage
+once per version and points `ProjectPaths.Root` there.
+
+What is not in the Android build, and why: **AssimpNet** (native libassimp, desktop-only, so 3D
+model import says so and returns), **Steamworks.NET** (desktop SDK; every `Steam/*.cs` was already
+behind `#if STEAMWORKS`, so not defining it removes the integration with no code change),
+**NAudio** (Windows-first; MP3 falls back with a message, and `.ogg`/`.wav` — what the templates
+ship — decode as usual), and the C# **game-assembly loader** (`AssemblyDependencyResolver` is
+unsupported on Android; an Android game's logic is JavaScript). Android uses the **same MonoGame
+version** as desktop, 3.8.1.303, so there is no API drift between the two builds.
+
+**iOS is still not buildable** and still fails loudly rather than shipping an archive with no
+application in it.
+
+**Read the summary, not the log.** The CLI prints one line per target and writes
+`build-report.json` beside the output. Open a log only for a target that failed; the error lines
+are printed under it. A failing publish is nearly always the engine checkout or the SDK — check
+`SEXYBISCUIT_REPO` and `dotnet --version`.
+
+
+---

@@ -24,7 +24,6 @@ import { AudioManager } from './audio/AudioManager.js';
 import { SpriteBatch } from './rendering/SpriteBatch.js';
 import { RenderSystem3D } from './rendering/RenderSystem3D.js';
 import { Camera2D } from './rendering/Camera2D.js';
-import { ScriptUi } from './ui/ScriptUi.js';
 import { UiCanvas } from './ui/UiCanvas.js';
 import { paintAll as paintUiCanvases } from './ui/UiPainter.js';
 import { GraphicsMenu } from './ui/GraphicsMenu.js';
@@ -242,10 +241,6 @@ export class EngineHost {
         // first resize(), and a freshly created <canvas> with no width/height
         // attributes is 300x150. Taking that would leave UI.width at 300 for the
         // life of the page. resize() is what keeps it right from here on.
-        this.ui = new ScriptUi({
-            width: this.config.windowWidth,
-            height: this.config.windowHeight,
-        });
 
         // Input listens on the top canvas: it is the one the pointer actually hits.
         this.input.attach(this.canvas2D);
@@ -297,7 +292,6 @@ export class EngineHost {
         // top-left corner and a panel sized UI.width x UI.height covers a
         // fraction of the screen. Nothing throws; it just looks wrong, and only
         // once a game puts something on screen.
-        this.ui?.setViewport(width, height);
     }
 
     _watchResize() {
@@ -459,14 +453,6 @@ export class EngineHost {
 
         // UI last and untransformed: it is screen space, so a camera that has
         // panned, zoomed or shaken must not take the HUD with it.
-        if (this.ui) {
-            const mouse = this.input?.mousePosition;
-            this.ui.setPointer(mouse?.x ?? -1, mouse?.y ?? -1,
-                this.input?.isMouseButtonDown?.() ?? false);
-            this.ui.update();
-            this.ui.draw(this.ctx);
-        }
-
         this._drawUiCanvases();
     }
 

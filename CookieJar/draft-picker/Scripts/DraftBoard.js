@@ -77,48 +77,51 @@ function onStart() {
 // hidden. Creating them on open would allocate at the exact moment the player is
 // looking straight at it.
 function build() {
-    headingLabel = UI.label(0, headingY, "", {
-        anchor: "center", scale: headingScale, tint: headingColour,
-        align: "center", width: 600, visible: false,
-    });
-    hintLabel = UI.label(0, hintY, hint, {
-        anchor: "center", scale: bodyScale, tint: dimColour,
-        align: "center", width: 400, visible: false,
-    });
-
+    // One tree. The row centres itself, each card stacks its own lines, and the card
+    // IS the button -- so the fully transparent overlay this used to need, purely
+    // because only a `button` was hit-testable, is gone with the sixteen coordinate
+    // writes per card per frame that kept it glued in place.
+    var cards = [];
     for (var i = 0; i < maxCards; i++) {
-        var panel = UI.panel(0, cardY, cardW, cardH, {
-            anchor: "center", background: cardColour, visible: false,
+        cards.push({
+            name: "card" + i, kind: "button", visible: false,
+            width: cardW, height: cardH, background: cardColour,
+            layout: "column", gap: 6, padding: 10, crossAlign: "stretch",
+            children: [
+                { name: "strip" + i, height: stripHeight, background: "#888888" },
+                { name: "title" + i, kind: "label", text: "",
+                  scale: titleScale, tint: textColour, align: "center" },
+                { name: "line1" + i, kind: "label", text: "",
+                  scale: bodyScale, tint: dimColour, align: "center" },
+                { name: "line2" + i, kind: "label", text: "",
+                  scale: bodyScale, tint: dimColour, align: "center" },
+                { kind: "spacer", grow: 1 },
+                { name: "footer" + i, kind: "label", text: "",
+                  scale: bodyScale, tint: dimColour, align: "center" },
+            ],
         });
-        var strip = UI.panel(0, cardY, cardW, stripHeight, {
-            anchor: "center", background: "#888888", visible: false,
-        });
-        var title = UI.label(0, cardY, "", {
-            anchor: "center", scale: titleScale, tint: textColour,
-            align: "center", width: cardW, visible: false,
-        });
-        var line1 = UI.label(0, cardY, "", {
-            anchor: "center", scale: bodyScale, tint: dimColour,
-            align: "center", width: cardW, visible: false,
-        });
-        var line2 = UI.label(0, cardY, "", {
-            anchor: "center", scale: bodyScale, tint: dimColour,
-            align: "center", width: cardW, visible: false,
-        });
-        var footer = UI.label(0, cardY, "", {
-            anchor: "center", scale: bodyScale, tint: dimColour,
-            align: "center", width: cardW, visible: false,
-        });
+    }
 
-        // The button is the whole card and carries no text of its own: the
-        // labels above it are what the player reads, and this is what they hit.
-        var button = UI.button(0, cardY, cardW, cardH, "", {
-            anchor: "center", background: "#00000000", visible: false,
-        });
+    UI.build({
+        name: "board", layout: "column", mainAlign: "center", crossAlign: "center",
+        gap: 18, width: "*", height: "*",
+        children: [
+            { name: "heading", kind: "label", text: "", visible: false,
+              scale: headingScale, tint: headingColour, align: "center" },
+            { name: "cards", layout: "row", gap: cardGap, mainAlign: "center", children: cards },
+            { name: "hint", kind: "label", text: hint, visible: false,
+              scale: bodyScale, tint: dimColour, align: "center" },
+        ],
+    });
 
+    headingLabel = UI.find("heading");
+    hintLabel = UI.find("hint");
+
+    for (i = 0; i < maxCards; i++) {
         slots.push({
-            panel: panel, strip: strip, title: title,
-            line1: line1, line2: line2, footer: footer, button: button,
+            card: UI.find("card" + i), strip: UI.find("strip" + i),
+            title: UI.find("title" + i), line1: UI.find("line1" + i),
+            line2: UI.find("line2" + i), footer: UI.find("footer" + i),
         });
     }
 }
@@ -131,7 +134,7 @@ function onUpdate(dt) {
 
     for (var i = 0; i < count; i++) {
         if (Input.isKeyPressed(KEYS[i])) { pick(i); return; }
-        if (slots[i].button && slots[i].button.clicked) { pick(i); return; }
+        if (slots[i].card && slots[i].card.clicked) { pick(i); return; }
     }
 }
 
@@ -139,7 +142,7 @@ function pick(slot) {
     picked = slot;
     // The chosen card goes bright before the caller closes the board, so the
     // choice is visibly registered rather than the row just vanishing.
-    if (slots[slot].panel) { slots[slot].panel.background = cardPicked; }
+    if (slots[slot].card) { slots[slot].card.background = cardPicked; }
     if (slots[slot].title) { slots[slot].title.tint = cardColour; }
 }
 
@@ -148,34 +151,15 @@ function pick(slot) {
 // ===========================================================================
 
 function layout() {
-    var span = count * cardW + (count - 1) * cardGap;
-    var startX = -span / 2 + cardW / 2;
+    // The row centres itself and each card stacks its own lines, so all that is left
+    // here is the shade that says a card is clickable. This used to be sixteen
+    // coordinate writes per card, every frame, purely to hold six children against a
+    // parent that had none -- plus a `startX = -span / 2 + cardW / 2` whose trailing
+    // half-card existed only because a centre-anchored element's origin is its centre.
+    if (picked >= 0) { return; }
 
     for (var i = 0; i < count; i++) {
-        var s = slots[i];
-        var x = startX + i * (cardW + cardGap);
-
-        s.panel.x = x;
-        s.panel.y = cardY;
-        s.button.x = x;
-        s.button.y = cardY;
-
-        s.strip.x = x;
-        s.strip.y = cardY - cardH / 2 + stripHeight / 2;
-
-        s.title.x = x;
-        s.title.y = cardY - cardH / 2 + 26;
-        s.line1.x = x;
-        s.line1.y = cardY - 10;
-        s.line2.x = x;
-        s.line2.y = cardY + 6;
-        s.footer.x = x;
-        s.footer.y = cardY + cardH / 2 - 22;
-
-        // Hover is the only thing that says a card is clickable at all.
-        if (picked < 0) {
-            s.panel.background = s.button.hovered ? cardHover : cardColour;
-        }
+        slots[i].card.background = slots[i].card.hovered ? cardHover : cardColour;
     }
 }
 
@@ -209,7 +193,7 @@ function setCard(slot, title, line1, line2, colour) {
     s.line2.text = String(line2 === undefined ? "" : line2);
     s.strip.background = String(colour === undefined ? "#888888" : colour);
     s.title.tint = textColour;
-    s.panel.background = cardColour;
+    s.card.background = cardColour;
     return 1;
 }
 
@@ -268,14 +252,9 @@ function hideAll() {
 function setVisible(i, on) {
     if (i >= slots.length) { return; }
     var live = on ? true : false;
-    var s = slots[i];
-    s.panel.visible = live;
-    s.strip.visible = live;
-    s.title.visible = live;
-    s.line1.visible = live;
-    s.line2.visible = live;
-    s.footer.visible = live;
-    s.button.visible = live;
+    // One write, because a card is a node with children now rather than seven
+    // elements that happened to share a rectangle.
+    slots[i].card.visible = live;
 }
 
 // Drops this script's elements only, so a scene change cannot leave a board on

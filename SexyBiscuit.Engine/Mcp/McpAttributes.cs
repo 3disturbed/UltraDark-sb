@@ -41,6 +41,20 @@ public sealed class McpToolAttribute : Attribute
     public bool Destructive { get; init; }
 
     /// <summary>
+    /// The tool changes nothing: not the scene, not a file, not a process, not a remote service.
+    /// Advertised as <c>readOnlyHint</c>, which is what a client reads to decide whether a call
+    /// needs confirming, so it is opt-in and false by default.
+    /// </summary>
+    /// <remarks>
+    /// This used to be inferred from <see cref="Mutating"/>, which means something narrower — the
+    /// tool edits the scene graph, so snapshot undo first. Everything that wrote a file, spawned a
+    /// process or published a build was therefore advertised as read-only: 65 of the 88 tools,
+    /// <c>publish_build</c> and <c>uninstall_cookie</c> among them, the latter claiming to be
+    /// read-only and destructive at once.
+    /// </remarks>
+    public bool ReadOnly { get; init; }
+
+    /// <summary>
     /// Optional activity-log label with <c>{argument}</c> placeholders, e.g.
     /// <c>"Spawn actor {name}"</c>. Defaults to the tool name with underscores as spaces.
     /// </summary>

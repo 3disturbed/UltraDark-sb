@@ -1,80 +1,49 @@
 # SexyBiscuit — orientation for Claude
 
-**The full workflow — HTML5 prototype, native MonoGame build, publish to DarksGames — is
-[`AGENTS.md`](AGENTS.md).** This page is the short orientation; read that one before shipping.
+A C#/.NET 8 game engine (MonoGame DesktopGL) with an ImGui editor, and a JavaScript port of the
+same engine under `html5/` that reads the same project files. Actors carry Components; a Scene
+holds Layers of Actors; GameMode, PlayerController and Character give an Unreal-style gameplay
+layer. Game logic is JavaScript in `Scripts/*.js`, written against a contract both engines
+implement, so a script that runs in the browser runs natively unchanged.
 
-SexyBiscuit is a C#/.NET 8 game engine (MonoGame DesktopGL) with an ImGui editor. Actors carry
-Components; a Scene holds Layers of Actors; GameMode, PlayerController and Character give an
-Unreal-style gameplay layer. Scenes are JSON (`.scene`) written by `SceneSerializer`.
+**The workflow (prototype in HTML5, build natively, publish to DarksGames) is
+[`AGENTS.md`](AGENTS.md).** Each folder below has its own `CLAUDE.md`, loaded when you work
+there, with that folder's gate and rules; `.claude/rules/` names the files that are twins.
 
-Projects: `SexyBiscuit.Engine` (runtime, no editor code), `SexyBiscuit.Editor` (the editor, MCP
-host, C# hot reload), `SexyBiscuit.Tests` (xunit, engine only), `SexyBiscuit.Demo`,
-`SexyBiscuit.Build` (the `sbengine` CLI over the engine's export pipeline). `html5/` is a
-JavaScript port of the engine with its own editor and player; it reads the same project files, so
-a change to the scene format or a component's serialised properties has to land on both sides.
+| Folder | What | Gate |
+|---|---|---|
+| `SexyBiscuit.Engine/` | the C# runtime, no editor code | `dotnet build ... -c Debug -warnaserror`; `dotnet test ... --filter "FullyQualifiedName~<Area>"` |
+| `SexyBiscuit.Editor/` | the editor, the MCP host, C# hot reload | `dotnet build`; `--dump-mcp-tools --all --budget 60000` |
+| `SexyBiscuit.Tests/` | xunit, engine only | `dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj` |
+| `html5/` | the JavaScript engine, editor, player and tools | `cd html5 && npm test && npm run lint && npm run validate` (seconds) |
+| `Templates/`, `CookieJar/`, `Games/` | starter projects, reusable modules, engine probes | their `CLAUDE.md` |
+| `SexyBiscuit.Build/` | `sbengine`, one Main over `Engine/Build` | `dotnet run --project SexyBiscuit.Build -- --project Games/<Name> --all` |
+| `wiki/` | the reference, one page per topic | read the page, never the folder |
 
-Build and test from the repository root:
+## Rules that cross folders
 
-    dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj -c Debug -warnaserror
-    dotnet build SexyBiscuit.Editor/SexyBiscuit.Editor.csproj
-    dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj
-    dotnet run --project SexyBiscuit.Build -- --project Games/<Name> --all [--upload]   # sbengine: web + desktop builds, report, upload
-
-For the HTML5 port, from `html5/` (node 22+, no dependencies):
-
-    npm test                                  # node --test; reads the real Templates/ and C# sources
-    npm run lint                              # parses every module and checks the shader sources
-    npm run validate -- <projectDir>          # scenes load, scripts compile, scripts stay in the contract
-    node tools/serve.js --watch               # editor at /html5/editor/, player at /html5/runtime/, live reload
-    node tools/export.js <projectDir> --pwa   # a static, installable web build and its zip
-    node tools/upload.js <archive>            # publish a native build to DarksGames ($DG_BUILD_TOKEN)
+- **One contract, two engines.** A scripting member, a serialised property, a hook, a wire frame
+  or a shared table changes on both sides in the same commit; `/mirrors.json` names the twins,
+  `npm run mirror` fails a one-sided change, and the parity tests on both sides hold them
+  together. The scripting API is edited in `bridge-api.json` first, then `npm run gen`, then both
+  bridges. Never widen one bridge for one game.
+- **One commit per concern.** A commit touches one folder's area, or one mirror pair with its
+  parity test. No consolidate commits; split with `git add -p`.
+- **Run the folder's gate before every commit.** After a push,
+  `gh run list --workflow ci.yml --branch main --limit 1`; never start the next task on a red
+  main. Windows and macOS run nightly and on release tags, not per push.
+- **Do not read the engine source to write a game.** Read `wiki/11-scripting.md` and the
+  template's own scripts; the validator and the tests are the checker, not screenshots.
+- **Reuse before writing.** Look in `CookieJar/` before any common mechanic (a summary costs about
+  thirty tokens); bake back what a second game would want.
+- **In the editor** (the `sexybiscuit` MCP server is connected): start with `get_context`, batch
+  with `apply_scene_edits`, verify at milestones with `run_scene_report`, trust the short results.
+  Engine changes need `rebuild_engine_and_restart`; game code needs `reload_game_code`.
+- If `/srv/darksgames` exists you are on the fleet box, which is production: read
+  `ops/fleet-box.md` before any build or deploy.
+- `README.md` is the design tour and may run ahead of the code; `wiki/` describes what the code
+  does today.
 
 Conventions: XML docs on public API, `// ----` section banners, British spelling in prose, tests
 named like `ARoundTripPreservesActorIdentity` with a why-comment, scenes destroyed in tests,
 `FlushPendingActors()` after every mutation before reading back.
-
-## Making games
-
-Games live under `Games/<Name>/` in a repo seeded from this one (`.claude/skills/new-game`), and
-ship with `.claude/skills/ship-game`; the workflow, and why it is shaped for low token use, is
-`wiki/27-game-factory-workflow.md`. Game logic is JavaScript in `Scripts/*.js` written against
-the **shared scripting contract** (`html5/src/scripting/bridge-api.json`, documented in
-`wiki/11-scripting.md`): the Jint bridge and the browser bridge implement it member for member,
-so a script that runs in the browser runs natively unchanged. The template smoke tests in both
-suites are the gate.
-
-When prototyping with no editor session (the usual case): edit `Scripts/*.js` and `.scene` files
-directly, run `npm run validate -- ../Games/<Name>` from `html5/` until it prints OK, and serve
-with `--watch`. Do not read the engine source to write a game; read `wiki/11-scripting.md` and the
-template's own scripts. No screenshots: the validator and the tests are the checker.
-
-When running inside the editor (the `sexybiscuit` MCP server is connected): the editor process
-is already running this code. Start with `get_context`; ask for more only when a task needs it.
-Engine changes only take effect after `rebuild_engine_and_restart`; game-project changes after
-`reload_game_code`; `run_tests` runs a suite and returns totals and failing names. Scene edits
-go through the MCP tools, not by editing `.scene` files, so the editor, undo and the viewport
-stay in step; batch them with `apply_scene_edits`. Verify at milestones with `run_scene_report`
-or one `capture_viewport`, not after every edit. Ship with `export_build`. Tool results are short
-on purpose; trust them. See `wiki/25-ai-assistant-mcp.md` for the tool catalogue.
-
-Before writing a common mechanic from scratch, look in the CookieJar: `CookieJar/` in this
-repository is a library of reusable modules, each carrying an `AGENT.md` that says how to wire it
-up. In the editor that is `search_cookies` and `install_cookie`; from a terminal it is a folder to
-read. When a task produces something a second game would want, bake it back (`bake_cookie`, or
-Tools in the editor). A cookie summary costs about thirty tokens; deriving the module again costs
-thousands, every game. See `wiki/28-the-cookiejar.md`.
-
-Multiplayer and Darks Games accounts are one wire and one contract across both engines.
-`wiki/15-networking.md` covers the transport seam (WebSocket is the shared wire; LiteNetLib UDP is
-desktop-only), the frame table, rooms and link-to-join; `node html5/tools/roomserver.js` is the
-relay a web build joins through. `wiki/29-darksgames.md` covers identity, presence, Join, parties,
-cloud saves and achievements — set a catalogue slug and the exported build carries them, and
-`--gated` writes the closed-testing host. Read those two before touching `SexyBiscuit.Engine/
-Networking/`, `SexyBiscuit.Engine/DarksGames/`, `html5/src/net/` or `html5/src/dg/`.
-
-Actors form a tree: `AttachTo`/`Detach`, both transforms following, destroy cascading to the
-subtree, and children nested in the scene file. See `wiki/02-core-architecture.md#attachment`.
-
-The HTML5 port is documented in `html5/README.md` and `wiki/26-html5.md`. Both engines' action
-maps, euler conventions, scripting contract, hook lists, wire protocol and replication tags are
-pinned by tests that read the other side's source, so they fail if the two drift apart.

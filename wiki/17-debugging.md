@@ -291,8 +291,9 @@ private void HandleDebugKeys()
 | Physics inert | `Config.EnablePhysics2D` is false, or no `Rigidbody2D`. |
 | Tweens frozen | `Time.TimeScale` is 0 — tweens run on scaled time. |
 | Script does nothing | `ScriptPath` set after `AddComponent` — call `script.Awake()`. Check the log for `[Script Error]`. |
-| Text invisible | `Canvas.Font` is null. |
-| Panel/Button invisible | No `BackgroundTexture` / `NormalTexture`. |
+| UI invisible | The actor has no `UiCanvas`, or the node's `Visible` is false — text and panels need no assets. |
+| UI in the wrong place | The canvas's `ReferenceResolution` does not match what the tree was authored at. |
+| A click goes through a panel | A node with no `background` and no `texturePath` is a layout row, and the hit test walks through it. |
 | Collider wrong size | Shape set after `AddComponent` — call `Rebuild()`. |
 | Network silent | `NetworkManager.Tick(dt)` not called. |
 | Frame time spikes | `Profiler` a suspect section; check `Gen0` in `MemoryViewer` for per-frame allocation. |

@@ -546,5 +546,5 @@ the HUD".
 ## Next
 
 - [6. Physics](06-physics.md) — including Bepu 3D.
-- [29. MakeChibi](29-makechibi.md) — characters built from these primitives, with no model files.
+- [30. MakeChibi](30-makechibi.md) — characters built from these primitives, with no model files.
 - [Tutorial 13: 3D Basics](../tutorials/13-3d-basics.md)

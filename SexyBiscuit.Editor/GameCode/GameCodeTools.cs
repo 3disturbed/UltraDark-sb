@@ -30,7 +30,7 @@ public sealed class GameCodeTools
         "Describe the open project's C# code project: csproj path, Source/ files, output DLL, the loaded assembly " +
         "generation, whether it was compiled against the engine build this editor runs, and the last build. Read-only; " +
         "use create_code_project to add one.",
-        MainThread = false)]
+        MainThread = false, ReadOnly = true)]
     public McpToolResult GetCodeProject()
     {
         var project = _code.Project;
@@ -70,11 +70,9 @@ public sealed class GameCodeTools
     }
 
     [McpTool("create_code_project",
-        "Add a C# project to the open SexyBiscuit project: <Name>.csproj at the project root, Source/ with starter classes " +
-        "(a GameMode, PlayerController and Character, a Spinner component, an example [McpTool] class), a per-machine " +
-        "SexyBiscuit.props pointing at this engine, and .gitignore. Existing files are never overwritten unless overwrite " +
-        "is true. By default it then builds, hot-loads the assembly, and swaps a plain GameMode in the scene for the " +
-        "project's own.",
+        "Add a C# project to the open SexyBiscuit project: the csproj, Source/ with starter classes, a per-machine props " +
+        "file pointing at this engine, and .gitignore. Existing files are never overwritten unless overwrite is true. " +
+        "It then builds, hot-loads the assembly and puts the project's own GameMode in the scene.",
         MainThread = false, Label = "Create the C# project")]
     public async Task<McpToolResult> CreateCodeProject(
         [McpParam("Overwrite generated files that already exist")] bool overwrite = false,
@@ -135,11 +133,9 @@ public sealed class GameCodeTools
     // -------------------------------------------------------------------------
 
     [McpTool("build_project",
-        "Compile the project's C# code with dotnet build and return structured diagnostics {file, line, column, code, " +
-        "severity, message}. Waits up to wait_seconds (default 40); if the build is still running you get status " +
-        "'running' and a build_id to poll with get_build_status. Building alone does not change the editor — call " +
-        "reload_game_code (which builds for you) to make the new code live. The game compiles against the engine build " +
-        "this editor runs; after editing engine source call rebuild_engine_and_restart instead.",
+        "Compile the project's C# code and return structured diagnostics. Building alone does not change the editor — " +
+        "call reload_game_code, which builds for you, to make the new code live. After editing engine source call " +
+        "rebuild_engine_and_restart instead. A slow build returns a build_id for get_build_status.",
         MainThread = false, Label = "Build the project")]
     public async Task<McpToolResult> BuildProject(
         [McpParam("Seconds to wait before returning a build_id to poll")] int waitSeconds = 40,
@@ -159,15 +155,12 @@ public sealed class GameCodeTools
     // -------------------------------------------------------------------------
 
     [McpTool("run_tests",
-        "Run a test suite and return the totals and the failing names, not the log. project: 'engine' (the engine's " +
-        "xunit suite), 'templates' (only the template smoke tests, which run every template's scripts on the C# engine), " +
-        "'html5' (npm test in html5/: the JavaScript engine and the tools) or 'lint' (npm run lint). filter narrows " +
-        "engine tests by name (FullyQualifiedName~filter) or html5 tests by pattern. Blocks until the run finishes or " +
-        "waitSeconds pass; the first run after a change includes a build.",
+        "Run a test suite and return the totals and the failing names, not the log. An html5 filter naming files " +
+        "('ui*') runs just those; anything else matches test names. The first run after a change includes a build.",
         MainThread = false, Label = "Run tests")]
     public async Task<McpToolResult> RunTests(
         [McpParam("engine, templates, html5 or lint")] string project = "engine",
-        [McpParam("Name filter")] string? filter = null,
+        [McpParam("Test-name filter, or html5 files such as 'ui*'")] string? filter = null,
         [McpParam("Seconds to wait before giving up")] int waitSeconds = 600,
         CancellationToken cancellation = default)
     {
@@ -208,7 +201,14 @@ public sealed class GameCodeTools
                 if (kind == "html5" && !string.IsNullOrWhiteSpace(filter))
                 {
                     string node = NodeLocator.FindNode() ?? throw new McpToolException("node was not found.", "Install node 22 or newer.");
-                    var args = new List<string> { "--test", "--test-name-pattern", filter.Trim(), "tests/" };
+
+                    // A filter naming files ("ui*", "tests/net.test.js") runs those files; anything
+                    // else matches test names. One area is a second against the suite's three, and an
+                    // agent working on the UI wants the UI files, not a test name it has to guess.
+                    var args = IsFileFilter(filter)
+                        ? new List<string> { "--test" }.Concat(ExpandTestFiles(html5, filter)).ToList()
+                        : new List<string> { "--test", "--test-name-pattern", filter.Trim(), "tests/" };
+
                     command = "node " + string.Join(' ', args);
                     run = await ProcessRunner.RunAsync(node, args, html5, timeout, progress, null, cancellation);
                 }
@@ -263,6 +263,44 @@ public sealed class GameCodeTools
         return result;
     }
 
+    /// <summary>A filter that names files rather than tests: it has a glob, a path, or the suffix.</summary>
+    internal static bool IsFileFilter(string filter)
+        => filter.Contains('*') || filter.Contains('/') || filter.EndsWith(".test.js", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The test files a file-shaped filter matches, relative to <c>html5/</c>: <c>ui*</c> and
+    /// <c>tests/ui*.test.js</c> both mean the UI files.
+    /// </summary>
+    /// <remarks>
+    /// Node's test runner does not glob and no shell is involved, so the expansion happens here.
+    /// A filter matching nothing is an error rather than a silent run of zero tests, which reads
+    /// as a green suite.
+    /// </remarks>
+    internal static IReadOnlyList<string> ExpandTestFiles(string html5Root, string filter)
+    {
+        string pattern = filter.Trim().Replace('\\', '/');
+        if (!pattern.Contains('/')) pattern = "tests/" + pattern;
+        if (!pattern.EndsWith(".js", StringComparison.Ordinal)) pattern += "*.test.js";
+
+        int slash = pattern.LastIndexOf('/');
+        string directory = pattern[..slash];
+        string leaf      = pattern[(slash + 1)..];
+        string full      = Path.Combine(html5Root, directory);
+
+        if (!Directory.Exists(full))
+            throw new McpToolException($"html5/{directory} does not exist.", "A file filter looks like 'ui*' or 'tests/net.test.js'.");
+
+        var matches = Directory.GetFiles(full, leaf)
+            .Select(f => directory + "/" + Path.GetFileName(f))
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+
+        if (matches.Count == 0)
+            throw new McpToolException($"No test file in html5/ matches '{filter}'.", "Widen the filter, or drop it to run the whole suite.");
+
+        return matches;
+    }
+
     /// <summary>The lint run as a summary: one "test" per module checked, one failure per reported problem.</summary>
     private static TestSummary LintSummary(ProcessRun run)
     {
@@ -292,7 +330,7 @@ public sealed class GameCodeTools
         "Status and diagnostics of a build started by build_project, reload_game_code, create_code_project, run_standalone " +
         "or rebuild_engine_and_restart (the latest when build_id is omitted). For an engine rebuild, state 'restarting' " +
         "means the editor is about to restart — stop calling tools, wait 15-30 seconds, then call get_context.",
-        MainThread = false)]
+        MainThread = false, ReadOnly = true)]
     public McpToolResult GetBuildStatus([McpParam("A build id from an earlier result")] string? buildId = null)
     {
         var job = _code.FindJob(buildId);
@@ -317,11 +355,9 @@ public sealed class GameCodeTools
     }
 
     [McpTool("reload_game_code",
-        "Build the C# project (unless build=false) and hot-reload the assembly into the running editor: the scene is " +
-        "serialised, the old assembly unloaded, the new one loaded and the scene restored with unsaved edits intact. Play " +
-        "mode is stopped first. Reports which actor and component classes and which game_ tools appeared or disappeared. " +
-        "Refuses when the game was compiled against a different engine build than this editor runs — call " +
-        "rebuild_engine_and_restart — unless allow_engine_mismatch is true.",
+        "Build the C# project and hot-reload the assembly into the running editor, keeping the scene and its unsaved " +
+        "edits. Play mode is stopped first. Reports which classes and game_ tools appeared or disappeared. Refuses " +
+        "when the game was built against a different engine than this editor runs — rebuild_engine_and_restart then.",
         MainThread = false, Label = "Reload game code")]
     public async Task<McpToolResult> ReloadGameCode(
         [McpParam("Build first")] bool build = true,
@@ -360,7 +396,7 @@ public sealed class GameCodeTools
 
     [McpTool("list_actor_classes",
         "Actor classes you can place or name in spawn_actor's class: the engine's gameplay classes (Actor, GameMode, " +
-        "Character, PlayerController…) and the project's own, with source 'engine' or 'project', base class and doc summary.")]
+        "Character, PlayerController…) and the project's own, with source 'engine' or 'project', base class and doc summary.", ReadOnly = true)]
     public McpToolResult ListActorClasses([McpParam("'engine', 'project' or omit for both")] string? source = null)
     {
         var list = new JsonArray();
@@ -491,7 +527,7 @@ public sealed class GameCodeTools
         "Where the engine source is (repository root, engine/editor/test projects, solution), whether it is a git " +
         "checkout and on which branch, the running editor's engine build id, and the exact dotnet commands to build the " +
         "engine, the editor and the tests. Read this before editing engine code.",
-        MainThread = false)]
+        MainThread = false, ReadOnly = true)]
     public McpToolResult GetEngineRepo()
     {
         var repo = _code.Repo;
@@ -543,12 +579,10 @@ public sealed class GameCodeTools
     }
 
     [McpTool("rebuild_engine_and_restart",
-        "Rebuild the engine and the editor from source and restart the editor so engine changes take effect. The build " +
-        "runs into a staging folder first, so a failure leaves the running editor untouched and returns diagnostics " +
-        "without restarting. On success the editor saves the scene, writes a resume file, and restarts a couple of " +
-        "seconds after this result is delivered; it reopens the same project and scene, restores the selection, and " +
-        "resumes the assistant session. While it restarts, MCP calls fail for 10-30 seconds: stop calling tools, wait, " +
-        "then call get_context until it answers, and re-list tools. Never repeat the rebuild.",
+        "Rebuild the engine and editor from source and restart, so engine changes take effect. A failed build leaves " +
+        "the running editor untouched and returns diagnostics. On success it restarts within seconds and reopens the " +
+        "same project, scene and session: stop calling tools, wait 15-30 seconds, then call get_context until it " +
+        "answers. Never repeat the rebuild.",
         MainThread = false, Label = "Rebuild the engine and restart")]
     public async Task<McpToolResult> RebuildEngineAndRestart(
         [McpParam("Debug, Release or Development; defaults to the running editor's")] string? configuration = null,

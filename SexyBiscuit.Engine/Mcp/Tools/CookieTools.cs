@@ -25,7 +25,7 @@ public sealed class CookieTools
         "Search the CookieJar: the team's library of ready-made modules (a character controller, an input map, a HUD). " +
         "Call this before writing a common mechanic by hand. Returns one line per cookie with what it provides; " +
         "install_cookie then copies one into the open project and tells you how to wire it up.",
-        MainThread = false, Label = "Search the CookieJar")]
+        MainThread = false, Label = "Search the CookieJar", ReadOnly = true)]
     public McpToolResult SearchCookies(
         [McpParam("Words to match against id, name, tags and summary", Example = "double jump")] string? query = null,
         [McpParam("Only cookies carrying every one of these tags")] string[]? tags = null,
@@ -67,7 +67,7 @@ public sealed class CookieTools
     [McpTool("get_cookie",
         "Everything about one cookie: its manifest, what it provides, every file it would install, and its full " +
         "AGENT.md instructions.",
-        MainThread = false, Label = "Read cookie {id}")]
+        MainThread = false, Label = "Read cookie {id}", ReadOnly = true)]
     public McpToolResult GetCookie([McpParam("The cookie's id", Example = "double-jump")] string id)
     {
         var cookie = Require(id);
@@ -89,7 +89,7 @@ public sealed class CookieTools
     [McpTool("list_installed_cookies",
         "What this project has installed, from CookieJar.lock.json, plus any file that has been edited or deleted " +
         "since it was installed.",
-        MainThread = false, Label = "List installed cookies")]
+        MainThread = false, Label = "List installed cookies", ReadOnly = true)]
     public McpToolResult ListInstalledCookies()
     {
         var project = RequireProject();
@@ -356,7 +356,7 @@ public sealed class CookieTools
     // -------------------------------------------------------------------------
 
     [McpTool("list_cookie_jars", "The jars the catalogue is built from, and whether each may be installed from.",
-        MainThread = false, Label = "List cookie jars")]
+        MainThread = false, Label = "List cookie jars", ReadOnly = true)]
     public McpToolResult ListCookieJars()
     {
         var catalogue = _host.Catalogue();

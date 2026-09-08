@@ -84,8 +84,9 @@ Every element is built once at start and then shown and hidden with `visible`. C
 
 ## What it does not do
 
-- **No wrapping.** A body line that does not fit is a body line that runs off the card. Two short
-  lines beat one long one.
+- **Two body lines, not a paragraph.** `setCard` still takes `line1` and `line2` because a card
+  reads better as two short lines than one wrapped one. A node can wrap (`wrapText: true`) if you
+  would rather it did.
 - **No rarity, no weighting, no pool.** It does not choose what the cards are; it shows what you
   hand it.
 - **No pause.** Whether the world keeps moving while the board is open is the caller's business.

@@ -21,7 +21,7 @@ public sealed class SceneTools
         "The scene at a glance: a header (layers, dirty flag, checks for camera, light, player start, game mode) then " +
         "one line per actor — id, name, class, layer, tag, components, position. Page with offset and limit; " +
         "compact=false gives the same as JSON. Ids change after undo, redo or load.",
-        Label = "Read the scene summary")]
+        Label = "Read the scene summary", ReadOnly = true)]
     public McpToolResult GetSceneSummary(
         [McpParam("One text line per actor (default) or JSON")] bool compact = true,
         [McpParam("Only actors in this layer")] string? layer = null,
@@ -48,7 +48,7 @@ public sealed class SceneTools
     [McpTool("get_scene_json",
         "Full dump of the open scene. format 'view' gives readable actor views with editable component properties " +
         "(rotations in degrees, colours as hex); 'file' gives the exact .scene JSON that save_scene would write.",
-        Label = "Dump the scene")]
+        Label = "Dump the scene", ReadOnly = true)]
     public McpToolResult GetSceneJson(
         [McpParam("'view' or 'file'")] string format = "view",
         [McpParam("Only actors in this layer")] string? layer = null,
@@ -197,7 +197,7 @@ public sealed class SceneTools
 
     [McpTool("find_actors",
         "Filter the open scene's actors by name substring, tag, component type, layer or class. Filters are optional and " +
-        "combine with AND.")]
+        "combine with AND.", ReadOnly = true)]
     public McpToolResult FindActors(
         [McpParam("Case-insensitive substring of the name")] string? nameContains = null,
         [McpParam("Exact tag")] string? tag = null,
@@ -224,7 +224,7 @@ public sealed class SceneTools
 
     [McpTool("get_actor",
         "One actor. detail 'full' (default): transform in degrees, every component with its editable properties, bounds, " +
-        "selection; 'row': id, name, class, layer, tag, component types, position. actor is an id or an exact name.")]
+        "selection; 'row': id, name, class, layer, tag, component types, position. actor is an id or an exact name.", ReadOnly = true)]
     public McpToolResult GetActor(
         [McpParam("Actor id or name")] string actor,
         [McpParam("'full' or 'row'")] string detail = "full")

@@ -117,10 +117,8 @@ public sealed class ActorTools
     }
 
     [McpTool("place_actor",
-        "Place a palette preset — the same list as the editor's Place Actors panel: Empty Actor, Empty Actor (3D), Mesh, " +
-        "Skinned Mesh, Skybox, Directional Light, Point Light, Spot Light, 2D Light, Camera, Fly Camera, Camera 2D, " +
-        "Game Mode, Character, AI Character, Player Start, Particle System (3D), Particle Emitter (2D), Sprite, Tilemap, " +
-        "Canvas, World Canvas. Call list_actor_presets for descriptions.",
+        "Place a palette preset — the same list as the editor's Place Actors panel (Mesh, Point Light, Camera, Character, " +
+        "Sprite, Canvas and so on). Call list_actor_presets for every name and what it is.",
         Mutating = true, Label = "Place {preset}")]
     public McpToolResult PlaceActor(
         [McpParam("Preset name")] string preset,
@@ -154,7 +152,7 @@ public sealed class ActorTools
         return result;
     }
 
-    [McpTool("list_actor_presets", "The palette presets with category, description and the components each one creates.")]
+    [McpTool("list_actor_presets", "The palette presets with category, description and the components each one creates.", ReadOnly = true)]
     public McpToolResult ListActorPresets()
     {
         var list = new JsonArray();

@@ -23,7 +23,12 @@ by the HTML5 runtime's `html5/src/scripting/ScriptBridge.js`. The list itself li
 `html5/src/scripting/bridge-api.json`; a test on each side (`ScriptBridgeParityTests` and
 `html5/tests/bridge.test.js`) holds its bridge to that file in both directions, so the two can
 only drift apart by failing a build. A script that uses only what is here runs unchanged in the
-browser and natively. The `.d.ts` produced by `TypeScriptDefinitions.Generate()` matches it.
+browser and natively. The file also describes every member (parameters, return, type, a line of
+documentation), and `html5/src/scripting/sb-engine.d.ts` is generated from it by
+`npm run gen` in `html5/`; the C# assembly embeds that file and serves it as
+`TypeScriptDefinitions.Generate()` and as the MCP resource `sexybiscuit://scripting/api.d.ts`.
+`npm run lint` fails when the checked-in `.d.ts` is stale, so the API an editor completes, the one
+an agent is shown and the one both bridges implement are one list.
 
 ### `actor` — the actor owning this script
 
@@ -182,53 +187,94 @@ cannot await, and one contract has to describe both engines. See
 ### `UI` — screen space
 
 Everything above is world space. `UI` is the screen, and it is the only global that knows how big
-the window is.
+the window is. It builds a **tree**: nodes that contain other nodes, laid out by the same engine
+the editor's own graphics menu uses.
 
 ```js
-UI.width, UI.height                       // the viewport in pixels, which nothing else can ask for
+UI.build({                                   // a whole screen in one call
+    name: "hud", layout: "column", gap: 8, padding: 12,
+    background: "#161920e6",
+    children: [
+        { name: "title", kind: "label", text: "JAKE01", scale: 3 },
+        {
+            layout: "row", gap: 6, crossAlign: "center",
+            children: [
+                { kind: "label", text: "HP", width: 34, tint: "#9a978f" },
+                { name: "hp", kind: "bar", grow: 1, height: 8, value: 1,
+                  tint: "#c63832", background: "#2a2d34" },
+            ],
+        },
+    ],
+});
 
-UI.panel(x, y, w, h, options);            // a filled box
-UI.label(x, y, "text", options);          // real text, from the shared 5x7 bitmap font
-UI.bar(x, y, w, h, value01, options);     // a track and a fill
-UI.button(x, y, w, h, "text", options);   // panel + centred text + hover + click
-UI.image(x, y, w, h, "Assets/hud.png", options);
-
-UI.clear();                               // this script's elements only
-UI.measure("text", scale);                // width in pixels, for laying a panel out around it
+UI.find("hp").value = health / maxHealth;    // the one you will write every frame
 ```
 
-Each returns a handle:
+`UI.build` replaces this script's tree and returns its root. `UI.root` is that root,
+`UI.find(name)` reaches any node by name, and `UI.clear()` drops this script's nodes — never
+another script's.
+
+**Sizing is the point.** A node is `auto` by default: as big as its content. `grow: 1` takes
+whatever is left along the row or column. `width: "*"` fills the parent, which is what "cover the
+screen" means and what makes an overlay follow a resize on its own. `width: "50%"` takes a share.
 
 ```js
-var hp = UI.bar(12, 12, 200, 10, 1, { anchor: "topleft", tint: "#c63832", background: "#2a2d34" });
-hp.value = health / maxHealth;            // the one you will write every frame
-
-hp.x; hp.y; hp.width; hp.height; hp.text; hp.scale; hp.visible;
-hp.tint; hp.background; hp.anchor; hp.align; hp.padding; hp.texturePath;
-hp.hovered; hp.clicked;                   // read-only; `clicked` is true for one frame
-hp.destroy();
+{ width: 240 }        // pixels
+{ width: "auto" }     // as wide as the content
+{ width: "*" }        // fill the parent
+{ width: "50%" }      // half the parent
+{ grow: 1 }           // take the leftover space along the main axis
 ```
 
-**The anchor is the point.** It is both where on the screen the element hangs *and* which of its
-own corners hangs there, so this stays twelve pixels in from the bottom-right at any window size,
-on a phone included:
+**Layout** is `row`, `column`, `grid` or `flow` (a row that wraps), with `gap`, `padding`,
+`margin`, `mainAlign` and `crossAlign`. `crossAlign: "stretch"` is what gives a column of buttons
+one width without anybody measuring the longest label.
+
+**The anchor is still the point** for anything you would rather place than lay out. Set
+`absolute: true` and the anchor is both where on the parent the node hangs *and* which of its own
+corners hangs there, so this stays twelve pixels in from the bottom-right at any window size:
 
 ```js
-UI.label(-12, -12, "v1.0.1", { anchor: "bottomright" });
+UI.root.add({ kind: "label", text: "v1.0.1", absolute: true, anchor: "bottomright", x: -12, y: -12 });
 ```
 
 The names are `topleft top topright left center right bottomleft bottom bottomright`.
 
-A **label with no width measures itself**, so a right- or centre-anchored one positions correctly
-without you measuring the text by hand every time it changes. Give it an explicit width when you
-are laying out a column and want the number to be yours.
+**Every node property is a handle member**, in the same spelling the spec uses — `text`, `value`,
+`visible`, `background`, `tint`, `width`, `layout`, `gap`, `padding`, `modal`, `scroll` and the
+rest. `parent` and `children` walk the tree; `add(spec)`, `find(name)` and `remove()` change it.
+The full list is `uiNode` in `html5/src/scripting/bridge-api.json`, and it is generated from the
+codec's own key list on both engines, so the contract and the handle cannot describe different
+things.
+
+A **misspelt property is refused**, loudly. The flat UI this replaces ended its options switch
+with a silent default, so a typo did nothing and said nothing; in a tree a mistyped `childern`
+would drop every node below it and leave no trace.
 
 `clicked` is polled rather than a callback: a JS function held by the C# side is the kind of thing
-that marshals differently on the two engines, and a boolean does not.
+that marshals differently on the two engines, and a boolean does not. `hovered`, `pressed`,
+`focused` and `expanded` read the same way.
 
 ```js
-if (startButton.clicked) { Scene.load("Scenes/Level1"); }
+if (UI.find("start").clicked) { Scene.load("Scenes/Level1"); }
 ```
+
+**Focus is what makes a menu work on a pad, a D-pad or a TV remote**, and it costs nothing to
+get: any button is focusable, and the engine walks between them spatially.
+
+```js
+UI.setFocus(UI.find("resume"));
+UI.navigate("down");            // returns false when there is nothing that way
+UI.focused.name;
+UI.inputMode;                   // "pointer" | "directional" | "touch"
+```
+
+`modal: true` on a node traps focus inside it, so a pause menu cannot lose the cursor to the HUD
+behind it — and the same flag makes a click outside it miss rather than pressing what it lands on.
+
+`UI.safeLeft/safeTop/safeRight/safeBottom` are what a notch or a television's overscan leaves
+usable. `UI.order` is this script's paint order against other scripts' — the flat UI painted in
+whatever order scripts happened to start in.
 
 Colours take the forms the rest of the engine takes — `"#ff8040"`, `"#ff8040c0"`, `[255,128,64]`,
 `{R:255,G:128,B:64}`. Prefer eight-digit hex for translucency: `rgba()` is browser-only and would
@@ -236,12 +282,14 @@ draw nothing natively.
 
 Text is a 5x7 bitmap font defined in `html5/src/ui/font5x7.json`, which the browser imports and
 the C# engine embeds — one file, so the two cannot render different text. `scale` is a whole
-multiple of that cell and is rounded; the font has no half pixels.
+multiple of that cell and is rounded; the font has no half pixels. A label sizes itself unless you
+give it a width, and `wrapText: true` breaks it to whatever width the layout hands it.
+
 
 ### `Chibi` — MakeChibi's characters
 
 Spawns and drives a character built from primitives. Nothing here takes or returns an object;
-every argument is a scalar or an actor proxy. See [29. MakeChibi](29-makechibi.md).
+every argument is a scalar or an actor proxy. See [30. MakeChibi](30-makechibi.md).
 
 ```js
 var v = Chibi.spawn("Assets/Characters/Villager.chibi", 0, 0, 0);
@@ -440,6 +488,9 @@ DEVELOPMENT`), so leaving these calls in shipping code is free.
 
 ## Editor IntelliSense
 
+Copy `html5/src/scripting/sb-engine.d.ts` beside the scripts (it is the generated file the
+contract describes), or have the engine write it:
+
 ```csharp
 TypeScriptDefinitions.WriteToFile("Scripts/sb-engine.d.ts");
 ```
@@ -453,8 +504,8 @@ Then in `Scripts/jsconfig.json`:
 }
 ```
 
-VS Code then gives full completion and hover types for `actor`, `transform`,
-`Input`, `Audio`, `Scene`, `Debug` and `Vector2`, with no build step.
+VS Code then gives full completion and hover types for every global in the contract, with no
+build step.
 
 ---
 
@@ -477,10 +528,19 @@ Two habits from the old scripts are worth unlearning:
 
 ## Extending the bridge
 
-Add to both sides or neither: the member in `ScriptBridge.cs`, the same member in
-`html5/src/scripting/ScriptBridge.js`, and its entry in `html5/src/scripting/bridge-api.json`.
-The parity tests fail until all three agree, and the `.d.ts` in `TypeScriptDefinitions.cs` and
-this page should follow.
+Add to both sides or neither, in this order:
+
+1. The member in `html5/src/scripting/bridge-api.json`: its `kind`, `shared`, and for a fn its
+   `params` and `returns`, for a prop its `type` (and `readonly`), plus a one-line `doc`. A type
+   the member names must be a builtin or declared under `types`; `html5/tests/contract.test.js`
+   checks both.
+2. `cd html5 && npm run gen`, which rewrites `sb-engine.d.ts`. Never edit that file by hand;
+   `npm run lint` fails when it is stale, and the C# build embeds it.
+3. The same member in `html5/src/scripting/ScriptBridge.js`, then in `ScriptBridge.cs`.
+4. `npm test`, then `dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj --filter "FullyQualifiedName~Parity"`:
+   the parity tests fail until the contract and both bridges agree, and `npm run mirror`
+   (`html5/tools/mirror-check.js`) fails a change that touched one bridge and not the other.
+5. This page.
 
 On the C# side each proxy is a plain JS object with delegates hung off it:
 
@@ -519,5 +579,5 @@ callbacks; the script decides *when* to call them.
 ## Next
 
 - [12. Scenes & Prefabs](12-scenes-prefabs.md)
-- [29. MakeChibi](29-makechibi.md) — the `Chibi` global, and what a namespace addition looks like.
+- [30. MakeChibi](30-makechibi.md) — the `Chibi` global, and what a namespace addition looks like.
 - [Tutorial 5: JavaScript Scripting](../tutorials/05-javascript-scripting.md)

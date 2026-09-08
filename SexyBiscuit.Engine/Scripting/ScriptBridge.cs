@@ -874,189 +874,177 @@ public sealed class ScriptBridge
     }
 
     // =========================================================================
-    // UI proxy — screen space, which every other global here cannot reach
+    // UI proxy — the retained widget tree, in screen space
     // =========================================================================
 
-    /// <summary>Elements this script made, so UI.clear() cannot wipe another script's HUD.</summary>
-    private readonly List<UiElement> _ownedUi = new();
+    /// <summary>
+    /// The canvas this script owns, made on first use.
+    /// </summary>
+    /// <remarks>
+    /// One canvas per script is stronger than the ownership list the flat UI kept: a script
+    /// cannot reach another's nodes at all, and two scripts are two canvases sorted by
+    /// <see cref="UiCanvas.Order"/> rather than "whichever started first", which is the
+    /// draw-order hazard the screen-effects cookie had to document.
+    /// </remarks>
+    private UiCanvas? _uiCanvas;
 
-    /// <summary>Drops this script's elements. Called when the component goes away.</summary>
+    /// <summary>Node handles, cached so <c>UI.find("hp") === UI.find("hp")</c> holds.</summary>
+    private readonly Dictionary<UiNode, ObjectInstance> _uiHandles = new();
+
+    /// <summary>Drops this script's UI. Called when the component goes away.</summary>
     internal void DisposeUi()
     {
-        foreach (UiElement element in _ownedUi) ScriptUi.Instance.Remove(element);
-        _ownedUi.Clear();
+        _uiCanvas?.OnDestroy();
+        _uiCanvas = null;
+        _uiHandles.Clear();
+    }
+
+    private UiCanvas Canvas()
+    {
+        if (_uiCanvas != null) return _uiCanvas;
+
+        _uiCanvas = new UiCanvas();
+
+        // The host sets this every frame, but onStart runs before the first one and a script
+        // that reads UI.width to size something would otherwise get the 1280x720 default.
+        var viewport = Core.EngineHost.Current?.GraphicsDevice?.Viewport;
+        if (viewport is { } v) _uiCanvas.SetViewport(v.Width, v.Height);
+
+        return _uiCanvas;
     }
 
     private ObjectInstance BuildUiProxy()
     {
         var obj = NewObj();
 
-        Accessor(obj, "width",  getter: (_, _) => new JsNumber(ScriptUi.Instance.Width),  setter: null, _engine);
-        Accessor(obj, "height", getter: (_, _) => new JsNumber(ScriptUi.Instance.Height), setter: null, _engine);
-
-        obj.Set("panel",  Fn("panel",  (_, a) => MakeUi(UiKind.Panel,  a, width: 2, height: 3, options: 4), 5));
-        obj.Set("bar",    Fn("bar",    (_, a) => MakeUi(UiKind.Bar,    a, width: 2, height: 3, options: 5, value: 4), 6));
-        obj.Set("button", Fn("button", (_, a) => MakeUi(UiKind.Button, a, width: 2, height: 3, options: 5, text: 4), 6));
-        obj.Set("image",  Fn("image",  (_, a) => MakeUi(UiKind.Image,  a, width: 2, height: 3, options: 5, texture: 4), 6));
-        obj.Set("label",  Fn("label",  (_, a) => MakeUi(UiKind.Label,  a, options: 3, text: 2), 4));
-
-        obj.Set("clear", Fn("clear", (_, _) => { DisposeUi(); return JsValue.Undefined; }));
-
-        obj.Set("measure", Fn("measure", (_, a) =>
-            new JsNumber(BitmapFont.MeasureWidest(Text(a.At(0)), Num(a.At(1), 1f))), 2));
-
-        return obj;
-    }
-
-    /// <summary>Creates one element from the argument shape its factory uses.</summary>
-    private JsValue MakeUi(UiKind kind, JsValue[] args, int options,
-                           int width = -1, int height = -1, int text = -1, int value = -1, int texture = -1)
-    {
-        var element = new UiElement
-        {
-            Kind   = kind,
-            X      = Num(args.At(0)),
-            Y      = Num(args.At(1)),
-            Width  = width  >= 0 ? Num(args.At(width))  : 0f,
-            Height = height >= 0 ? Num(args.At(height)) : 0f,
-        };
-        if (text    >= 0) element.Text        = Text(args.At(text));
-        if (value   >= 0) element.Value       = Num(args.At(value), 1f);
-        if (texture >= 0) element.TexturePath = Text(args.At(texture));
-
-        ApplyUiOptions(element, args.At(options));
-
-        ScriptUi.Instance.Add(element);
-        _ownedUi.Add(element);
-        return WrapUiElement(element);
-    }
-
-    /// <summary>The optional trailing options object, which mirrors the element's own members.</summary>
-    private void ApplyUiOptions(UiElement element, JsValue options)
-    {
-        if (options is not ObjectInstance source) return;
-
-        foreach (var key in source.GetOwnPropertyKeys())
-        {
-            string name = key.ToString();
-            JsValue v = source.Get(name);
-
-            switch (name)
-            {
-                case "x": element.X = Num(v); break;
-                case "y": element.Y = Num(v); break;
-                case "width": element.Width = Num(v); break;
-                case "height": element.Height = Num(v); break;
-                case "text": element.Text = Text(v); break;
-                case "value": element.Value = Num(v, 1f); break;
-                case "visible": element.Visible = v.AsBoolean(); break;
-                case "scale": element.Scale = Num(v, 1f); break;
-                case "anchor": element.Anchor = ParseAnchor(Text(v)); break;
-                case "align": element.Align = Text(v); break;
-                case "padding": element.Padding = Num(v, 6f); break;
-                case "texturePath": element.TexturePath = Text(v); break;
-                case "tint": element.Tint = ParseColour(v) ?? element.Tint; break;
-                case "background": element.Background = ParseColour(v); break;
-                default: break;
-            }
-        }
-    }
-
-    /// <summary>"bottomright" and "bottom-right" both mean the same corner.</summary>
-    private static UiAnchor ParseAnchor(string name)
-    {
-        string key = name.Replace("-", string.Empty).Replace("_", string.Empty).Trim();
-        return Enum.TryParse(key, ignoreCase: true, out UiAnchor anchor) ? anchor : UiAnchor.TopLeft;
-    }
-
-    /// <summary>
-    /// A colour a script wrote. Scene files already accept "#ff8040", [r,g,b] and
-    /// {R,G,B,A}, so UI takes the same forms rather than inventing another spelling.
-    /// </summary>
-    private static Color? ParseColour(JsValue value)
-    {
-        if (value.IsNull() || value.IsUndefined()) return null;
-
-        if (value.IsString())
-        {
-            string text = value.AsString().Trim();
-            if (text.StartsWith("#", StringComparison.Ordinal))
-            {
-                string body = text[1..];
-                if (body.Length == 3)
-                    body = string.Concat(body[0], body[0], body[1], body[1], body[2], body[2]);
-                if (body.Length is 6 or 8
-                    && int.TryParse(body[..2], System.Globalization.NumberStyles.HexNumber, null, out int r)
-                    && int.TryParse(body.Substring(2, 2), System.Globalization.NumberStyles.HexNumber, null, out int g)
-                    && int.TryParse(body.Substring(4, 2), System.Globalization.NumberStyles.HexNumber, null, out int b))
-                {
-                    int a = 255;
-                    if (body.Length == 8)
-                        int.TryParse(body.Substring(6, 2), System.Globalization.NumberStyles.HexNumber, null, out a);
-                    return new Color(r, g, b, a);
-                }
-            }
-            return null;
-        }
-
-        if (value is ObjectInstance obj)
-        {
-            float Channel(string upper, string lower)
-            {
-                JsValue found = obj.Get(upper);
-                if (found.IsUndefined()) found = obj.Get(lower);
-                return Num(found);
-            }
-            var alpha = obj.Get("A").IsUndefined() ? obj.Get("a") : obj.Get("A");
-            return new Color(
-                (int)Channel("R", "r"), (int)Channel("G", "g"), (int)Channel("B", "b"),
-                alpha.IsUndefined() ? 255 : (int)Num(alpha, 255f));
-        }
-
-        return null;
-    }
-
-    /// <summary>The handle a script holds. Mirrors the browser's element proxy member for member.</summary>
-    private ObjectInstance WrapUiElement(UiElement element)
-    {
-        var obj = NewObj();
-
-        void Prop(string name, Func<JsValue> get, Action<JsValue>? set)
+        void Prop(string name, Func<JsValue> get, Action<JsValue>? set = null)
             => Accessor(obj, name,
                 getter: (_, _) => get(),
                 setter: set == null ? null : (_, a) => { set(a.At(0)); return JsValue.Undefined; },
                 _engine);
 
-        Prop("x",           () => new JsNumber(element.X),       v => element.X = Num(v));
-        Prop("y",           () => new JsNumber(element.Y),       v => element.Y = Num(v));
-        Prop("width",       () => new JsNumber(element.Width),   v => element.Width = Num(v));
-        Prop("height",      () => new JsNumber(element.Height),  v => element.Height = Num(v));
-        Prop("text",        () => new JsString(element.Text),    v => element.Text = Text(v));
-        Prop("value",       () => new JsNumber(element.Value),   v => element.Value = Num(v));
-        Prop("visible",     () => element.Visible ? JsBoolean.True : JsBoolean.False, v => element.Visible = v.AsBoolean());
-        Prop("scale",       () => new JsNumber(element.Scale),   v => element.Scale = Num(v, 1f));
-        Prop("anchor",      () => new JsString(element.Anchor.ToString().ToLowerInvariant()),
-                             v => element.Anchor = ParseAnchor(Text(v)));
-        Prop("align",       () => new JsString(element.Align),   v => element.Align = Text(v));
-        Prop("padding",     () => new JsNumber(element.Padding), v => element.Padding = Num(v, 6f));
-        Prop("texturePath", () => new JsString(element.TexturePath), v => element.TexturePath = Text(v));
-        Prop("tint",        () => new JsString(ToHex(element.Tint)), v => element.Tint = ParseColour(v) ?? element.Tint);
-        Prop("background",  () => element.Background is Color c ? new JsString(ToHex(c)) : JsValue.Null,
-                             v => element.Background = ParseColour(v));
-        Prop("hovered",     () => element.Hovered ? JsBoolean.True : JsBoolean.False, null);
-        Prop("clicked",     () => element.Clicked ? JsBoolean.True : JsBoolean.False, null);
+        Prop("width",  () => new JsNumber(Canvas().CanvasSize.X));
+        Prop("height", () => new JsNumber(Canvas().CanvasSize.Y));
 
-        obj.Set("destroy", Fn("destroy", (_, _) =>
+        // The area a notch or a television's overscan leaves usable.
+        Prop("safeLeft",   () => new JsNumber(Canvas().SafeArea.X));
+        Prop("safeTop",    () => new JsNumber(Canvas().SafeArea.Y));
+        Prop("safeRight",  () => new JsNumber(Canvas().SafeArea.Z));
+        Prop("safeBottom", () => new JsNumber(Canvas().SafeArea.W));
+
+        obj.Set("build", Fn("build", (_, a) =>
         {
-            _ownedUi.Remove(element);
-            ScriptUi.Instance.Remove(element);
+            UiCanvas canvas = Canvas();
+            canvas.Adopt(UiDocument.FromJsValue(a.At(0)));
+            return WrapUiNode(canvas.Root);
+        }, 1));
+
+        Prop("root", () => WrapUiNode(Canvas().Root));
+
+        obj.Set("find", Fn("find", (_, a) => WrapUiNode(Canvas().Find(Text(a.At(0)))), 1));
+
+        // Only this script's nodes, so one script cannot wipe another's HUD.
+        obj.Set("clear", Fn("clear", (_, _) =>
+        {
+            if (_uiCanvas != null)
+                foreach (UiNode child in new List<UiNode>(_uiCanvas.Root.Children))
+                    _uiCanvas.Root.Remove(child);
+
             return JsValue.Undefined;
         }));
+
+        obj.Set("measure", Fn("measure", (_, a) =>
+            new JsNumber(UiTextMeasure.Width(Text(a.At(0)), Num(a.At(1), 1f))), 2));
+
+        // Paint order against the canvases other scripts own. Higher is in front.
+        Prop("order", () => new JsNumber(Canvas().Order), v => Canvas().Order = (int)Num(v));
+
+        // Focus is what lets a script's menu work on a pad, a D-pad or a TV remote.
+        Prop("focused", () => WrapUiNode(Canvas().Input.Focus.Focused));
+
+        obj.Set("setFocus", Fn("setFocus", (_, a) =>
+        {
+            UiFocus focus = Canvas().Input.Focus;
+            UiNode? target = a.At(0).IsString() ? Canvas().Find(a.At(0).AsString()) : NodeOf(a.At(0));
+            return Bool(focus.Focus(target));
+        }, 1));
+
+        obj.Set("navigate", Fn("navigate", (_, a) =>
+        {
+            string name = Text(a.At(0)).ToLowerInvariant();
+            NavDirection? direction = name switch
+            {
+                "up"    => NavDirection.Up,
+                "down"  => NavDirection.Down,
+                "left"  => NavDirection.Left,
+                "right" => NavDirection.Right,
+                _       => null,
+            };
+            return Bool(direction is { } d && Canvas().Input.Focus.Navigate(d));
+        }, 1));
+
+        /* "pointer", "directional" or "touch" — which device the player is driving with. */
+        Prop("inputMode", () => new JsString(Canvas().Input.Focus.Mode.ToString().ToLowerInvariant()));
 
         return obj;
     }
 
-    private static string ToHex(Color c) => $"#{c.R:x2}{c.G:x2}{c.B:x2}";
+    /// <summary>
+    /// The handle a script holds on one node.
+    /// </summary>
+    /// <remarks>
+    /// Every value member comes from <see cref="UiDocument.ScriptProperties"/>, wiring
+    /// <c>get</c> to the codec's reader and <c>set</c> to its writer. A property added to the
+    /// codec therefore reaches both engines' script API at once, rather than needing the five
+    /// hand-mirrored edits the flat UI's handle did.
+    /// </remarks>
+    private JsValue WrapUiNode(UiNode? node)
+    {
+        if (node == null) return JsValue.Null;
+        if (_uiHandles.TryGetValue(node, out ObjectInstance? cached)) return cached;
+
+        var obj = NewObj();
+
+        foreach (string key in UiDocument.ScriptProperties)
+        {
+            string name = key;
+
+            Func<JsValue, JsValue[], JsValue>? setter = null;
+            if (UiDocument.IsWritable(name))
+                setter = (_, a) =>
+                {
+                    UiDocument.Apply(node, name, JsValueConverter.ToJsonNode(a.At(0)));
+                    return JsValue.Undefined;
+                };
+
+            Accessor(obj, name,
+                getter: (_, _) => JsValueConverter.FromJsonNode(_engine, UiDocument.Read(node, name)),
+                setter: setter,
+                _engine);
+        }
+
+        Accessor(obj, "parent",   getter: (_, _) => WrapUiNode(node.Parent), setter: null, _engine);
+        Accessor(obj, "children", getter: (_, _) => NewArray(node.Children.Select(WrapUiNode)), setter: null, _engine);
+
+        obj.Set("add", Fn("add", (_, a) => WrapUiNode(node.Add(UiDocument.FromJsValue(a.At(0)))), 1));
+        obj.Set("find", Fn("find", (_, a) => WrapUiNode(node.Find(Text(a.At(0)))), 1));
+        obj.Set("remove", Fn("remove", (_, _) => { node.Detach(); return JsValue.Undefined; }));
+        obj.Set("focus", Fn("focus", (_, _) => { Canvas().Input.Focus.Focus(node); return JsValue.Undefined; }));
+
+        _uiHandles[node] = obj;
+        return obj;
+    }
+
+    /// <summary>The node behind a handle a script passed back in, or null.</summary>
+    private UiNode? NodeOf(JsValue value)
+    {
+        if (value is not ObjectInstance handle) return null;
+
+        foreach (KeyValuePair<UiNode, ObjectInstance> pair in _uiHandles)
+            if (ReferenceEquals(pair.Value, handle)) return pair.Key;
+
+        return null;
+    }
 
     // =========================================================================
     // Network proxy

@@ -708,15 +708,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
             if (ImGui.MenuItem("Canvas"))
             {
                 var a = new Actor("Canvas");
-                a.AddComponent<Canvas>();
-                Spawn(scene, a);
-            }
-
-            if (ImGui.MenuItem("World Canvas"))
-            {
-                var a = new Actor("World Canvas");
-                a.AddComponent<Transform3D>();
-                a.AddComponent<WorldCanvas>();
+                a.AddComponent<UiCanvas>();
                 Spawn(scene, a);
             }
 

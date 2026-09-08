@@ -208,44 +208,46 @@ For the "how do I use this" version, follow the per-system pages linked from the
 
 | Type | Kind | File |
 |---|---|---|
-| `Canvas` | class | [`Canvas.cs`](../SexyBiscuit.Engine/UI/Canvas.cs) |
-| `CanvasScaleMode` | enum | [`Canvas.cs`](../SexyBiscuit.Engine/UI/Canvas.cs) |
-| `Theme` | class | [`Theme.cs`](../SexyBiscuit.Engine/UI/Theme.cs) |
-| `Widget` | class | [`Widget.cs`](../SexyBiscuit.Engine/UI/Widget.cs) |
-| `WidgetStyle` | class | [`Theme.cs`](../SexyBiscuit.Engine/UI/Theme.cs) |
-| `WorldCanvas` | class | [`WorldCanvas.cs`](../SexyBiscuit.Engine/UI/WorldCanvas.cs) |
-
-### `SexyBiscuit.Engine.UI.Widgets`
-
-| Type | Kind | File |
-|---|---|---|
-| `Button` | class | [`Button.cs`](../SexyBiscuit.Engine/UI/Widgets/Button.cs) |
-| `ButtonState` | enum | [`Button.cs`](../SexyBiscuit.Engine/UI/Widgets/Button.cs) |
-| `Checkbox` | class | [`Checkbox.cs`](../SexyBiscuit.Engine/UI/Widgets/Checkbox.cs) |
-| `Dropdown` | class | [`Dropdown.cs`](../SexyBiscuit.Engine/UI/Widgets/Dropdown.cs) |
-| `FillDirection` | enum | [`ProgressBar.cs`](../SexyBiscuit.Engine/UI/Widgets/ProgressBar.cs) |
-| `Image` | class | [`Image.cs`](../SexyBiscuit.Engine/UI/Widgets/Image.cs) |
-| `Label` | class | [`Label.cs`](../SexyBiscuit.Engine/UI/Widgets/Label.cs) |
-| `Panel` | class | [`Panel.cs`](../SexyBiscuit.Engine/UI/Widgets/Panel.cs) |
-| `PanelLayoutMode` | enum | [`Panel.cs`](../SexyBiscuit.Engine/UI/Widgets/Panel.cs) |
-| `ProgressBar` | class | [`ProgressBar.cs`](../SexyBiscuit.Engine/UI/Widgets/ProgressBar.cs) |
-| `RadioGroup` | class | [`Checkbox.cs`](../SexyBiscuit.Engine/UI/Widgets/Checkbox.cs) |
-| `ScrollView` | class | [`ScrollView.cs`](../SexyBiscuit.Engine/UI/Widgets/ScrollView.cs) |
-| `Slider` | class | [`Slider.cs`](../SexyBiscuit.Engine/UI/Widgets/Slider.cs) |
-| `TabPage` | class | [`TabView.cs`](../SexyBiscuit.Engine/UI/Widgets/TabView.cs) |
-| `TabView` | class | [`TabView.cs`](../SexyBiscuit.Engine/UI/Widgets/TabView.cs) |
-| `TextAlignment` | enum | [`Label.cs`](../SexyBiscuit.Engine/UI/Widgets/Label.cs) |
-| `TextInput` | class | [`TextInput.cs`](../SexyBiscuit.Engine/UI/Widgets/TextInput.cs) |
-| `Toggle` | class | [`Checkbox.cs`](../SexyBiscuit.Engine/UI/Widgets/Checkbox.cs) |
+| `UiCanvas` | class | [`UiCanvas.cs`](../SexyBiscuit.Engine/UI/UiCanvas.cs) |
+| `UiNode` | class | [`UiNode.cs`](../SexyBiscuit.Engine/UI/UiNode.cs) |
+| `UiDocument` | static class | [`UiDocument.cs`](../SexyBiscuit.Engine/UI/UiDocument.cs) |
+| `UiDocumentException` | class | [`UiDocument.cs`](../SexyBiscuit.Engine/UI/UiDocument.cs) |
+| `UiPainter` | static class | [`UiPainter.cs`](../SexyBiscuit.Engine/UI/UiPainter.cs) |
+| `UiInput` | class | [`UiInput.cs`](../SexyBiscuit.Engine/UI/UiInput.cs) |
+| `UiInputFrame` | struct | [`UiInput.cs`](../SexyBiscuit.Engine/UI/UiInput.cs) |
+| `UiTextMeasure` | static class | [`UiTextMeasure.cs`](../SexyBiscuit.Engine/UI/UiTextMeasure.cs) |
+| `BitmapFont` | static class | [`BitmapFont.cs`](../SexyBiscuit.Engine/UI/BitmapFont.cs) |
+| `RectangleF` | record struct | [`RectangleF.cs`](../SexyBiscuit.Engine/UI/RectangleF.cs) |
+| `GraphicsMenu` | class | [`GraphicsMenu.cs`](../SexyBiscuit.Engine/UI/GraphicsMenu.cs) |
+| `UiKind` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `SizeMode` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `LayoutMode` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `AlignMode` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `PositionMode` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `ScrollMode` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `UiAnchor` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `Focusability` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `UiInputMode` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `UiScaleMode` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
+| `SafeAreaMode` | enum | [`UiEnums.cs`](../SexyBiscuit.Engine/UI/UiEnums.cs) |
 
 ### `SexyBiscuit.Engine.UI.Layout`
 
 | Type | Kind | File |
 |---|---|---|
-| `AnchorLayout` | class | [`Layouts.cs`](../SexyBiscuit.Engine/UI/Layout/Layouts.cs) |
-| `GridLayout` | class | [`Layouts.cs`](../SexyBiscuit.Engine/UI/Layout/Layouts.cs) |
-| `StackLayout` | class | [`Layouts.cs`](../SexyBiscuit.Engine/UI/Layout/Layouts.cs) |
-| `StackOrientation` | enum | [`Layouts.cs`](../SexyBiscuit.Engine/UI/Layout/Layouts.cs) |
+| `UiLayout` | static class | [`UiLayout.cs`](../SexyBiscuit.Engine/UI/Layout/UiLayout.cs) |
+
+### `SexyBiscuit.Engine.UI` — focus and navigation
+
+| Type | Kind | File |
+|---|---|---|
+| `UiFocus` | class | [`UiFocus.cs`](../SexyBiscuit.Engine/UI/Focus/UiFocus.cs) |
+| `UiInputModeTracker` | class | [`UiFocus.cs`](../SexyBiscuit.Engine/UI/Focus/UiFocus.cs) |
+| `UiNavigation` | static class | [`UiNavigation.cs`](../SexyBiscuit.Engine/UI/Focus/UiNavigation.cs) |
+| `NavDirection` | enum | [`UiNavigation.cs`](../SexyBiscuit.Engine/UI/Focus/UiNavigation.cs) |
+| `NavCandidate` | record struct | [`UiNavigation.cs`](../SexyBiscuit.Engine/UI/Focus/UiNavigation.cs) |
+| `NavSettings` | record struct | [`UiNavigation.cs`](../SexyBiscuit.Engine/UI/Focus/UiNavigation.cs) |
+
 
 ### `SexyBiscuit.Engine.Animation`
 
@@ -305,6 +307,7 @@ For the "how do I use this" version, follow the per-system pages linked from the
 | `ScriptBridge` | class | [`ScriptBridge.cs`](../SexyBiscuit.Engine/Scripting/ScriptBridge.cs) |
 | `ScriptComponent` | class | [`ScriptComponent.cs`](../SexyBiscuit.Engine/Scripting/ScriptComponent.cs) |
 | `ScriptHotReload` | class | [`ScriptHotReload.cs`](../SexyBiscuit.Engine/Scripting/ScriptHotReload.cs) |
+| `ScriptContract` | class | [`ScriptContract.cs`](../SexyBiscuit.Engine/Scripting/ScriptContract.cs) |
 | `TypeScriptDefinitions` | class | [`TypeScriptDefinitions.cs`](../SexyBiscuit.Engine/Scripting/TypeScriptDefinitions.cs) |
 
 ### `SexyBiscuit.Engine.Scene`
@@ -421,8 +424,7 @@ Every non-abstract `Component` subclass, i.e. everything valid in
 | `BoxCollider3D`, `SphereCollider3D`, `CapsuleCollider3D` | `Physics` | shape registered in `Awake` |
 | `CharacterController2D` / `CharacterController3D` | `Physics` | `[RequireComponent]` adds the rigidbody |
 | `AudioSource` | `Audio` | listener is an actor tagged `"Camera"` |
-| `Canvas` | `UI` | draws its widget tree |
-| `WorldCanvas` | `UI` | owns its own `Canvas` |
+| `UiCanvas` | `UI` | the host paints it, not `Component.Draw` |
 | `SpriteAnimator` | `Animation` | `[RequireComponent(SpriteRenderer)]` |
 | `AnimatorController` | `Animation` | `[RequireComponent(SpriteAnimator)]` |
 | `SkeletalAnimator` | `Animation` | produces a bone palette |
