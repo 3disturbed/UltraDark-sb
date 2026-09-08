@@ -94,9 +94,18 @@ public class SBEngine : Game
         Host = new EngineHost(GraphicsDevice, Content, Config);
         Host.Input.CursorVisibilityChanged = visible => IsMouseVisible = visible;
 
+#if !ANDROID
         // Text comes from the window, never from polling Keys: only the platform knows
         // about keyboard layouts, dead keys and input methods.
+        //
+        // Desktop only. MonoGame's Android GameWindow has no TextInput event at all, so
+        // this does not compile there -- it took the whole engine's Android target with
+        // it, which is a build failure rather than a missing feature. Typing on Android
+        // is the soft keyboard, which is a separate path nothing here asks for yet;
+        // everything else about a UI text field works, it simply never receives a
+        // character.
         Window.TextInput += (_, e) => Host.Input.QueueTypedCharacter(e.Character);
+#endif
 
         // The device manager is this class's, not the host's, so the host reaches the
         // back buffer through here. This is the only ApplyChanges call in the engine.
