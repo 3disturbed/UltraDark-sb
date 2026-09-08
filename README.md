@@ -1,5 +1,9 @@
 # SexyBiscuit Engine
 
+> **For agents:** start at [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md). This file is
+> the design tour and may run ahead of the code; [`wiki/`](wiki/README.md) describes what the
+> code does today.
+
 An in-house, full-ownership game engine built on MonoGame. No vendor lock-in. No licensing fees. No surprises. Every line of source is ours to read, modify, and ship.
 
 **Platforms:** Windows · Linux · macOS · Android · iOS (planned) · Steam
@@ -68,6 +72,10 @@ effects, and [CONTRIBUTING](CONTRIBUTING.md) for build, test and style expectati
 25. [AI Assistant & MCP](#25-ai-assistant--mcp)
 26. [HTML5 / Web](#26-html5--web)
 28. [The CookieJar](#28-the-cookiejar)
+
+The game factory workflow (27), Darks Games accounts and social (29) and MakeChibi (30) are
+wiki-only: [`wiki/27`](wiki/27-game-factory-workflow.md), [`wiki/29`](wiki/29-darksgames.md),
+[`wiki/30`](wiki/30-makechibi.md).
 
 ---
 
