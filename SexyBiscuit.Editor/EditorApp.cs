@@ -79,7 +79,7 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
     private AssistantHost?  _assistant;
     private AssistantPanel? _assistantPanel;
 
-    // Frames still to simulate while paused (step_frame).
+    // Frames still to simulate while paused (play_mode action 'step').
     private int _pendingSteps;
 
     // Play looks through the game camera; Stop puts the toolbar's choice back.
@@ -220,7 +220,9 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
 
         _code    = new GameCodeHost(_mcp, settings);
         _restart = new EditorRestart(_mcp, _code);
-        _mcp.Registry.RegisterInstance(new GameCodeTools(_mcp, _code, _restart), new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
+        var codeTools = new GameCodeTools(_mcp, _code, _restart);
+        _mcp.Registry.RegisterInstance(codeTools, new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
+        _mcp.EngineRepoInfo = codeTools.EngineRepoInfo;   // get_project_info engineRepo=true
         _mcp.Registry.RegisterInstance(new ShippingTools(), new Engine.Mcp.McpRegistrationOptions { Source = "editor" });
         EditorState.OnProjectOpened += root => _code?.OnProjectOpened(root);
         _codeProject = new CodeProjectPanel(_code);
@@ -1010,11 +1012,14 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         ImGui.TextDisabled("|");
         ImGui.SameLine();
 
-        GizmoButton("Move",   GizmoMode.Translate, "Translate (G)");
+        GizmoButton("Move",   GizmoMode.Translate, "Move (W)");
         ImGui.SameLine();
-        GizmoButton("Rotate", GizmoMode.Rotate,    "Rotate (R)");
+        GizmoButton("Rotate", GizmoMode.Rotate,    "Rotate (E)");
         ImGui.SameLine();
-        GizmoButton("Scale",  GizmoMode.Scale,     "Scale (S)");
+        GizmoButton("Scale",  GizmoMode.Scale,     "Scale (R)");
+
+        ImGui.SameLine();
+        GizmoTransformSpaceButton();
 
         ImGui.SameLine();
         ImGui.TextDisabled("|");
@@ -1112,6 +1117,18 @@ public sealed class EditorApp : Microsoft.Xna.Framework.Game
         if (ImGui.Button(label)) EditorState.GizmoMode = mode;
         if (active) ImGui.PopStyleColor();
         Tooltip(tooltip);
+    }
+
+    private static void GizmoTransformSpaceButton()
+    {
+        bool world = EditorState.GizmoTransformSpace == GizmoTransformSpace.World;
+        if (world) ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(0.30f, 0.45f, 0.65f, 1f));
+        if (ImGui.Button(world ? "World" : "Local"))
+            EditorState.GizmoTransformSpace = world ? GizmoTransformSpace.Local : GizmoTransformSpace.World;
+        if (world) ImGui.PopStyleColor();
+        Tooltip(world
+            ? "World coordinates: align gizmo axes to the scene. Click for local coordinates."
+            : "Local coordinates: align gizmo axes to the selected actor. Click for world coordinates.");
     }
 
     private static void Tooltip(string text)

@@ -31,7 +31,7 @@ public class StreamJsonTests
     [Fact]
     public void Parse_AnAssistantFrameYieldsTextAndToolUseBlocks()
     {
-        const string line = """{"type":"assistant","message":{"id":"msg_1","model":"claude-opus-5","role":"assistant","stop_reason":"tool_use","content":[{"type":"text","text":"Placing a cube."},{"type":"tool_use","id":"toolu_1","name":"mcp__sexybiscuit__spawn_primitive","input":{"shape":"cube","name":"Crate"}}]},"parent_tool_use_id":null,"session_id":"s","uuid":"u"}""";
+        const string line = """{"type":"assistant","message":{"id":"msg_1","model":"claude-opus-5","role":"assistant","stop_reason":"tool_use","content":[{"type":"text","text":"Placing a cube."},{"type":"tool_use","id":"toolu_1","name":"mcp__sexybiscuit__spawn_actor","input":{"shape":"cube","name":"Crate"}}]},"parent_tool_use_id":null,"session_id":"s","uuid":"u"}""";
         Assert.True(StreamJsonParser.TryParse(line, out var frame, out _));
 
         var assistant = Assert.IsType<AssistantFrame>(frame);
@@ -41,7 +41,7 @@ public class StreamJsonTests
 
         var use = Assert.IsType<ToolUseBlock>(assistant.Content[1]);
         Assert.Equal("toolu_1", use.Id);
-        Assert.Equal("mcp__sexybiscuit__spawn_primitive", use.Name);
+        Assert.Equal("mcp__sexybiscuit__spawn_actor", use.Name);
         // The input outlives the parser's JsonDocument.
         Assert.Equal("Crate", use.Input!.Value.GetProperty("name").GetString());
     }
@@ -643,7 +643,7 @@ public class TranscriptTests
     {
         var t = new Transcript();
         t.Apply(F("""{"type":"stream_event","event":{"type":"message_start","message":{"id":"m2"}}}"""));
-        t.Apply(F("""{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"mcp__sexybiscuit__spawn_primitive","input":{}}}}"""));
+        t.Apply(F("""{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"mcp__sexybiscuit__spawn_actor","input":{}}}}"""));
         t.Apply(F("""{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"shape\":\"cube\","}}}"""));
         t.Apply(F("""{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"name\":\"Crate\"}"}}}"""));
         t.Apply(F("""{"type":"stream_event","event":{"type":"content_block_stop","index":0}}"""));
@@ -656,7 +656,7 @@ public class TranscriptTests
         Assert.Equal("Running Spawn cube 'Crate'...", t.BusyStatus);
 
         // The authoritative assistant frame does not duplicate the call.
-        t.Apply(F("""{"type":"assistant","message":{"id":"m2","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"mcp__sexybiscuit__spawn_primitive","input":{"shape":"cube","name":"Crate"}}]}}"""));
+        t.Apply(F("""{"type":"assistant","message":{"id":"m2","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"mcp__sexybiscuit__spawn_actor","input":{"shape":"cube","name":"Crate"}}]}}"""));
         Assert.Single(t.Entries);
 
         t.Apply(F("""{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"Spawned 'Crate' (id 7).\nmore detail","is_error":false}]}}"""));
@@ -789,8 +789,22 @@ public class TranscriptTests
         using var read = JsonDocument.Parse("""{"file_path":"/Users/me/game/Source/Spinner.cs"}""");
         Assert.Equal("Read Source/Spinner.cs", ToolLabels.Friendly("Read", read.RootElement));
 
-        using var set = JsonDocument.Parse("""{"actor":"Cube","componentType":"MeshRenderer","property":"Metallic","value":1}""");
-        Assert.Equal("Set MeshRenderer.Metallic on 'Cube'", ToolLabels.Friendly("mcp__sexybiscuit__set_property", set.RootElement));
+        using var set = JsonDocument.Parse("""{"actor":"Cube","properties":{"MeshRenderer.Metallic":1}}""");
+        Assert.Equal("Set properties on 'Cube'", ToolLabels.Friendly("mcp__sexybiscuit__set_properties", set.RootElement));
+
+        // A merged tool is labelled by the mode its arguments choose, not by its name alone.
+        using var rename = JsonDocument.Parse("""{"actor":"Cube","name":"Crate"}""");
+        Assert.Equal("Rename 'Cube' to 'Crate'", ToolLabels.Friendly("mcp__sexybiscuit__set_actor", rename.RootElement));
+
+        using var aim = JsonDocument.Parse("""{"actor":"Camera","lookAt":[0,0,0]}""");
+        Assert.Equal("Aim 'Camera'", ToolLabels.Friendly("mcp__sexybiscuit__set_transform", aim.RootElement));
+
+        using var pose = JsonDocument.Parse("""{"position":[0,5,10],"width":640}""");
+        Assert.Equal("Look at the scene from a point", ToolLabels.Friendly("mcp__sexybiscuit__capture_viewport", pose.RootElement));
+
+        // report=false is the exporting mode, not the reporting one.
+        using var exporting = JsonDocument.Parse("""{"platforms":["web"],"report":false}""");
+        Assert.Equal("Export the build", ToolLabels.Friendly("mcp__sexybiscuit__export_build", exporting.RootElement));
 
         using var save = JsonDocument.Parse("""{"path":"Scenes/Main.scene"}""");
         Assert.Equal("Save scene 'Scenes/Main.scene'", ToolLabels.Friendly("mcp__sexybiscuit__save_scene", save.RootElement));

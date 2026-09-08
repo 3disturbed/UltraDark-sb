@@ -51,7 +51,7 @@ public sealed class McpHost : IDisposable
         Registry.AfterInvoke = (descriptor, _, result) =>
         {
             SceneHost.ActiveScene?.FlushPendingActors();
-            if (!descriptor.Mutating) return;
+            if (!descriptor.Mutating || result.NoChange) return;
 
             EditorState.SceneDirty = true;
             if (EditorState.IsPlaying)
@@ -101,6 +101,13 @@ public sealed class McpHost : IDisposable
 
     /// <summary>Other subsystems (the C# code host) add their own sections to get_project_info here.</summary>
     public List<Action<JsonObject>> ProjectInfoContributors { get; } = new();
+
+    /// <summary>
+    /// Where the engine source is, for <c>get_project_info engineRepo=true</c>. Set by the
+    /// composition root from the C# code tools, which own the repo locator; null when the editor
+    /// is not running from a checkout, or in a headless catalogue.
+    /// </summary>
+    public Func<JsonObject>? EngineRepoInfo { get; set; }
 
     /// <summary>The engine version, from the one place it is stated.</summary>
     public static string EngineVersion => SexyBiscuit.Engine.EngineInfo.Version;

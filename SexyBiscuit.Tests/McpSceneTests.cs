@@ -47,10 +47,10 @@ internal sealed class SceneToolHarness : IDisposable
         {
             if (!Host.IsPlaying) Undo.Snapshot(McpToolRegistry.FormatLabel(descriptor.LabelTemplate, descriptor.Name, args));
         };
-        Registry.AfterInvoke = (descriptor, _, _) =>
+        Registry.AfterInvoke = (descriptor, _, result) =>
         {
             Host.ActiveScene?.FlushPendingActors();
-            if (descriptor.Mutating) Host.SceneDirty = true;
+            if (descriptor.Mutating && !result.NoChange) Host.SceneDirty = true;
         };
     }
 
@@ -92,7 +92,7 @@ public class SceneToolTests
         Assert.Equal("Crate", view["name"]!.GetValue<string>());
         Assert.Equal(new[] { 1f, 2f, 3f }, Floats(view["position"]));
 
-        var summary = h.Ok("get_scene_summary", new { compact = false });
+        var summary = h.Ok("get_scene_summary", new { format = "json" });
         var row = summary["actors"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == "Crate")!;
         var components = row["components"]!.AsArray().Select(c => c!.GetValue<string>()).ToList();
         Assert.Contains("Transform3D", components);
@@ -108,7 +108,7 @@ public class SceneToolTests
     {
         using var h = new SceneToolHarness();
 
-        h.Ok("spawn_primitive", new { shape = "sphere", position = new[] { 0f, 1f, 0f }, color = "#FF0000", scale = new[] { 2f, 2f, 2f } });
+        h.Ok("spawn_actor", new { shape = "sphere", position = new[] { 0f, 1f, 0f }, color = "#FF0000", scale = new[] { 2f, 2f, 2f } });
 
         var actor = h.Scene.FindByName("Sphere")!;
         var mesh  = actor.GetComponent<MeshRenderer>()!;
@@ -121,7 +121,7 @@ public class SceneToolTests
         // Not "Torus": that was this test's example of a shape the engine has not got
         // until MakeChibi added it, along with Capsule. Anything named here has to be a
         // shape MeshPrimitive genuinely lacks, or the test passes for the wrong reason.
-        var bad = h.Fails("spawn_primitive", new { shape = "Dodecahedron" });
+        var bad = h.Fails("spawn_actor", new { shape = "Dodecahedron" });
         Assert.Contains("Cube, Sphere", bad.FirstText);
     }
 
@@ -137,11 +137,11 @@ public class SceneToolTests
 
     [Theory]
     [MemberData(nameof(PresetNames))]
-    public void PlaceActorBuildsEveryPreset(string preset)
+    public void SpawnActorBuildsEveryPreset(string preset)
     {
         using var h = new SceneToolHarness();
 
-        var view = h.Ok("place_actor", new { preset });
+        var view = h.Ok("spawn_actor", new { preset });
         string name = view["name"]!.GetValue<string>();
         Assert.False(string.IsNullOrEmpty(name));
 
@@ -154,20 +154,20 @@ public class SceneToolTests
     {
         using var h = new SceneToolHarness();
 
-        var result = h.Fails("place_actor", new { preset = "Sprite", position = new[] { 1f, 1f, 1f } });
+        var result = h.Fails("spawn_actor", new { preset = "Sprite", position = new[] { 1f, 1f, 1f } });
         Assert.Contains("no Transform3D", result.FirstText);
 
-        h.Ok("place_actor", new { preset = "Sprite", position = new[] { 10f, 20f } });
+        h.Ok("spawn_actor", new { preset = "Sprite", position = new[] { 10f, 20f } });
         Assert.Equal(new Vector2(10f, 20f), h.Scene.FindByName("Sprite")!.Transform.Position);
     }
 
     [Fact]
-    public void ListActorPresetsDescribesTheComponentsEachOneCreates()
+    public void SpawnActorListsThePresetsAndTheComponentsEachOneCreates()
     {
         using var h = new SceneToolHarness();
         int renderersBefore = MeshRenderer.All.Count;
 
-        var list = h.Ok("list_actor_presets").AsObject()["value"]!.AsArray();
+        var list = h.Ok("spawn_actor", new { list = true }).AsObject()["value"]!.AsArray();
         var camera = list.Single(p => p!["name"]!.GetValue<string>() == "Camera")!;
         Assert.Contains("Camera3D", camera["components"]!.AsArray().Select(c => c!.GetValue<string>()));
 
@@ -209,46 +209,52 @@ public class SceneToolTests
     }
 
     [Fact]
-    public void SetPropertyConvertsColoursEnumsVectorsAndRotations()
+    public void SetPropertiesConvertsColoursEnumsVectorsAndRotations()
     {
         using var h = new SceneToolHarness();
-        h.Ok("place_actor", new { preset = "Point Light", name = "Lamp" });
+        h.Ok("spawn_actor", new { preset = "Point Light", name = "Lamp" });
         var light = h.Scene.FindByName("Lamp")!;
 
-        h.Ok("set_property", new { actor = "Lamp", componentType = "Light3D", property = "Color", value = "#00FF00" });
+        h.Ok("set_properties", new { actor = "Lamp", properties = new Dictionary<string, object> { ["Light3D.Color"] = "#00FF00" } });
         Assert.Equal(new Color(0, 255, 0), light.GetComponent<Light3D>()!.Color);
 
-        h.Ok("set_property", new { actor = "Lamp", componentType = "light3d", property = "type", value = "spot" });
+        // Type and property names are matched ignoring case, as they were one at a time.
+        h.Ok("set_properties", new { actor = "Lamp", properties = new Dictionary<string, object> { ["light3d.type"] = "spot" } });
         Assert.Equal(LightType.Spot, light.GetComponent<Light3D>()!.Type);
 
-        h.Ok("set_property", new { actor = "Lamp", componentType = "Transform3D", property = "Position", value = new { x = 1, y = 2, z = 3 } });
+        h.Ok("set_properties", new { actor = "Lamp", properties = new Dictionary<string, object> { ["Transform3D.Position"] = new { x = 1, y = 2, z = 3 } } });
         Assert.Equal(new Vector3(1f, 2f, 3f), light.GetComponent<Transform3D>()!.Position);
 
-        var rotated = h.Ok("set_property", new { actor = "Lamp", componentType = "Transform3D", property = "EulerAngles", value = new[] { 0f, 45f, 0f } });
+        h.Ok("set_properties", new { actor = "Lamp", properties = new Dictionary<string, object> { ["Transform3D.EulerAngles"] = new[] { 0f, 45f, 0f } } });
+        var rotated = h.Ok("get_actor", new { actor = "Lamp", property = "Transform3D.EulerAngles" });
         Assert.Equal(45f, Floats(rotated["value"])[1], 2);
 
-        h.Ok("set_property", new { actor = "Lamp", componentType = "Actor", property = "Tag", value = "Lighting" });
+        h.Ok("set_properties", new { actor = "Lamp", properties = new Dictionary<string, object> { ["Actor.Tag"] = "Lighting" } });
         Assert.Equal("Lighting", light.Tag);
+        Assert.Equal("Lighting", h.Ok("get_actor", new { actor = "Lamp", property = "Actor.Tag" })["value"]!.GetValue<string>());
     }
 
     [Fact]
-    public void SetPropertyRejectsAnUnknownPropertyWithSuggestions()
+    public void SetPropertiesRejectsAnUnknownPropertyWithSuggestions()
     {
         using var h = new SceneToolHarness();
-        h.Ok("place_actor", new { preset = "Point Light", name = "Lamp" });
+        h.Ok("spawn_actor", new { preset = "Point Light", name = "Lamp" });
 
-        var result = h.Fails("set_property", new { actor = "Lamp", componentType = "Light3D", property = "Intensty", value = 2 });
+        var result = h.Fails("set_properties", new { actor = "Lamp", properties = new Dictionary<string, object> { ["Light3D.Intensty"] = 2 } });
         Assert.Contains("Intensity", result.FirstText);
 
-        var wrongType = h.Fails("set_property", new { actor = "Lamp", componentType = "MeshRender", property = "MeshType", value = "Cube" });
+        var wrongType = h.Fails("set_properties", new { actor = "Lamp", properties = new Dictionary<string, object> { ["MeshRender.MeshType"] = "Cube" } });
         Assert.Contains("It has:", wrongType.FirstText);
+
+        // get_actor reads one back, and says the same thing when the name is wrong.
+        Assert.Contains("Intensity", h.Fails("get_actor", new { actor = "Lamp", property = "Light3D.Intensty" }).FirstText);
     }
 
     [Fact]
     public void SetPropertiesAppliesTheValidEntriesAndReportsTheRest()
     {
         using var h = new SceneToolHarness();
-        h.Ok("place_actor", new { preset = "Point Light", name = "Lamp" });
+        h.Ok("spawn_actor", new { preset = "Point Light", name = "Lamp" });
 
         var result = h.Call("set_properties", new
         {
@@ -300,7 +306,7 @@ public class SceneToolTests
     public void DuplicateActorCopiesComponentsAndOffsetsThePosition()
     {
         using var h = new SceneToolHarness();
-        h.Ok("spawn_primitive", new { shape = "Cube", color = "#FF0000" });
+        h.Ok("spawn_actor", new { shape = "Cube", color = "#FF0000" });
 
         var copy = h.Ok("duplicate_actor", new { actor = "Cube", offset = new[] { 2f, 0f, 0f } });
         Assert.Equal("Cube (copy)", copy["name"]!.GetValue<string>());
@@ -315,10 +321,10 @@ public class SceneToolTests
     public void MoveToLayerKeepsTheActorAndItsComponentsAlive()
     {
         using var h = new SceneToolHarness();
-        h.Ok("spawn_primitive", new { shape = "Cube" });
+        h.Ok("spawn_actor", new { shape = "Cube" });
         var mesh = h.Scene.FindByName("Cube")!.GetComponent<MeshRenderer>();
 
-        var row = h.Ok("move_to_layer", new { actor = "Cube", layer = "props", order = 10 });
+        var row = h.Ok("set_actor", new { actor = "Cube", layer = "props", layerOrder = 10 });
         Assert.Equal("props", row["layer"]!.GetValue<string>());
 
         var actor = h.Scene.FindByName("Cube")!;
@@ -363,7 +369,7 @@ public class SceneToolTests
         try
         {
             using var h = new SceneToolHarness(projectRoot: root);
-            h.Ok("spawn_primitive", new { shape = "Cube" });
+            h.Ok("spawn_actor", new { shape = "Cube" });
 
             var saved = h.Ok("save_scene", new { path = "Scenes/Test.scene" });
             Assert.Equal("Scenes/Test.scene", saved["path"]!.GetValue<string>());
@@ -375,7 +381,7 @@ public class SceneToolTests
             Assert.DoesNotContain("SexyBiscuit.Engine.Rendering.MeshRenderer,", json);
 
             // No path means "where it was last saved"; no extension means .scene.
-            h.Ok("spawn_primitive", new { shape = "Sphere" });
+            h.Ok("spawn_actor", new { shape = "Sphere" });
             Assert.Equal("Scenes/Test.scene", h.Ok("save_scene")["path"]!.GetValue<string>());
             Assert.Equal("Scenes/Other.scene", h.Ok("save_scene", new { path = "Scenes/Other" })["path"]!.GetValue<string>());
         }
@@ -442,12 +448,12 @@ public class SceneToolTests
         using var h = new SceneToolHarness();
         h.Ok("spawn_actor", new { name = "Eye", position = new[] { 0f, 0f, 0f } });
 
-        var ahead = h.Ok("look_at", new { actor = "Eye", target = new[] { 0f, 0f, -5f } });
+        var ahead = h.Ok("set_transform", new { actor = "Eye", lookAt = new[] { 0f, 0f, -5f } });
         var forward = Floats(ahead["transform3d"]!["forward"]);
         Assert.Equal(-1f, forward[2], 3);
 
         h.Ok("spawn_actor", new { name = "Mark", position = new[] { 5f, 0f, 0f } });
-        var aside = h.Ok("look_at", new { actor = "Eye", targetActor = "Mark" });
+        var aside = h.Ok("set_transform", new { actor = "Eye", lookAtActor = "Mark" });
         forward = Floats(aside["transform3d"]!["forward"]);
         Assert.Equal(1f, forward[0], 3);
     }
@@ -458,16 +464,20 @@ public class SceneToolTests
         using var h = new SceneToolHarness();
         h.Ok("spawn_actor", new { name = "Mover", position = new[] { 1f, 0f, 0f } });
 
-        var moved = h.Ok("translate", new { actor = "Mover", delta = new[] { 1f, 2f, 3f } });
+        var moved = h.Ok("set_transform", new { actor = "Mover", position = new[] { 1f, 2f, 3f }, relative = true });
         Assert.Equal(new[] { 2f, 2f, 3f }, Floats(moved["transform3d"]!["position"]));
 
-        h.Ok("rotate", new { actor = "Mover", delta = new[] { 0f, 30f, 0f } });
-        var again = h.Ok("rotate", new { actor = "Mover", delta = new[] { 0f, 15f, 0f } });
+        h.Ok("set_transform", new { actor = "Mover", rotation = new[] { 0f, 30f, 0f }, relative = true });
+        var again = h.Ok("set_transform", new { actor = "Mover", rotation = new[] { 0f, 15f, 0f }, relative = true });
         Assert.Equal(45f, Floats(again["transform3d"]!["rotation"])[1], 2);
 
         // Local translation follows the rotated axes: +Z local is now off the world Z axis.
-        var local = h.Ok("translate", new { actor = "Mover", delta = new[] { 0f, 0f, 1f }, space = "local" });
+        var local = h.Ok("set_transform", new { actor = "Mover", position = new[] { 0f, 0f, 1f }, relative = true, space = "local" });
         Assert.NotEqual(3f + 1f, Floats(local["transform3d"]!["position"])[2], 2);
+
+        // Without relative the same argument replaces the position outright.
+        var absolute = h.Ok("set_transform", new { actor = "Mover", position = new[] { 0f, 0f, 0f } });
+        Assert.Equal(new[] { 0f, 0f, 0f }, Floats(absolute["transform3d"]!["position"]));
     }
 
     [Fact]
@@ -487,26 +497,26 @@ public class SceneToolTests
         Assert.NotNull(h.Scene.FindByName("Keep"));
 
         h.Call("new_scene", new { template = "default3d" });
-        var threeD = h.Ok("get_scene_summary", new { compact = false });
+        var threeD = h.Ok("get_scene_summary", new { format = "json" });
         Assert.True(threeD["checks"]!["hasGameMode"]!.GetValue<bool>());
         Assert.True(threeD["checks"]!["hasPlayerStart"]!.GetValue<bool>());
     }
 
     [Fact]
-    public void GetSceneJsonOffersBothTheViewAndTheFileFormat()
+    public void GetSceneSummaryOffersBothTheViewAndTheFileFormat()
     {
         using var h = new SceneToolHarness();
-        h.Ok("spawn_primitive", new { shape = "Cube" });
+        h.Ok("spawn_actor", new { shape = "Cube" });
 
-        var view = h.Ok("get_scene_json");
+        var view = h.Ok("get_scene_summary", new { format = "view" });
         Assert.False(view["truncated"]!.GetValue<bool>());
         Assert.Contains("Cube", view["layers"]!.ToJsonString());
 
-        var file = h.Call("get_scene_json", new { format = "file" });
+        var file = h.Call("get_scene_summary", new { format = "file" });
         Assert.False(file.IsError);
         Assert.Contains("\"type\":\"MeshRenderer\"", file.FirstText);
 
-        Assert.Contains("'view' or 'file'", h.Fails("get_scene_json", new { format = "xml" }).FirstText);
+        Assert.Contains("'compact', 'json', 'view' or 'file'", h.Fails("get_scene_summary", new { format = "xml" }).FirstText);
     }
 
     [Fact]

@@ -14,7 +14,7 @@ public sealed record ActorPreset(string Category, string Name, string Descriptio
 
 /// <summary>
 /// The actors a scene almost always needs, as one-click presets. Shared by the editor's Place
-/// Actors panel, its Create menu and the MCP <c>place_actor</c> tool, so all three offer the
+/// Actors panel, its Create menu and <c>spawn_actor</c>'s <c>preset</c>, so all three offer the
 /// same list.
 /// </summary>
 /// <remarks>
@@ -142,6 +142,17 @@ public static class ActorPresets
 
         new("UI", "Canvas", "Screen-space UI root: a tree of nodes, laid out and navigable.",
             () => { var a = new Actor("Canvas"); a.AddComponent<UiCanvas>(); return a; }),
+
+        new("UI", "World Canvas", "The same UI tree, standing on a plane in the scene: nameplates, terminals, signs.",
+            () =>
+            {
+                var a = new Actor("World Canvas");
+                a.AddComponent<Transform3D>();
+                var canvas = a.AddComponent<UiCanvas>();
+                canvas.Space = UiSpace.World;
+                canvas.ReferenceResolution = new Microsoft.Xna.Framework.Vector2(400f, 200f);
+                return a;
+            }),
 
     };
 

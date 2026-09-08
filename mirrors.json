@@ -427,6 +427,24 @@
       "js": "html5/src/ui/UiEnums.js"
     },
     {
+      "name": "UiSpace",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "UiSpace",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "UiFacing",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "UiFacing",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
       "name": "ActionMap",
       "kind": "system",
       "check": "none",
@@ -931,6 +949,14 @@
       "js": "html5/src/ui/UiPainter.js"
     },
     {
+      "name": "UiWorld",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/UiWorld.cs",
+      "js": "html5/src/ui/UiWorld.js"
+    },
+    {
       "name": "UiTextMeasure",
       "kind": "system",
       "check": "none",
@@ -1033,27 +1059,6 @@
       "WorldStreamer"
     ],
     "jsOnly": [],
-    "knownGaps": {
-      "CapsuleCollider3D": [
-        "height"
-      ],
-      "CharacterController3D": [
-        "radius",
-        "height",
-        "gravity",
-        "airControl"
-      ],
-      "MeshCollider3D": [
-        "padding"
-      ],
-      "Rigidbody3D": [
-        "useGravity",
-        "freezeRotation"
-      ],
-      "Skybox": [
-        "cubemapPath",
-        "exposure"
-      ]
-    }
+    "knownGaps": {}
   }
 }

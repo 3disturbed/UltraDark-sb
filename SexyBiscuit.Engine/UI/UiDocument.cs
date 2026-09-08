@@ -175,6 +175,16 @@ public static class UiDocument
             case "scrolloffset":   node.ScrollOffset   = Vec2(value, key); break;
             case "ignoresafearea": node.IgnoreSafeArea = Bool(value); break;
 
+            // --- following a point in the world ---
+            // A note, not a property. Every shared JSON table in this repository carries one,
+            // and a document a person is expected to hand-edit should be able to say why it
+            // exists. Ignored rather than stored, so it never reaches a script or a round trip.
+            case "$comment": break;
+
+            case "worldfollow":         node.WorldFollow         = Bool(value); break;
+            case "worldanchor":         node.WorldAnchor         = Vec3(value, key); break;
+            case "worldfollowdistance": node.WorldFollowDistance = Num(value); break;
+
             // --- focus and navigation ---
             case "focusable": node.Focusable = ParseEnum<Focusability>(value, key); break;
             case "modal":     node.Modal     = Bool(value); break;
@@ -297,6 +307,10 @@ public static class UiDocument
             case "scrolloffset":   return FromVec2(node.ScrollOffset);
             case "ignoresafearea": return node.IgnoreSafeArea;
 
+            case "worldfollow":         return node.WorldFollow;
+            case "worldanchor":         return FromVec3(node.WorldAnchor);
+            case "worldfollowdistance": return node.WorldFollowDistance;
+
             // --- focus and navigation ---
             case "focusable": return node.Focusable.ToString();
             case "modal":     return node.Modal;
@@ -357,7 +371,7 @@ public static class UiDocument
     /// every frame, and the aliases (<c>x</c>, <c>y</c>, <c>size</c>, <c>type</c>, <c>scale</c>,
     /// <c>align</c>, <c>absolute</c>) would each write a second copy of a property already listed.
     /// </remarks>
-    private static readonly string[] WritableKeys =
+    internal static readonly string[] WritableKeys =
     {
         "name", "kind", "visible", "interactive", "order", "style",
         "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow", "shrink",
@@ -368,6 +382,7 @@ public static class UiDocument
         "background", "tint", "opacity", "borderColour", "borderWidth", "texturePath",
         "sourceRect", "ninePatch",
         "clip", "scroll", "scrollOffset", "ignoreSafeArea",
+        "worldFollow", "worldAnchor", "worldFollowDistance",
         "focusable", "modal", "navUp", "navDown", "navLeft", "navRight", "autoFocus",
         "value", "minValue", "maxValue", "step", "checked", "selectedIndex", "options",
     };
@@ -486,6 +501,8 @@ public static class UiDocument
 
     private static JsonArray FromVec2(Vector2 v) => new() { v.X, v.Y };
 
+    private static JsonArray FromVec3(Vector3 v) => new() { v.X, v.Y, v.Z };
+
     private static JsonArray FromEdges(Vector4 v) => new() { v.X, v.Y, v.Z, v.W };
 
     /// <summary>
@@ -568,6 +585,13 @@ public static class UiDocument
             return new Vector2(both, both);
         }
         return Vec2(value, key);
+    }
+
+    private static Vector3 Vec3(JsonElement value, string key)
+    {
+        float[] parts = Numbers(value);
+        if (parts.Length != 3) throw new UiDocumentException($"\"{key}\" needs three numbers.");
+        return new Vector3(parts[0], parts[1], parts[2]);
     }
 
     private static Vector2 Vec2(JsonElement value, string key)
@@ -705,7 +729,7 @@ public static class UiDocument
 
     private static bool Matches(string key, string name) => Canonical(key) == name;
 
-    private static string Canonical(string key)
+    internal static string Canonical(string key)
     {
         Span<char> buffer = stackalloc char[key.Length];
         int n = 0;

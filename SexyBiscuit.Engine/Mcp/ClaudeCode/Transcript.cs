@@ -719,6 +719,7 @@ public static class ToolLabels
     {
         string tool = ShortName(name);
         string? a(params string[] keys) => FirstString(input, keys);
+        bool    f(params string[] keys) => Flag(input, keys);
 
         switch (tool)
         {
@@ -736,20 +737,18 @@ public static class ToolLabels
             case "TodoWrite":       return "Update the task list";
             case "AskUserQuestion": return "Ask a question";
 
-            case "spawn_actor":      return $"Spawn actor '{a("name") ?? "?"}'";
-            case "spawn_primitive":  return $"Spawn {a("shape") ?? "primitive"}" + (a("name") is { } pn ? $" '{pn}'" : "");
-            case "place_actor":      return $"Place {a("preset") ?? "actor"}" + (a("name") is { } an ? $" '{an}'" : "");
+            case "spawn_actor":      return a("shape") is { } sh ? $"Spawn {sh}" + (a("name") is { } sn ? $" '{sn}'" : "")
+                                          : a("preset") is { } pr ? $"Place {pr}" + (a("name") is { } pn ? $" '{pn}'" : "")
+                                          : $"Spawn actor '{a("name") ?? "?"}'";
             case "destroy_actor":    return $"Destroy '{a("actor") ?? "?"}'";
-            case "rename_actor":     return $"Rename '{a("actor") ?? "?"}' to '{a("newName", "name") ?? "?"}'";
             case "duplicate_actor":  return $"Duplicate '{a("actor") ?? "?"}'";
-            case "set_transform":    return $"Move '{a("actor") ?? "?"}'";
-            case "translate":        return $"Translate '{a("actor") ?? "?"}'";
-            case "rotate":           return $"Rotate '{a("actor") ?? "?"}'";
-            case "look_at":          return $"Aim '{a("actor") ?? "?"}'";
-            case "move_to_layer":    return $"Move '{a("actor") ?? "?"}' to layer {a("layer") ?? "?"}";
+            case "set_transform":    return f("lookAt", "lookAtActor") ? $"Aim '{a("actor") ?? "?"}'" : $"Move '{a("actor") ?? "?"}'";
+            case "set_actor":        return a("layer") is { } al ? $"Move '{a("actor") ?? "?"}' to layer {al}"
+                                          : a("name") is { } nn ? $"Rename '{a("actor") ?? "?"}' to '{nn}'"
+                                          : $"Edit '{a("actor") ?? "?"}'";
+            case "attach_actor":     return a("parent") is { } ap ? $"Attach '{a("actor") ?? "?"}' to '{ap}'" : $"Detach '{a("actor") ?? "?"}'";
             case "add_component":    return $"Add {a("componentType") ?? "component"} to '{a("actor") ?? "?"}'";
             case "remove_component": return $"Remove {a("componentType") ?? "component"} from '{a("actor") ?? "?"}'";
-            case "set_property":     return $"Set {a("componentType") ?? "?"}.{a("property") ?? "?"} on '{a("actor") ?? "?"}'";
             case "set_properties":   return $"Set properties on '{a("actor") ?? "?"}'";
             case "set_material":     return $"Set material on '{a("actor") ?? "?"}'";
             case "save_scene":       return "Save scene" + (a("path") is { } sp ? $" '{sp}'" : "");
@@ -757,15 +756,11 @@ public static class ToolLabels
             case "new_scene":        return $"New scene '{a("name") ?? "Untitled"}'";
             case "undo":             return "Undo";
             case "redo":             return "Redo";
-            case "capture_viewport": return "Look at the viewport";
-            case "capture_scene_from": return "Look at the scene from a point";
-            case "select_actor":     return $"Select '{a("actor") ?? "?"}'";
-            case "focus_actor":      return $"Focus '{a("actor") ?? "?"}'";
-            case "play":             return "Play";
-            case "pause":            return "Pause";
-            case "stop":             return "Stop play mode";
-            case "read_console":     return "Read the Output Log";
-            case "log_message":      return "Log: " + (Truncate(a("message"), 60) ?? "");
+            case "capture_viewport": return f("position") ? "Look at the scene from a point" : "Look at the viewport";
+            case "select_actor":     return a("actor") is { } sa ? $"Select '{sa}'" : "Read the selection";
+            case "editor_camera":    return a("focus") is { } fa ? $"Focus '{fa}'" : "Editor camera";
+            case "play_mode":        return Humanise("play_mode") + ": " + (a("action") ?? "status");
+            case "console":          return a("message") is { } lm ? "Log: " + Truncate(lm, 60) : "Read the Output Log";
             case "build_project":    return "Build the project";
             case "reload_game_code": return "Reload game code";
             case "create_class":     return $"Create class {a("name") ?? "?"}";
@@ -779,11 +774,11 @@ public static class ToolLabels
             case "get_session_usage": return "Read the session meter";
             case "apply_scene_edits": return "Apply scene edits";
             case "spawn_many":       return $"Spawn many {a("what") ?? "actors"}";
+            case "cookie_jars":      return a("add") is { } cj ? $"Propose cookie jar {cj}" : a("refresh") is { } cr ? $"Refresh jar {cr}" : "List cookie jars";
             case "run_scene_report": return "Play the scene and report";
             case "run_tests":        return $"Run the {a("project") ?? "engine"} tests";
-            case "export_build":     return "Export the build";
+            case "export_build":     return f("report", "jobId") ? "Read the build report" : "Export the build";
             case "publish_build":    return "Publish to DarksGames";
-            case "get_build_report": return "Read the build report";
             case "get_project_info": return "Read project info";
             case "get_scene_summary": return "Read the scene";
             case "get_actor":        return $"Inspect '{a("actor") ?? "?"}'";
@@ -815,6 +810,26 @@ public static class ToolLabels
         }
 
         return Truncate(string.Join(", ", parts), 200) ?? "";
+    }
+
+    /// <summary>
+    /// True when one of the arguments is present and not false or null. Merged tools tell their
+    /// modes apart by an argument's presence, and an array argument is not a string, so
+    /// <see cref="FirstString"/> cannot answer it.
+    /// </summary>
+    private static bool Flag(JsonElement? input, params string[] keys)
+    {
+        if (input is not { ValueKind: JsonValueKind.Object } o) return false;
+
+        foreach (var key in keys)
+            foreach (var p in o.EnumerateObject())
+            {
+                if (!string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase)) continue;
+                if (p.Value.ValueKind is JsonValueKind.False or JsonValueKind.Null) return false;
+                return true;
+            }
+
+        return false;
     }
 
     private static string? FirstString(JsonElement? input, params string[] keys)

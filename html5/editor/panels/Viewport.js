@@ -40,6 +40,8 @@ export class ViewportPanel {
         this._dragging = null;
         this._pointerStart = null;
         this._pinchStart = null;
+        this._gizmoDrag = null;
+        this._boxSelect = null;
     }
 
     /** The camera the renderer draws through while editing. */
@@ -143,12 +145,34 @@ export class ViewportPanel {
             surface.setPointerCapture(e.pointerId);
             this._pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() };
 
-            // Middle button or Shift pans; anything else orbits. A touch drag
-            // orbits, and two fingers pinch to zoom.
-            this._dragging = (e.button === 1 || e.shiftKey) ? 'pan' : 'orbit';
+            // Shift + primary drag is an explicit marquee gesture. It gets
+            // priority over a gizmo so a selection box never transforms an
+            // actor just because it began near the centre handle.
+            if (e.shiftKey && e.button === 0 && this.state.viewport3D) {
+                this._startBoxSelection(e);
+                return;
+            }
+
+            // Transform handles get first refusal. Without this guard a handle
+            // drag also begins an orbit, which makes the object appear to run
+            // away from the cursor rather than move with it.
+            if (this._startGizmo(e)) return;
+
+            // Middle mouse or Alt+primary pans; anything else orbits. Shift is
+            // reserved for the marquee above. A touch drag orbits, and two
+            // fingers pinch to zoom.
+            this._dragging = (e.button === 1 || e.altKey) ? 'pan' : 'orbit';
         });
 
         surface.addEventListener('pointermove', (e) => {
+            if (this._boxSelect) {
+                this._updateBoxSelection(e);
+                return;
+            }
+            if (this._gizmoDrag) {
+                this._updateGizmo(e);
+                return;
+            }
             if (!this._dragging || this.state.isPlaying) return;
 
             const dx = e.movementX ?? 0;
@@ -159,6 +183,16 @@ export class ViewportPanel {
 
         surface.addEventListener('pointerup', (e) => {
             const start = this._pointerStart;
+            if (this._boxSelect) {
+                this._finishBoxSelection();
+                this._pointerStart = null;
+                return;
+            }
+            if (this._gizmoDrag) {
+                this._finishGizmo();
+                this._pointerStart = null;
+                return;
+            }
             this._dragging = null;
             this._pointerStart = null;
             if (!start || this.state.isPlaying) return;
@@ -168,7 +202,11 @@ export class ViewportPanel {
             if (moved < 5 && performance.now() - start.time < 600) this._pick(e);
         });
 
-        surface.addEventListener('pointercancel', () => { this._dragging = null; });
+        surface.addEventListener('pointercancel', () => {
+            this._dragging = null;
+            this._finishBoxSelection(true);
+            this._finishGizmo(true);
+        });
 
         surface.addEventListener('wheel', (e) => {
             if (this.state.isPlaying) return;
@@ -220,11 +258,19 @@ export class ViewportPanel {
 
         if (this.state.viewport3D) {
             const found = this._pick3D(scene, point);
-            this.state.selectActor(found);
+            this._selectPicked(found, event);
             return;
         }
 
-        this.state.selectActor(this._pick2D(scene, point));
+        this._selectPicked(this._pick2D(scene, point), event);
+    }
+
+    _selectPicked(actor, event) {
+        if (event.ctrlKey || event.metaKey) {
+            if (actor) this.state.toggleActor(actor);
+            return;
+        }
+        this.state.selectActor(actor);
     }
 
     _pick3D(scene, point) {
@@ -285,13 +331,22 @@ export class ViewportPanel {
         return best;
     }
 
-    /** Draws the selection outline over the finished frame. */
+    /** Draws the selection outline and editor gizmo over the finished frame. */
     drawOverlay() {
-        const actor = this.state.selectedActor;
         const ctx = this.engine?.ctx;
-        if (!actor || actor.isDestroyed || !ctx || !this._camera) return;
+        if (!ctx || !this._camera) return;
         if (!this.state.viewport3D) return;
 
+        for (const actor of this.state.selectedActors) this._drawSelectionBounds(ctx, actor);
+        this._drawBoxSelection(ctx);
+
+        const primary = this.state.selectedActor;
+        const transform = primary?.getComponent(Transform3D);
+        if (transform && !primary.isDestroyed) this._drawGizmo(ctx, transform);
+    }
+
+    _drawSelectionBounds(ctx, actor) {
+        if (!actor || actor.isDestroyed) return;
         const t3d = actor.getComponent(Transform3D);
         if (!t3d) return;
 
@@ -333,6 +388,337 @@ export class ViewportPanel {
             (maxX - minX) + padding * 2, (maxY - minY) + padding * 2);
         ctx.restore();
     }
+
+    /** Begins a Shift + primary-button 3D marquee. */
+    _startBoxSelection(event) {
+        const point = this._canvasPoint(event);
+        this._boxSelect = {
+            start: point,
+            current: point,
+            // Ctrl/Cmd keeps the original selection and adds marquee hits to
+            // it. This mirrors click-toggle without making a Shift-drag remove
+            // an actor merely because it was already selected.
+            additive: event.ctrlKey || event.metaKey,
+            baseSelection: this.state.selectedActors,
+        };
+        this.surface.classList.add('sb-box-selecting');
+    }
+
+    _updateBoxSelection(event) {
+        if (!this._boxSelect) return;
+        this._boxSelect.current = this._canvasPoint(event);
+    }
+
+    _finishBoxSelection(cancel = false) {
+        const marquee = this._boxSelect;
+        if (!marquee) return;
+        this._boxSelect = null;
+        this.surface.classList.remove('sb-box-selecting');
+        if (cancel) return;
+
+        const rect = screenRect(marquee.start, marquee.current);
+        // Treat a short Shift press as an uncommitted marquee rather than a
+        // hidden alternate click gesture. It avoids changing selection while
+        // users begin a box from an empty part of the scene.
+        if (rect.width < 4 && rect.height < 4) return;
+
+        const matches = this._boxSelectionActors(rect);
+        const selection = marquee.additive
+            ? uniqueActors([...marquee.baseSelection, ...matches])
+            : matches;
+        this.state.selectActors(selection);
+    }
+
+    /** Returns live 3D actors whose projected selection bounds meet `rect`. */
+    _boxSelectionActors(rect) {
+        const scene = this.editor.scene;
+        if (!scene || !this._camera) return [];
+
+        return scene.allActors.filter((actor) => {
+            if (!actor || actor.isDestroyed || actor.isActive === false) return false;
+            const bounds = this._projectedSelectionBounds(actor);
+            return bounds && screenRectsIntersect(bounds, rect);
+        });
+    }
+
+    _projectedSelectionBounds(actor) {
+        const transform = actor.getComponent(Transform3D);
+        if (!transform) return null;
+
+        const renderer = actor.getComponent(MeshRenderer);
+        const width = this.engine.canvas2D.width;
+        const height = this.engine.canvas2D.height;
+        const points = renderer?.worldBounds
+            ? boxCorners(renderer.worldBounds).map((corner) => this._camera.worldToScreen(corner, width, height))
+            : [this._camera.worldToScreen(transform.position, width, height)];
+        const visible = points.filter(Boolean);
+        if (visible.length === 0) return null;
+
+        const rect = screenRectFromPoints(visible);
+        // Rendered actors get their actual projected bounds. Non-rendered
+        // actors remain selectable through the same 28px visual handle used by
+        // the selection overlay.
+        return expandScreenRect(rect, renderer?.worldBounds ? 3 : 14);
+    }
+
+    _drawBoxSelection(ctx) {
+        if (!this._boxSelect) return;
+        const rect = screenRect(this._boxSelect.start, this._boxSelect.current);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = 'rgba(91, 141, 217, 0.16)';
+        ctx.strokeStyle = '#8eb6ff';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.strokeRect(rect.left + 0.5, rect.top + 0.5, rect.width, rect.height);
+        ctx.restore();
+    }
+
+    // -------------------------------------------------------------------------
+    // Transform gizmo
+    // -------------------------------------------------------------------------
+
+    /** Returns the canvas-space point for a pointer event. */
+    _canvasPoint(event) {
+        const rect = this.surface.getBoundingClientRect();
+        return {
+            x: (event.clientX - rect.left) * this.engine.canvas2D.width / rect.width,
+            y: (event.clientY - rect.top) * this.engine.canvas2D.height / rect.height,
+        };
+    }
+
+    _gizmoGeometry(transform) {
+        if (!this._camera || !this.engine) return null;
+        const width = this.engine.canvas2D.width;
+        const height = this.engine.canvas2D.height;
+        const origin = this._camera.worldToScreen(transform.position, width, height);
+        if (!origin) return null;
+
+        const bases = [Vector3.right, Vector3.up, Vector3.forward];
+        const colours = ['#e86a5f', '#6fbf73', '#5b8dd9'];
+        const axes = bases.map((basis, index) => {
+            const world = this.state.transformSpace === 'local'
+                ? Vector3.transform(basis, transform.rotation)
+                : basis;
+            const probe = this._camera.worldToScreen(
+                Vector3.add(transform.position, world), width, height);
+            if (!probe) return { world, colour: colours[index], screen: null, end: origin, worldPerPixel: 0 };
+
+            const dx = probe.x - origin.x;
+            const dy = probe.y - origin.y;
+            const length = Math.hypot(dx, dy);
+            if (length < 0.5) return { world, colour: colours[index], screen: null, end: origin, worldPerPixel: 0 };
+
+            const screen = { x: dx / length, y: dy / length };
+            return {
+                world, colour: colours[index], screen,
+                end: { x: origin.x + screen.x * 76, y: origin.y + screen.y * 76 },
+                worldPerPixel: 1 / length,
+            };
+        });
+        return { origin, axes };
+    }
+
+    _drawGizmo(ctx, transform) {
+        const geometry = this._gizmoGeometry(transform);
+        if (!geometry) return;
+
+        const mode = this.state.gizmoMode;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.lineWidth = 3;
+        ctx.setLineDash([]);
+
+        for (const axis of geometry.axes) {
+            if (!axis.screen) continue;
+            ctx.strokeStyle = axis.colour;
+            if (mode === 'rotate') {
+                ctx.beginPath();
+                ctx.arc(geometry.origin.x, geometry.origin.y, 38, 0, Math.PI * 2);
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(geometry.origin.x, geometry.origin.y);
+                ctx.lineTo(axis.end.x, axis.end.y);
+                ctx.stroke();
+                ctx.fillStyle = axis.colour;
+                ctx.beginPath();
+                ctx.arc(axis.end.x, axis.end.y, mode === 'scale' ? 6 : 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#14161c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(geometry.origin.x, geometry.origin.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    _pickGizmo(point, geometry) {
+        if (Math.hypot(point.x - geometry.origin.x, point.y - geometry.origin.y) <= 11)
+            return 'free';
+
+        let chosen = null;
+        let best = 10;
+        for (let index = 0; index < geometry.axes.length; index++) {
+            const axis = geometry.axes[index];
+            if (!axis.screen) continue;
+            const distance = distanceToSegment(point, geometry.origin, axis.end);
+            if (distance < best) { best = distance; chosen = index; }
+        }
+        return chosen;
+    }
+
+    _startGizmo(event) {
+        if (!this.state.viewport3D || event.button === 1 || this.state.isPlaying) return false;
+        const actor = this.state.selectedActor;
+        const transform = actor?.getComponent(Transform3D);
+        if (!actor || !transform) return false;
+
+        const geometry = this._gizmoGeometry(transform);
+        if (!geometry) return false;
+        const axis = this._pickGizmo(this._canvasPoint(event), geometry);
+        if (axis == null) return false;
+
+        // The primary actor supplies the gizmo's origin and axes. Every selected
+        // 3D transform receives the same operation around its own origin; this
+        // keeps a multi-selection's relative layout intact until pivot modes
+        // (median/bounds) are introduced.
+        const transforms = this.state.selectedActors
+            .map((selected) => ({ actor: selected, transform: selected.getComponent(Transform3D) }))
+            .filter((entry) => entry.transform && !entry.actor.isDestroyed)
+            .map((entry) => ({ ...entry, start: snapshotTransform(entry.transform) }));
+
+        this._gizmoDrag = {
+            actor,
+            transform,
+            transforms,
+            axis,
+            startPoint: this._canvasPoint(event),
+        };
+        return true;
+    }
+
+    _updateGizmo(event) {
+        const drag = this._gizmoDrag;
+        if (!drag) return;
+        const geometry = this._gizmoGeometry(drag.transform);
+        if (!geometry) return;
+
+        const point = this._canvasPoint(event);
+        const delta = { x: point.x - drag.startPoint.x, y: point.y - drag.startPoint.y };
+        const mode = this.state.gizmoMode;
+
+        if (mode === 'translate') {
+            let move;
+            if (drag.axis === 'free') {
+                const camera = this._camera.getTransform3D();
+                const scale = this._orbitDistance * 0.0022;
+                move = Vector3.add(Vector3.scale(camera.right, -delta.x * scale),
+                    Vector3.scale(camera.up, delta.y * scale));
+            } else {
+                const axis = geometry.axes[drag.axis];
+                const pixels = delta.x * axis.screen.x + delta.y * axis.screen.y;
+                move = Vector3.scale(axis.world, pixels * axis.worldPerPixel);
+            }
+            for (const entry of drag.transforms) {
+                let position = Vector3.add(entry.start.position, move);
+                if (this.state.snapEnabled) position = snapVector(position, this.state.translateSnap);
+                entry.transform.position = position;
+            }
+        } else if (mode === 'rotate') {
+            const degrees = snapValue((delta.x - delta.y) * 0.45,
+                this.state.snapEnabled ? this.state.rotateSnap : 0);
+            for (const entry of drag.transforms) {
+                const euler = entry.start.euler.clone();
+                if (drag.axis === 'free') euler.y += degrees;
+                else if (drag.axis === 0) euler.x += degrees;
+                else if (drag.axis === 1) euler.y += degrees;
+                else euler.z += degrees;
+                entry.transform.eulerAngles = euler;
+            }
+        } else {
+            const amount = (delta.x - delta.y) / 100;
+            const scaleFactor = Math.max(0.01, 1 + amount);
+            for (const entry of drag.transforms) {
+                let scale = entry.start.scale.clone();
+                if (drag.axis === 'free') scale.scale(scaleFactor);
+                else if (drag.axis === 0) scale.x *= scaleFactor;
+                else if (drag.axis === 1) scale.y *= scaleFactor;
+                else scale.z *= scaleFactor;
+                if (this.state.snapEnabled) scale = snapVector(scale, this.state.scaleSnap);
+                entry.transform.localScale = scale;
+            }
+        }
+        this.state.markDirty();
+    }
+
+    _finishGizmo(cancel = false) {
+        const drag = this._gizmoDrag;
+        if (!drag) return;
+        this._gizmoDrag = null;
+
+        const end = drag.transforms.map((entry) => ({ ...entry, end: snapshotTransform(entry.transform) }));
+        if (cancel) {
+            for (const entry of drag.transforms) applyTransform(entry.transform, entry.start);
+            return;
+        }
+        if (end.every((entry) => sameTransform(entry.start, entry.end))) return;
+
+        const label = end.length === 1 ? `Transform ${drag.actor.name}` : `Transform ${end.length} actors`;
+        this.editor.history.push(label,
+            () => {
+                for (const entry of end) applyTransform(entry.transform, entry.start);
+                this.inspectorRefresh();
+            },
+            () => {
+                for (const entry of end) applyTransform(entry.transform, entry.end);
+                this.inspectorRefresh();
+            });
+        this.inspectorRefresh();
+    }
+
+    inspectorRefresh() { this.editor.inspector?.render(); }
+}
+
+function snapshotTransform(transform) {
+    return {
+        position: transform.position.clone(),
+        scale: transform.localScale.clone(),
+        euler: transform.eulerAngles.clone(),
+    };
+}
+
+function applyTransform(transform, value) {
+    transform.position = value.position;
+    transform.localScale = value.scale;
+    transform.eulerAngles = value.euler;
+}
+
+function sameTransform(a, b) {
+    return a.position.equals(b.position) && a.scale.equals(b.scale) && a.euler.equals(b.euler);
+}
+
+function snapValue(value, increment) {
+    return increment > 0 ? Math.round(value / increment) * increment : value;
+}
+
+function snapVector(value, increment) {
+    return new Vector3(snapValue(value.x, increment), snapValue(value.y, increment), snapValue(value.z, increment));
+}
+
+function distanceToSegment(point, start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSq = dx * dx + dy * dy;
+    if (lengthSq < 1e-6) return Math.hypot(point.x - start.x, point.y - start.y);
+    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSq));
+    return Math.hypot(point.x - (start.x + dx * t), point.y - (start.y + dy * t));
 }
 
 /** The eight corners of an axis-aligned box. */

@@ -885,7 +885,7 @@ public class CookieToolTests
         using var harness = new CookieToolHarness("tooljar");
         Seed(harness);
 
-        var result = harness.Ok("add_cookie_jar", new { urlOrPath = "https://example.invalid/team.git" });
+        var result = harness.Ok("cookie_jars", new { add = "https://example.invalid/team.git" });
 
         Assert.Equal("awaiting_approval", result["status"]!.GetValue<string>());
         Assert.False(result["jar"]!["trusted"]!.GetValue<bool>());
@@ -915,8 +915,9 @@ public class CookieToolTests
         harness.Ok("install_cookie", new { id = "double-jump" });
 
         File.Delete(harness.Fixture.ProjectFile("Source/Cookies/DoubleJump/DoubleJump.cs"));
-        var result = harness.Ok("list_installed_cookies");
+        var result = harness.Ok("search_cookies", new { installed = true });
 
+        Assert.Equal("double-jump", result["installed"]!.AsArray()[0]!["id"]!.GetValue<string>());
         Assert.Equal("missing", result["drift"]!.AsArray()[0]!["state"]!.GetValue<string>());
     }
 

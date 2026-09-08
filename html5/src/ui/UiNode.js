@@ -82,6 +82,11 @@ export class UiNode {
         this._scrollOffset = { x: 0, y: 0 };
         this._ignoreSafeArea = false;
 
+        // --- following a point in the world ---
+        this._worldFollow = false;
+        this._worldAnchor = { x: 0, y: 0, z: 0 };
+        this._worldFollowDistance = 0;
+
         // --- focus and navigation ---
         this.focusable = Focusability.Auto;
         this._modal = false;
@@ -322,6 +327,36 @@ export class UiNode {
     get ignoreSafeArea() { return this._ignoreSafeArea; }
     set ignoreSafeArea(v) { this._setMeasure('_ignoreSafeArea', Boolean(v)); }
 
+    /**
+     * Whether this node chases `worldAnchor` across the screen.
+     *
+     * For the things a canvas standing in the world is bad at: damage numbers, quest markers,
+     * an interaction prompt over a lever. A following node stays flat on the screen at its
+     * authored size, so its text is pixel-crisp and never turns edge-on -- it simply moves.
+     * A world-space UiCanvas is the other answer, for a UI that belongs to a surface.
+     *
+     * Following *owns* three properties of the node it is set on: `positioning` (forced
+     * absolute, since a node in the flow cannot be placed), `offset`, and `visible`, which
+     * goes false behind the camera. Writing them yourself writes to a value the next frame
+     * overwrites.
+     */
+    get worldFollow() { return this._worldFollow; }
+    set worldFollow(v) {
+        const wanted = Boolean(v);
+        if (this._worldFollow === wanted) return;
+        this._worldFollow = wanted;
+        if (wanted) this.canvas?.noteWorldFollower();
+        this.invalidateArrange();
+    }
+
+    /** The point in the world a following node tracks. */
+    get worldAnchor() { return this._worldAnchor; }
+    set worldAnchor(v) { this._setArrange('_worldAnchor', { x: v?.x ?? 0, y: v?.y ?? 0, z: v?.z ?? 0 }); }
+
+    /** Stop showing a following node past this distance. Zero never stops. */
+    get worldFollowDistance() { return this._worldFollowDistance; }
+    set worldFollowDistance(v) { this._setArrange('_worldFollowDistance', Number(v) || 0); }
+
     // -------------------------------------------------------------------------
     // Payload
     // -------------------------------------------------------------------------
@@ -397,6 +432,11 @@ export class UiNode {
 
     _setCanvasRecursive(canvas) {
         this.canvas = canvas;
+
+        // A whole tree is usually built loose and added at the end, so the latch has to be
+        // set on the way in as well as when the property is written.
+        if (canvas && this._worldFollow) canvas.noteWorldFollower();
+
         for (const child of this.children) child._setCanvasRecursive(canvas);
     }
 

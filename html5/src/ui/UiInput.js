@@ -181,6 +181,15 @@ export class UiInput {
         }
     }
 
+    /**
+     * Whether a press is currently being dragged across a control.
+     *
+     * Read by UiCanvas.screenToCanvas in world space, where a pointer ray can stop meeting
+     * the canvas's plane mid-drag if the camera swings. Holding the last good point is better
+     * than reporting a miss, which would read as a jump to the far edge.
+     */
+    get isDragging() { return this._dragging !== null; }
+
     _continuePress(frame) {
         if (this._dragging && this._dragging.kind === UiKind.Slider) {
             setSliderFromPointer(this._dragging, this.canvas.screenToCanvas(frame.pointer));

@@ -24,8 +24,12 @@ import { AudioManager } from './audio/AudioManager.js';
 import { SpriteBatch } from './rendering/SpriteBatch.js';
 import { RenderSystem3D } from './rendering/RenderSystem3D.js';
 import { Camera2D } from './rendering/Camera2D.js';
+import { Camera3D } from './rendering/Camera3D.js';
 import { UiCanvas } from './ui/UiCanvas.js';
-import { paintAll as paintUiCanvases } from './ui/UiPainter.js';
+import { UiSpace } from './ui/UiEnums.js';
+import { rayDistance } from './ui/UiWorld.js';
+import { paintAll as paintUiCanvases, paint as paintUiCanvas } from './ui/UiPainter.js';
+import { Texture2D } from './assets/Texture2D.js';
 import { GraphicsMenu } from './ui/GraphicsMenu.js';
 import { GraphicsSettings, loadGraphicsSettings, saveGraphicsSettings } from './rendering/GraphicsSettings.js';
 import { GraphicsCapabilities } from './rendering/GraphicsCapabilities.js';
@@ -143,6 +147,13 @@ export class EngineHost {
         this.gl = null;
         this.ctx = null;
         this.spriteBatch = null;
+
+        /**
+         * The offscreen surface each world-space canvas paints into, keyed by canvas.
+         * A WeakMap because a canvas destroyed by a script must be able to take its texture
+         * with it rather than pinning a few megabytes to the host for the session.
+         */
+        this._worldSurfaces = new WeakMap();
         this.renderer3D = null;
 
         this.isRunning = false;
@@ -429,6 +440,7 @@ export class EngineHost {
             this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
             this.renderer3D.render(scene, {
                 width: this.canvas3D.width, height: this.canvas3D.height,
+                worldCanvases: this._paintWorldCanvases(),
             });
         }
 
@@ -590,11 +602,56 @@ export class EngineHost {
         const height = this.canvas2D?.height ?? this.config.windowHeight;
 
         // A copy, because a script reacting to a click may destroy a canvas.
-        for (const canvas of [...UiCanvas.all]) {
+        const canvases = [...UiCanvas.all];
+
+        for (const canvas of canvases) {
             canvas.setViewport(width, height);
             canvas.layout();
-            canvas.input.update(frame);
         }
+
+        const nearest = this._nearestWorldCanvasUnderPointer(canvases, frame.pointer, width, height);
+
+        for (const canvas of canvases) {
+            // Two canvases hanging in the same line of sight must not both take the click.
+            // Screen canvases are left alone: they have always all seen the pointer, and
+            // changing that would move a HUD's behaviour for a feature it is not part of.
+            const theirs = canvas.space === UiSpace.World && canvas !== nearest
+                ? { ...frame, pointer: { ...UiCanvas.NOWHERE } }
+                : frame;
+
+            canvas.input.update(theirs);
+        }
+    }
+
+    /**
+     * The world-space canvas the pointer meets first, or null when it meets none.
+     *
+     * A canvas whose plane the ray crosses outside its own rectangle does not count, so a
+     * large backdrop hanging behind a small panel does not swallow the panel's clicks.
+     */
+    _nearestWorldCanvasUnderPointer(canvases, pointer, width, height) {
+        const camera = Camera3D.main;
+        if (!camera) return null;
+
+        const ray = camera.screenToWorldRay(pointer, width, height);
+
+        let nearest = null;
+        let best = Infinity;
+
+        for (const canvas of canvases) {
+            if (canvas.space !== UiSpace.World || !canvas.interactive) continue;
+
+            const basis = canvas.worldBasis();
+            if (!basis) continue;
+
+            const distance = rayDistance(basis, ray.origin, ray.direction, canvas.canvasSize);
+            if (distance === null || distance >= best) continue;
+
+            best = distance;
+            nearest = canvas;
+        }
+
+        return nearest;
     }
 
     _buildUiInputFrame(unscaledDt) {
@@ -635,12 +692,80 @@ export class EngineHost {
     _drawUiCanvases() {
         if (!this.ctx || UiCanvas.all.length === 0) return;
 
-        const ring = UiCanvas.all[0].input.focus.modes.showFocusRing;
-        paintUiCanvases(this.ctx, this.canvas2D.width, this.canvas2D.height, {
-            showFocusRing: ring,
+        paintUiCanvases(this.ctx, this.canvas2D.width, this.canvas2D.height, this._paintOptions());
+    }
+
+    /** What both UI passes need to paint: the focus ring, the texture resolver and the clock. */
+    _paintOptions() {
+        return {
+            showFocusRing: UiCanvas.all[0].input.focus.modes.showFocusRing,
             texture: (path) => this.assets?.get(path) ?? null,
             time: Time.realtimeSinceStartup,
-        });
+        };
+    }
+
+    /**
+     * Paints every world-space canvas into its own offscreen 2D canvas, and returns the
+     * textures for the 3D pass to hang on quads.
+     *
+     * No new painter and no new layout: `paint` already takes the context it draws into, and
+     * a world canvas resolves to a scale of one and an offset of zero, so the same call that
+     * fills the screen fills a texture. What it costs is one re-upload a frame, which is why
+     * Texture2D grew a version counter -- it used to cache the first upload for ever.
+     */
+    _paintWorldCanvases() {
+        const painted = [];
+        if (UiCanvas.all.length === 0) return painted;
+
+        const options = this._paintOptions();
+
+        for (const canvas of UiCanvas.all) {
+            if (canvas.space !== UiSpace.World || !canvas.enabled) continue;
+            if (!canvas.isWithinDrawDistance) continue;
+
+            canvas.layout();
+
+            const width = Math.round(canvas.canvasSize.x);
+            const height = Math.round(canvas.canvasSize.y);
+            if (width <= 0 || height <= 0) continue;
+
+            const surface = this._worldSurfaceFor(canvas, width, height);
+            if (!surface) continue;
+
+            surface.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            surface.ctx.clearRect(0, 0, width, height);
+            paintUiCanvas(surface.ctx, canvas, options);
+            surface.texture.invalidate();
+
+            painted.push({ canvas, texture: surface.texture });
+        }
+
+        return painted;
+    }
+
+    /** The offscreen canvas a world UI paints into, made once and resized when it has to. */
+    _worldSurfaceFor(canvas, width, height) {
+        let surface = this._worldSurfaces.get(canvas);
+
+        if (surface && surface.element.width === width && surface.element.height === height) {
+            return surface;
+        }
+
+        const element = typeof OffscreenCanvas !== 'undefined'
+            ? new OffscreenCanvas(width, height)
+            : Object.assign(document.createElement('canvas'), { width, height });
+
+        element.width = width;
+        element.height = height;
+
+        const ctx = element.getContext('2d');
+        if (!ctx) return null;
+
+        surface?.texture?.dispose();
+        surface = { element, ctx, texture: new Texture2D(element, ':world-ui:') };
+
+        this._worldSurfaces.set(canvas, surface);
+        return surface;
     }
 
     // -------------------------------------------------------------------------

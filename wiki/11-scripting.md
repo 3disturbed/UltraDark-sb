@@ -184,10 +184,10 @@ fire-and-forget, so a cloud save arrives on `DG.on("save")` rather than as a ret
 cannot await, and one contract has to describe both engines. See
 [29. Darks Games](29-darksgames.md).
 
-### `UI` — screen space
+### `UI` — the screen, or a plane in the world
 
-Everything above is world space. `UI` is the screen, and it is the only global that knows how big
-the window is. It builds a **tree**: nodes that contain other nodes, laid out by the same engine
+Everything above is world space. `UI` is the screen — and, when you ask it to be, a sheet
+standing in the scene. It is the only global that knows how big the window is. It builds a **tree**: nodes that contain other nodes, laid out by the same engine
 the editor's own graphics menu uses.
 
 ```js
@@ -275,6 +275,31 @@ behind it — and the same flag makes a click outside it miss rather than pressi
 `UI.safeLeft/safeTop/safeRight/safeBottom` are what a notch or a television's overscan leaves
 usable. `UI.order` is this script's paint order against other scripts' — the flat UI painted in
 whatever order scripts happened to start in.
+
+**The same tree can stand in the world instead.** Nothing about how it is built changes; the
+canvas decides where the pixels land:
+
+```js
+UI.space = "world";              // "screen" | "world"
+UI.facing = "verticalBillboard"; // "billboard" | "verticalBillboard" | "plane"
+UI.pixelsPerUnit = 140;          // canvas units per world unit -- the size dial
+UI.worldX = 0; UI.worldY = 1.8; UI.worldZ = -2;   // when the actor has no 3D transform
+```
+
+A world canvas takes clicks like any other: the pointer becomes a ray, the ray meets the plane,
+and `clicked` reads the same. When several overlap, the nearest one gets the press.
+
+For a marker that must stay crisp and upright — damage numbers, quest arrows — put a
+**following node** on an ordinary screen canvas instead. It is projected through the camera each
+frame and never turns edge-on:
+
+```js
+UI.root.add({ kind: "label", text: "12", worldFollow: true, worldAnchor: [x, y, z] });
+```
+
+`worldFollow` owns that node's `positioning`, `offset` and `visible` — it hides itself behind
+the camera and past `worldFollowDistance`, so writing those three yourself is writing to a value
+the next frame overwrites.
 
 Colours take the forms the rest of the engine takes — `"#ff8040"`, `"#ff8040c0"`, `[255,128,64]`,
 `{R:255,G:128,B:64}`. Prefer eight-digit hex for translucency: `rgba()` is browser-only and would

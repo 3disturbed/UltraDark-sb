@@ -27,10 +27,11 @@ public sealed class SceneResources
         "several edits in one call. Units: 3D positions in " +
         "world units (metres), 2D in pixels; rotations in degrees [pitch, yaw, roll]; colours '#RRGGBB' or '#RRGGBBAA' " +
         "or a colour name. A renderable 3D scene needs a light or a Skybox, something with a MeshRenderer, and a Camera " +
-        "tagged MainCamera3D (place_actor 'Camera'); Play also needs a Player Start and a Game Mode. Every change shows " +
-        "in the editor immediately: use capture_viewport to look, undo to revert, save_scene to persist. Prefer " +
-        "spawn_primitive for quick geometry, place_actor for lights, cameras and gameplay actors, set_material for " +
-        "colours, and the C# tools (create_code_project, build_project, reload_game_code) for behaviour. " +
+        "tagged MainCamera3D (spawn_actor preset 'Camera'); Play also needs a Player Start and a Game Mode. Every " +
+        "change shows in the editor immediately: use capture_viewport to look, undo to revert, save_scene to persist. " +
+        "spawn_actor takes a shape for quick geometry and a preset for lights, cameras and gameplay actors (list=true " +
+        "names them); set_material sets colours, and the C# tools (create_code_project, build_project, " +
+        "reload_game_code) add behaviour. " +
         "Check search_cookies before building a common mechanic by hand: installing a cookie returns its own " +
         "instructions, and bake_cookie saves reusable work back for the next game.";
 
@@ -93,7 +94,7 @@ public sealed class SceneResources
         return sb.ToString();
     }
 
-    [McpResource("sexybiscuit://actor-presets", "Actor presets", "application/json", Description = "The Place Actors palette.")]
+    [McpResource("sexybiscuit://actor-presets", "Actor presets", "application/json", Description = "The Place Actors palette, which spawn_actor's preset accepts.")]
     public string Presets()
     {
         var list = new JsonArray();
@@ -111,7 +112,7 @@ public sealed class SceneResources
     [McpPrompt("build_level", "Build a level in the open scene from a short brief.")]
     public string BuildLevel([McpParam("What the level should contain and feel like")] string brief)
         => $"Build this level in the open SexyBiscuit scene: {brief}\n\n" +
-           "Start with get_context, then place actors with apply_scene_edits (spawn_primitive, place_actor and " +
-           "set_material, check your work with capture_viewport, and save with save_scene when it looks right. " +
+           "Start with get_context, then place actors with apply_scene_edits (spawn_actor and set_material), check " +
+           "your work with capture_viewport, and save with save_scene when it looks right. " +
            "Tell me what you built and what you would add next.";
 }

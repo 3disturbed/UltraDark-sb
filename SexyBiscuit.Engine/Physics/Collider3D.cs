@@ -115,8 +115,33 @@ public sealed class CapsuleCollider3D : Collider3D
     /// <summary>Radius of the capsule hemisphere ends. Default 0.5.</summary>
     public float Radius { get; set; } = 0.5f;
 
-    /// <summary>Length of the cylindrical shaft (not including the hemispherical caps). Default 1.</summary>
-    public float Length { get; set; } = 1f;
+    /// <summary>
+    /// Total height of the capsule, caps included. Default 2.
+    /// </summary>
+    /// <remarks>
+    /// The dimension the browser stores and a scene file carries, so a capsule sized on one
+    /// engine is the same capsule on the other. Bepu wants the shaft instead, which is what
+    /// <see cref="Length"/> hands it.
+    /// </remarks>
+    public float Height { get; set; } = 2f;
+
+    /// <summary>
+    /// Length of the cylindrical shaft, excluding the hemispherical caps — the number Bepu's
+    /// <c>Capsule</c> takes. Default 1, which is <see cref="Height"/> 2 less two 0.5 caps.
+    /// </summary>
+    /// <remarks>
+    /// A view over <see cref="Height"/> rather than a field of its own, so the two cannot
+    /// drift apart, and left out of scene files for the same reason: a file carrying both
+    /// would let a hand edit to one be undone by the other, depending on which key the
+    /// loader reached first. A scene written before <see cref="Height"/> existed still loads
+    /// — setting the shaft sets the height it implies.
+    /// </remarks>
+    [SceneIgnore]
+    public float Length
+    {
+        get => MathF.Max(0f, Height - Radius * 2f);
+        set => Height = value + Radius * 2f;
+    }
 
     public override void RegisterShape(PhysicsSystem3D physics, Actor actor, float mass)
     {
@@ -185,6 +210,20 @@ public sealed class MeshCollider3D : Collider3D
     /// <summary>True once the geometry has been handed to the simulation.</summary>
     public bool IsBaked { get; private set; }
 
+    /// <summary>
+    /// Extra room, in local units, between the surface and anything touching it. Default 0.
+    /// </summary>
+    /// <remarks>
+    /// The browser has no triangle-level 3D narrow phase, so its mesh collider is a box
+    /// fitted to the renderer's bounds and grown by this much on every side. There are real
+    /// triangles here, so the same intent is expressed by pushing each vertex out along its
+    /// normal before the mesh is baked: a floor rises by <see cref="Padding"/>, a wall
+    /// thickens by it, and a character stops that far short of the surface rather than
+    /// scraping it. Applied in local space, before the transform's scale, and read once at
+    /// bake time like the geometry itself.
+    /// </remarks>
+    public float Padding { get; set; }
+
     /// <summary>Replaces the collision geometry. Call before Start; it is baked once.</summary>
     public void SetMesh(XnaVec3[] vertices, int[] indices)
     {
@@ -245,12 +284,46 @@ public sealed class MeshCollider3D : Collider3D
 
         var t3d = Actor.GetComponent<Transform3D>();
         PhysicsSystem3D.Instance.AddStaticMesh(
-            Vertices, Indices,
+            Padding != 0f ? Inflate(Vertices, Indices, Padding) : Vertices,
+            Indices,
             t3d?.Position ?? XnaVec3.Zero,
             t3d?.Rotation,
             t3d?.Scale);
 
         IsBaked = true;
+    }
+
+    /// <summary>
+    /// A copy of <paramref name="vertices"/> pushed <paramref name="padding"/> units out
+    /// along each vertex's normal, so the baked surface sits proud of the source mesh.
+    /// </summary>
+    /// <remarks>
+    /// Face normals are summed un-normalised, which weights each by its triangle's area:
+    /// a long wall then decides the direction of the vertex it shares with a sliver, rather
+    /// than the two counting equally. A vertex whose faces cancel out — the fold of a
+    /// zero-thickness sheet — has no direction to move in and is left where it is.
+    /// </remarks>
+    internal static XnaVec3[] Inflate(XnaVec3[] vertices, int[] indices, float padding)
+    {
+        var normals = new XnaVec3[vertices.Length];
+        for (int i = 0; i + 2 < indices.Length; i += 3)
+        {
+            int a = indices[i], b = indices[i + 1], c = indices[i + 2];
+            var face = XnaVec3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]);
+            normals[a] += face;
+            normals[b] += face;
+            normals[c] += face;
+        }
+
+        var padded = new XnaVec3[vertices.Length];
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            float length = normals[i].Length();
+            padded[i] = length > 1e-6f
+                ? vertices[i] + normals[i] * (padding / length)
+                : vertices[i];
+        }
+        return padded;
     }
 
     public override void RegisterShape(PhysicsSystem3D physics, Actor actor, float mass)

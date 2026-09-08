@@ -349,37 +349,21 @@ A workable convention:
 | `default` | 0 | actors that Y-sort against each other |
 | `projectiles` | 50 | bullets, VFX |
 | `foreground` | 100 | canopy, near parallax |
-| `ui` | 200 | `Canvas` actors |
+| `ui` | 200 | `UiCanvas` actors |
 
 ---
 
-## Screen-space UI vs world-space
+## Where the UI is drawn
 
-`Canvas` is a `Component` and draws in its actor's `Draw`, which means it lands
-inside the camera-transformed batch — so a UI canvas would scroll with the
-camera. Draw UI in a **separate batch** after the scene:
+Nothing here. A `UiCanvas` is a `Component` but it does **not** draw through the component
+pass, which runs inside the camera-transformed batch — that is what used to make a HUD pan,
+zoom and shake with the camera. The host collects every canvas and paints it afterwards, in
+its own screen-space batch ordered by `UiCanvas.Order`, and there is nothing for a game to
+wire up.
 
-```csharp
-protected override void Draw(GameTime gameTime)
-{
-    GraphicsDevice.Clear(Config.ClearColour);
-    var scene = SceneManager.ActiveScene;
-    if (scene == null) return;
-
-    // 1. World, through the camera. Hide the UI layer for this pass.
-    var uiLayer = scene.GetLayer("ui");
-    if (uiLayer != null) uiLayer.Visible = false;
-    Renderer2D.RenderScene(SpriteBatch, scene, _camera);
-    if (uiLayer != null) uiLayer.Visible = true;
-
-    // 2. UI, in screen space, with the canvas scale matrix.
-    SpriteBatch.Begin(transformMatrix: _canvas?.GetScaleMatrix(GraphicsDevice));
-    uiLayer?.Draw(SpriteBatch);
-    SpriteBatch.End();
-}
-```
-
-See [9. UI](09-ui.md) for `Canvas.GetScaleMatrix` and the scale modes.
+A canvas whose `Space` is `World` is painted earlier still, into its own texture, and hung on
+a quad by the 3D pass — so it *does* move with the camera, which for a screen bolted to a wall
+is the whole point. See [9. UI](09-ui.md#world-space).
 
 ---
 

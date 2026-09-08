@@ -25,7 +25,7 @@ public class McpDietTests
     {
         using var h = new SceneToolHarness();
 
-        var stub = h.Ok("spawn_primitive", new { shape = "Cube", name = "Crate", position = new[] { 1f, 2f, 3f } });
+        var stub = h.Ok("spawn_actor", new { shape = "Cube", name = "Crate", position = new[] { 1f, 2f, 3f } });
 
         Assert.Equal(new[] { "id", "layer", "name", "position" }, stub.AsObject().Select(p => p.Key).OrderBy(k => k, StringComparer.Ordinal));
         Assert.Equal("Crate", stub["name"]!.GetValue<string>());
@@ -44,7 +44,7 @@ public class McpDietTests
     {
         using var h = new SceneToolHarness();
         for (int i = 0; i < 5; i++)
-            h.Ok("spawn_primitive", new { shape = "Cube", name = $"Cube {i}", position = new[] { (float)i, 0f, 0f }, tag = i == 0 ? "Player" : null });
+            h.Ok("spawn_actor", new { shape = "Cube", name = $"Cube {i}", position = new[] { (float)i, 0f, 0f }, tag = i == 0 ? "Player" : null });
 
         var all = h.Call("get_scene_summary");
         Assert.False(all.IsError, all.FirstText);
@@ -68,38 +68,38 @@ public class McpDietTests
         Assert.Contains("1 more (offset=4)", pageLines[3]);
 
         // The JSON form still exists, and pages the same way.
-        var json = h.Ok("get_scene_summary", new { compact = false, offset = 4, limit = 10 });
+        var json = h.Ok("get_scene_summary", new { format = "json", offset = 4, limit = 10 });
         Assert.Single(json["actors"]!.AsArray());
         Assert.Null(json["nextOffset"]);
     }
 
     [Fact]
-    public void GetSceneJsonOffsetSkipsActors()
+    public void SceneViewOffsetSkipsActors()
     {
         using var h = new SceneToolHarness();
-        for (int i = 0; i < 4; i++) h.Ok("spawn_primitive", new { shape = "Sphere", name = $"S{i}" });
+        for (int i = 0; i < 4; i++) h.Ok("spawn_actor", new { shape = "Sphere", name = $"S{i}" });
 
-        var first = h.Ok("get_scene_json", new { maxActors = 3 });
+        var first = h.Ok("get_scene_summary", new { format = "view", limit = 3 });
         Assert.True(first["truncated"]!.GetValue<bool>());
         Assert.Equal(3, first["nextOffset"]!.GetValue<int>());
 
-        var rest = h.Ok("get_scene_json", new { offset = 3, maxActors = 3 });
+        var rest = h.Ok("get_scene_summary", new { format = "view", offset = 3, limit = 3 });
         Assert.False(rest["truncated"]!.GetValue<bool>());
         var names = rest["layers"]!.AsArray().SelectMany(l => l!["actors"]!.AsArray()).Select(a => a!["name"]!.GetValue<string>()).ToList();
         Assert.Equal(new[] { "S3" }, names);
 
         // The file form is the exact scene JSON, compact.
-        var file = h.Call("get_scene_json", new { format = "file" });
+        var file = h.Call("get_scene_summary", new { format = "file" });
         Assert.DoesNotContain("\n", file.FirstText);
         Assert.Contains("\"type\":\"MeshRenderer\"", file.FirstText);
     }
 
     [Fact]
-    public void ListComponentTypesNamesOnlyGroupsByCategory()
+    public void DescribeComponentsNamesOnlyGroupsByCategoryAndOneTypeGivesItsProperties()
     {
         using var h = new SceneToolHarness();
 
-        var names = h.Call("list_component_types");
+        var names = h.Call("describe_components");
         Assert.False(names.IsError);
         Assert.Contains("Rendering:", names.FirstText);
         Assert.Contains("MeshRenderer", names.FirstText);
@@ -107,10 +107,15 @@ public class McpDietTests
         Assert.True(names.FirstText.Length < 3000, $"names-only listing is {names.FirstText.Length} chars");
 
         // An array result is wrapped as {"value": [...]} for the structured copy.
-        var detailed = h.Ok("list_component_types", new { category = "Rendering", namesOnly = false });
+        var detailed = h.Ok("describe_components", new { category = "Rendering", namesOnly = false });
         var entry = detailed["value"]!.AsArray().First(e => e!["type"]!.GetValue<string>() == "MeshRenderer")!;
         Assert.Equal("Rendering", entry["category"]!.GetValue<string>());
         Assert.True(entry["summary"]!.GetValue<string>().Length <= 100);
+
+        // Naming a type switches the same tool to the property description.
+        var one = h.Ok("describe_components", new { type = "MeshRenderer" });
+        Assert.Equal("MeshRenderer", one["type"]!.GetValue<string>());
+        Assert.Contains("MeshType", one["properties"]!.AsArray().Select(p => p!["name"]!.GetValue<string>()));
     }
 
     [Fact]
@@ -121,11 +126,11 @@ public class McpDietTests
 
         var ops = new object[]
         {
-            new { op = "spawn_primitive", shape = "Cube", name = "Floor", position = new[] { 0f, 0f, 0f } },
-            new { op = "spawn_primitive", shape = "Sphere", name = "Ball", position = new[] { 0f, 1f, 0f } },
+            new { op = "spawn_actor", shape = "Cube", name = "Floor", position = new[] { 0f, 0f, 0f } },
+            new { op = "spawn_actor", shape = "Sphere", name = "Ball", position = new[] { 0f, 1f, 0f } },
             new { op = "set_properties", actor = "$1", properties = new Dictionary<string, object> { ["Transform3D.Scale"] = new[] { 2f, 2f, 2f } } },
-            new { op = "rename_actor", actor = "$0", newName = "Ground" },
-            new { op = "move_to_layer", actor = "$1", layer = "props" },
+            new { op = "set_actor", actor = "$0", name = "Ground" },
+            new { op = "set_actor", actor = "$1", layer = "props" },
         };
 
         var result = h.Ok("apply_scene_edits", new { ops });
@@ -152,10 +157,10 @@ public class McpDietTests
 
         var ops = new object[]
         {
-            new { op = "spawn_primitive", shape = "Cube", name = "A" },
-            new { op = "rename_actor", actor = "NoSuchActor", newName = "B" },
+            new { op = "spawn_actor", shape = "Cube", name = "A" },
+            new { op = "set_actor", actor = "NoSuchActor", name = "B" },
             new { op = "save_scene", path = "Scenes/x.scene" },   // scene I/O is not a batch op
-            new { op = "spawn_primitive", shape = "Cube", name = "C" },
+            new { op = "spawn_actor", shape = "Cube", name = "C" },
         };
 
         var result = h.Call("apply_scene_edits", new { ops });
@@ -171,7 +176,7 @@ public class McpDietTests
         var stopped = h.Call("apply_scene_edits", new { ops = new object[]
         {
             new { op = "destroy_actor", actor = "Nope" },
-            new { op = "spawn_primitive", shape = "Cube", name = "Never" },
+            new { op = "spawn_actor", shape = "Cube", name = "Never" },
         }, stopOnError = true });
         Assert.True(stopped.IsError);
         Assert.Null(h.Scene.FindByName("Never"));
@@ -179,7 +184,7 @@ public class McpDietTests
         // A reference to a failed op is a clear error for that op only.
         var dangling = h.Call("apply_scene_edits", new { ops = new object[]
         {
-            new { op = "rename_actor", actor = "Nope", newName = "X" },
+            new { op = "set_actor", actor = "Nope", name = "X" },
             new { op = "set_actor", actor = "$0", tag = "T" },
         } });
         Assert.Contains("refers to op 0", dangling.FirstText);
@@ -212,11 +217,11 @@ public class McpDietTests
         using var h = new SceneToolHarness();
         var list = h.Registry.DescribeForToolsList();
 
-        var spawn = list.First(t => t!["name"]!.GetValue<string>() == "spawn_primitive")!.AsObject();
+        var spawn = list.First(t => t!["name"]!.GetValue<string>() == "spawn_actor")!.AsObject();
         Assert.Null(spawn["annotations"]);                       // a plain mutating tool says nothing
         Assert.Null(spawn["inputSchema"]!["additionalProperties"]);
-        Assert.Null(spawn["inputSchema"]!["properties"]!["metallic"]!["default"]);     // 0
-        Assert.NotNull(spawn["inputSchema"]!["properties"]!["roughness"]!["default"]); // 0.5 is worth saying
+        Assert.Null(spawn["inputSchema"]!["properties"]!["list"]!["default"]);          // false
+        Assert.NotNull(spawn["inputSchema"]!["properties"]!["transform3d"]!["default"]); // true is worth saying
 
         var summary = list.First(t => t!["name"]!.GetValue<string>() == "get_scene_summary")!.AsObject();
         Assert.True(summary["annotations"]!["readOnlyHint"]!.GetValue<bool>());
@@ -226,6 +231,6 @@ public class McpDietTests
         Assert.True(destroy["annotations"]!["destructiveHint"]!.GetValue<bool>());
 
         string compact = list.ToJsonString();
-        Assert.True(compact.Length < 30_000, $"the engine catalogue is {compact.Length} chars");
+        Assert.True(compact.Length < 24_000, $"the engine catalogue is {compact.Length} chars");
     }
 }

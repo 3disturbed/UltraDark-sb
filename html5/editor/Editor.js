@@ -17,6 +17,7 @@ import { ConsolePanel } from './panels/Console.js';
 import { PalettePanel } from './panels/Palette.js';
 import { ChibiPanel } from './panels/Chibi.js';
 import { AssetsPanel } from './panels/Assets.js';
+import { EditorHistory } from './EditorHistory.js';
 
 import * as SB from '../src/index.js';
 import { EngineHost, EngineConfig } from '../src/EngineHost.js';
@@ -27,6 +28,21 @@ import { createDefault2D, createDefault3D, createEmpty } from '../src/scene/Scen
 import { Camera3D } from '../src/rendering/Camera3D.js';
 import { Transform3D } from '../src/core/Transform3D.js';
 import { Vector3 } from '../src/math/index.js';
+
+const LayoutStorageKey = 'sexybiscuit.editor.layout.v1';
+const DefaultLayout = Object.freeze({ left: 240, right: 320, bottom: 210 });
+
+/** Accepts only bounded pixel sizes from persisted browser layout state. */
+export function normaliseEditorLayout(value) {
+    const layout = {};
+    for (const [key, fallback] of Object.entries(DefaultLayout)) {
+        const candidate = Number(value?.[key]);
+        layout[key] = Number.isFinite(candidate) && candidate >= 120 && candidate <= 640
+            ? Math.round(candidate)
+            : fallback;
+    }
+    return layout;
+}
 
 /** The SexyBiscuit HTML5 editor. */
 export class Editor {
@@ -41,6 +57,7 @@ export class Editor {
         this.engine = null;
         this._sceneSnapshot = null;
         this._directoryHandle = null;
+        this.history = new EditorHistory(this);
     }
 
     /** The scene being edited or played. */
@@ -98,6 +115,8 @@ export class Editor {
 
     _buildLayout() {
         clear(this.mount);
+        this._layout = this._loadLayout();
+        this._applyLayout();
 
         this.viewport = new ViewportPanel(this.state, this);
         this.hierarchy = new HierarchyPanel(this.state, this);
@@ -109,26 +128,84 @@ export class Editor {
 
         this._status = el('span.sb-status-text');
 
+        const centre = el('div.sb-centre', {},
+            this.viewport.root,
+            this._resizeHandle('bottom', 'horizontal'),
+            this._dock('bottom', [
+                ['Console', this.console.root],
+                ['Assets', this.assets.root],
+            ]));
+        const body = el('div.sb-body', {},
+            this._dock('left', [
+                ['Place actors', this.palette.root],
+                ['Hierarchy', this.hierarchy.root],
+                ['MakeChibi', this.chibi.root],
+            ]),
+            this._resizeHandle('left', 'vertical'),
+            centre,
+            this._resizeHandle('right', 'vertical'),
+            this._dock('right', [
+                ['Inspector', this.inspector.root],
+            ]));
+
         this.mount.append(
             this._toolbar(),
-            el('div.sb-body', {},
-                this._dock('left', [
-                    ['Place actors', this.palette.root],
-                    ['Hierarchy', this.hierarchy.root],
-                    ['MakeChibi', this.chibi.root],
-                ]),
-                el('div.sb-centre', {},
-                    this.viewport.root,
-                    this._dock('bottom', [
-                        ['Console', this.console.root],
-                        ['Assets', this.assets.root],
-                    ])),
-                this._dock('right', [
-                    ['Inspector', this.inspector.root],
-                ])),
+            body,
             el('footer.sb-statusbar', {}, this._status));
 
+        this._buildCommandPalette();
+
         this._installDropTarget();
+    }
+
+    _loadLayout() {
+        try {
+            return normaliseEditorLayout(JSON.parse(globalThis.localStorage?.getItem(LayoutStorageKey) ?? 'null'));
+        } catch {
+            return { ...DefaultLayout };
+        }
+    }
+
+    _applyLayout() {
+        for (const [key, pixels] of Object.entries(this._layout)) {
+            this.mount.style.setProperty(`--dock-${key}`, `${pixels}px`);
+        }
+    }
+
+    _saveLayout() {
+        try { globalThis.localStorage?.setItem(LayoutStorageKey, JSON.stringify(this._layout)); } catch { /* privacy mode */ }
+    }
+
+    _resizeHandle(key, orientation) {
+        const handle = el(`div.sb-resize.sb-resize-${orientation}`, {
+            role: 'separator', tabindex: 0,
+            'aria-orientation': orientation === 'vertical' ? 'vertical' : 'horizontal',
+            title: `Resize ${key} dock`,
+        });
+        handle.addEventListener('pointerdown', (event) => this._beginLayoutResize(event, key, orientation));
+        return handle;
+    }
+
+    _beginLayoutResize(event, key, orientation) {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        const start = { x: event.clientX, y: event.clientY, size: this._layout[key] };
+        const onMove = (move) => {
+            const delta = orientation === 'vertical' ? move.clientX - start.x : move.clientY - start.y;
+            const signed = key === 'right' || key === 'bottom' ? -delta : delta;
+            const viewport = orientation === 'vertical' ? window.innerWidth : window.innerHeight;
+            const min = key === 'bottom' ? 120 : 180;
+            const max = Math.min(640, Math.max(min, viewport * 0.6));
+            this._layout[key] = Math.round(Math.min(max, Math.max(min, start.size + signed)));
+            this._applyLayout();
+        };
+        const onEnd = () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onEnd);
+            this._saveLayout();
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onEnd, { once: true });
     }
 
     /**
@@ -189,6 +266,20 @@ export class Editor {
                 this._playButton, this._pauseButton, this._stopButton),
 
             el('div.sb-toolgroup', {},
+                button('⌘P', 'Command palette  (Ctrl/Cmd+P)', () => this.toggleCommandPalette())),
+
+            el('div.sb-toolgroup.sb-transform-tools', {},
+                button('W', 'Move selection  (W)', () => { this.state.gizmoMode = 'translate'; }),
+                button('E', 'Rotate selection  (E)', () => { this.state.gizmoMode = 'rotate'; }),
+                button('R', 'Scale selection  (R)', () => { this.state.gizmoMode = 'scale'; }),
+                button('World', 'Toggle world/local transform space', () => {
+                    this.state.transformSpace = this.state.transformSpace === 'world' ? 'local' : 'world';
+                }),
+                button('Snap', 'Toggle transform snapping', () => {
+                    this.state.snapEnabled = !this.state.snapEnabled;
+                })),
+
+            el('div.sb-toolgroup', {},
                 el('label.sb-toggle', {},
                     el('input', {
                         type: 'checkbox', checked: true,
@@ -200,6 +291,96 @@ export class Editor {
                         title: 'Look through the scene’s own camera',
                         onchange: (e) => { this.state.useGameCamera = e.target.checked; },
                     }), 'Game camera')));
+    }
+
+    /** Named commands are the browser workbench's single dispatch surface. */
+    commandDefinitions() {
+        const selected = () => this.state.selectedActors.length > 0;
+        return [
+            { id: 'editor.transform.translate', label: 'Move Selection', shortcut: 'W',
+                run: () => { this.state.gizmoMode = 'translate'; } },
+            { id: 'editor.transform.rotate', label: 'Rotate Selection', shortcut: 'E',
+                run: () => { this.state.gizmoMode = 'rotate'; } },
+            { id: 'editor.transform.scale', label: 'Scale Selection', shortcut: 'R',
+                run: () => { this.state.gizmoMode = 'scale'; } },
+            { id: 'editor.focus', label: 'Focus Selection', shortcut: 'F', enabled: selected,
+                run: () => this.focusOnActor(this.state.selectedActor) },
+            { id: 'editor.undo', label: 'Undo', shortcut: 'Ctrl/Cmd+Z', enabled: () => this.history.canUndo,
+                run: () => this.history.undo() },
+            { id: 'editor.redo', label: 'Redo', shortcut: 'Ctrl/Cmd+Y', enabled: () => this.history.canRedo,
+                run: () => this.history.redo() },
+            { id: 'editor.duplicate', label: 'Duplicate Selection', shortcut: 'Ctrl/Cmd+D', enabled: selected,
+                run: () => this.duplicateSelection() },
+            { id: 'editor.delete', label: 'Delete Selection', shortcut: 'Delete', enabled: selected,
+                run: () => this.deleteSelection() },
+            { id: 'editor.play.toggle', label: this.state.isPlaying ? 'Stop Play' : 'Play', shortcut: 'F5',
+                run: () => this.togglePlay() },
+            { id: 'editor.save', label: 'Save Scene', shortcut: 'Ctrl/Cmd+S', run: () => this.saveScene() },
+        ];
+    }
+
+    executeCommand(id) {
+        const command = this.commandDefinitions().find((entry) => entry.id === id);
+        if (!command || command.enabled?.() === false) return false;
+        command.run();
+        return true;
+    }
+
+    _buildCommandPalette() {
+        const query = el('input.sb-command-query', {
+            type: 'search', placeholder: 'Type a command…', autocomplete: 'off',
+        });
+        const results = el('div.sb-command-results');
+        const root = el('div.sb-command-overlay', { role: 'dialog', 'aria-label': 'Command palette' },
+            el('section.sb-command-palette', {},
+                el('header.sb-command-head', {},
+                    el('span', { text: 'Command Palette' }),
+                    el('kbd', { text: 'Esc' })),
+                query,
+                results));
+        this.mount.append(root);
+
+        this._commandPalette = { root, query, results };
+        query.addEventListener('input', () => this._renderCommandPalette());
+        query.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            const first = results.querySelector('button:not(:disabled)');
+            first?.click();
+        });
+        root.addEventListener('pointerdown', (event) => {
+            if (event.target === root) this.toggleCommandPalette(false);
+        });
+    }
+
+    toggleCommandPalette(force = null) {
+        const palette = this._commandPalette;
+        if (!palette) return;
+        const open = force ?? !palette.root.classList.contains('is-open');
+        palette.root.classList.toggle('is-open', open);
+        if (!open) return;
+        palette.query.value = '';
+        this._renderCommandPalette();
+        palette.query.focus();
+    }
+
+    _renderCommandPalette() {
+        const palette = this._commandPalette;
+        if (!palette) return;
+        const term = palette.query.value.trim().toLowerCase();
+        const commands = this.commandDefinitions().filter((command) =>
+            !term || `${command.label} ${command.id} ${command.shortcut}`.toLowerCase().includes(term));
+        clear(palette.results);
+        for (const command of commands) {
+            const enabled = command.enabled?.() !== false;
+            palette.results.append(el('button.sb-command-row', {
+                type: 'button', disabled: !enabled,
+                onclick: () => {
+                    if (this.executeCommand(command.id)) this.toggleCommandPalette(false);
+                },
+            }, el('span', { text: command.label }),
+            el('span.sb-command-shortcut', { text: command.shortcut })));
+        }
+        if (!commands.length) palette.results.append(el('div.sb-empty', { text: 'No matching command.' }));
     }
 
     _updateStatus() {
@@ -227,6 +408,7 @@ export class Editor {
         const scene = (builders[template] ?? createEmpty)('Untitled');
 
         this._adopt(scene);
+        this.history.clear();
         this.state.currentScenePath = null;
         this.state.markClean();
         this.state.info(`New ${template} scene.`);
@@ -237,6 +419,7 @@ export class Editor {
         try {
             const text = await this.engine.assets.loadText(path);
             this._adopt(deserialize(text, { flush: false, onWarning: (m) => this.state.warn(m) }));
+            this.history.clear();
             this.state.currentScenePath = path;
             this.state.markClean();
             this.state.info(`Opened ${path}`);
@@ -249,6 +432,7 @@ export class Editor {
     loadSceneFromText(text, label = 'scene') {
         try {
             this._adopt(deserialize(text, { flush: false, onWarning: (m) => this.state.warn(m) }));
+            this.history.clear();
             this.state.currentScenePath = label;
             this.state.markClean();
             this.state.info(`Opened ${label}`);
@@ -412,6 +596,19 @@ export class Editor {
         this.assets.refresh();
     }
 
+    /** A history snapshot deliberately preserves only editor-owned scene state. */
+    captureHistorySnapshot() {
+        return { scene: serialize(this.scene), path: this.state.currentScenePath };
+    }
+
+    /** Restores a snapshot without clearing the undo stack that asked for it. */
+    restoreHistorySnapshot(snapshot) {
+        this._adopt(deserialize(snapshot.scene, { flush: false, onWarning: (m) => this.state.warn(m) }));
+        this.state.currentScenePath = snapshot.path;
+        this.state.markDirty();
+        this.inspector.render();
+    }
+
     // -------------------------------------------------------------------------
     // Play mode
     // -------------------------------------------------------------------------
@@ -494,9 +691,13 @@ export class Editor {
 
     /** Adds a preset actor in front of the editor camera and selects it. */
     placeActor(preset) {
-        const scene = this.scene;
-        if (!scene) return null;
+        if (!this.scene) return null;
 
+        return this.history.snapshot(`Add ${preset.name}`, () => this._placeActor(preset));
+    }
+
+    _placeActor(preset) {
+        const scene = this.scene;
         const actor = preset.build();
 
         // Drop it where the camera is looking, not at the origin, so it lands in
@@ -522,9 +723,25 @@ export class Editor {
 
     /** Copies an actor through the serialiser, so components come with it. */
     duplicateActor(actor) {
-        const scene = this.scene;
-        if (!scene || !actor) return null;
+        if (!this.scene || !actor) return null;
 
+        return this.history.snapshot(`Duplicate ${actor.name}`, () => this._duplicateActor(actor));
+    }
+
+    /** Duplicates the ordered selection in one reversible operation. */
+    duplicateSelection() {
+        const actors = this._selectionRoots();
+        if (!this.scene || !actors.length) return [];
+        const label = actors.length === 1 ? `Duplicate ${actors[0].name}` : `Duplicate ${actors.length} actors`;
+        return this.history.snapshot(label, () => {
+            const copies = actors.map((actor) => this._duplicateActor(actor, { select: false }));
+            this.state.selectActors(copies);
+            return copies;
+        });
+    }
+
+    _duplicateActor(actor, { select = true } = {}) {
+        const scene = this.scene;
         const copy = buildActor(buildActorDto(actor), (m) => this.state.warn(m));
         copy.name = `${actor.name} copy`;
 
@@ -534,29 +751,50 @@ export class Editor {
 
         this.state.markDirty();
         this.state.notifyHierarchy();
-        this.state.selectActor(copy);
+        if (select) this.state.selectActor(copy);
         return copy;
     }
 
     deleteActor(actor) {
         if (!actor) return;
-        if (this.state.selectedActor === actor) this.state.selectActor(null);
+        this.history.snapshot(`Delete ${actor.name}`, () => {
+            if (this.state.selectedActor === actor) this.state.selectActor(null);
+            actor.destroy();
+            this.scene?.flushPendingActors();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
+    }
 
-        actor.destroy();
-        this.scene?.flushPendingActors();
+    /** Deletes every selected root, never double-deleting an included child. */
+    deleteSelection() {
+        const actors = this._selectionRoots();
+        if (!actors.length) return;
+        const label = actors.length === 1 ? `Delete ${actors[0].name}` : `Delete ${actors.length} actors`;
+        this.history.snapshot(label, () => {
+            this.state.selectActor(null);
+            for (const actor of actors) actor.destroy();
+            this.scene?.flushPendingActors();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
+    }
 
-        this.state.markDirty();
-        this.state.notifyHierarchy();
+    /** Selection roots make hierarchy actions deterministic when parent and child are both selected. */
+    _selectionRoots() {
+        const selected = this.state.selectedActors;
+        return selected.filter((actor) => !selected.some((other) => other !== actor && actor.isDescendantOf(other)));
     }
 
     renameActor(actor) {
         const name = prompt('Actor name', actor.name);
         if (name == null) return;
-
-        actor.name = name;
-        this.state.markDirty();
-        this.state.notifyHierarchy();
-        this.inspector.render();
+        this.history.snapshot(`Rename ${actor.name}`, () => {
+            actor.name = name;
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+            this.inspector.render();
+        });
     }
 
     /**
@@ -565,35 +803,40 @@ export class Editor {
      */
     attachActor(child, parent) {
         if (!child) return;
-        try {
-            child.attachTo(parent ?? null);
-        } catch (err) {
-            this.state.warn(err.message);
-            return;
-        }
-
-        // Attachment can move a child between layers when the two differ; the scene keeps
-        // the subtree together, so the outliner has to be rebuilt from scratch.
-        this.scene?.flushPendingActors();
-        this.state.markDirty();
-        this.state.notifyHierarchy();
+        this.history.snapshot(`Attach ${child.name}`, () => {
+            try {
+                child.attachTo(parent ?? null);
+            } catch (err) {
+                this.state.warn(err.message);
+                return;
+            }
+            // Attachment can move a child between layers when the two differ; the scene keeps
+            // the subtree together, so the outliner has to be rebuilt from scratch.
+            this.scene?.flushPendingActors();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
     }
 
     /** Detaches an actor from its parent, or (with `children`) detaches its children. */
     detachActor(actor, children = false) {
         if (!actor) return;
-        if (children) actor.detachChildren();
-        else actor.detach();
-
-        this.state.markDirty();
-        this.state.notifyHierarchy();
+        this.history.snapshot(children ? `Detach children of ${actor.name}` : `Detach ${actor.name}`, () => {
+            if (children) actor.detachChildren();
+            else actor.detach();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
     }
 
     moveActorToLayer(actor, layerName) {
-        this.scene?.moveActor(actor, layerName);
-        this.scene?.flushPendingActors();
-        this.state.markDirty();
-        this.state.notifyHierarchy();
+        if (!actor) return;
+        this.history.snapshot(`Move ${actor.name} to ${layerName}`, () => {
+            this.scene?.moveActor(actor, layerName);
+            this.scene?.flushPendingActors();
+            this.state.markDirty();
+            this.state.notifyHierarchy();
+        });
     }
 
     focusOnActor(actor) { this.viewport.focusOn(actor); }
@@ -604,6 +847,17 @@ export class Editor {
 
     _installShortcuts() {
         window.addEventListener('keydown', (e) => {
+            const meta = e.ctrlKey || e.metaKey;
+            if (meta && e.key.toLowerCase() === 'p') {
+                e.preventDefault();
+                this.toggleCommandPalette();
+                return;
+            }
+            if (this._commandPalette?.root.classList.contains('is-open')) {
+                if (e.key === 'Escape') this.toggleCommandPalette(false);
+                return;
+            }
+
             // Never steal a key from a field the user is typing in.
             const tag = document.activeElement?.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
@@ -611,21 +865,30 @@ export class Editor {
                 return;
             }
 
-            const meta = e.ctrlKey || e.metaKey;
-
-            if (e.key === 'F5') { e.preventDefault(); this.togglePlay(); }
+            if (e.key === 'F5') { e.preventDefault(); this.executeCommand('editor.play.toggle'); }
             else if (e.key === 'F6') { e.preventDefault(); this.togglePause(); }
             else if (e.key === 'F7') { e.preventDefault(); this.stop(); }
             else if (e.key === 'F8') { e.preventDefault(); this.stepFrame(); }
-            else if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); this.saveScene(); }
-            else if (meta && e.key.toLowerCase() === 'd' && this.state.selectedActor) {
+            else if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); this.executeCommand('editor.save'); }
+            else if (meta && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
-                this.duplicateActor(this.state.selectedActor);
-            } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.selectedActor) {
+                this.executeCommand(e.shiftKey ? 'editor.redo' : 'editor.undo');
+            } else if (meta && e.key.toLowerCase() === 'y') {
+                e.preventDefault(); this.executeCommand('editor.redo');
+            } else if (e.key.toLowerCase() === 'w') {
+                this.executeCommand('editor.transform.translate');
+            } else if (e.key.toLowerCase() === 'e') {
+                this.executeCommand('editor.transform.rotate');
+            } else if (e.key.toLowerCase() === 'r') {
+                this.executeCommand('editor.transform.scale');
+            } else if (meta && e.key.toLowerCase() === 'd' && this.state.selectedActors.length) {
                 e.preventDefault();
-                this.deleteActor(this.state.selectedActor);
+                this.executeCommand('editor.duplicate');
+            } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.selectedActors.length) {
+                e.preventDefault();
+                this.executeCommand('editor.delete');
             } else if (e.key === 'f' && this.state.selectedActor) {
-                this.focusOnActor(this.state.selectedActor);
+                this.executeCommand('editor.focus');
             } else if (e.key === 'Escape') {
                 this.state.selectActor(null);
             }

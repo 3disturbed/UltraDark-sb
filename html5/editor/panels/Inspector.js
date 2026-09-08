@@ -13,12 +13,14 @@ import { PropertyType } from '../../src/core/PropertyTypes.js';
 import { Vector2, Vector3, Color, Quaternion } from '../../src/math/index.js';
 import { Transform3D } from '../../src/core/Transform3D.js';
 import { MissingComponent } from '../../src/core/MissingComponent.js';
+import { appendListValue, formatListValue, parseListValue } from '../listValue.js';
 
 /** The details panel. */
 export class InspectorPanel {
     constructor(state, editor) {
         this.state = state;
         this.editor = editor;
+        this._fieldTransaction = null;
         this.root = el('div.sb-panel-body.sb-inspector');
 
         state.selectionChanged.add(() => this.render());
@@ -51,33 +53,29 @@ export class InspectorPanel {
 
     _actorSection(actor) {
         return this._section('Actor', [
-            field('Name', el('input.sb-text', {
+            field('Name', this._trackFieldEdit('Rename actor', el('input.sb-text', {
                 type: 'text',
                 value: actor.name,
                 oninput: (e) => {
                     actor.name = e.target.value;
-                    this.state.markDirty();
                     this.state.notifyHierarchy();
                 },
-            })),
-            field('Tag', el('input.sb-text', {
+            }))),
+            field('Tag', this._trackFieldEdit('Set actor tag', el('input.sb-text', {
                 type: 'text',
                 value: actor.tag,
-                oninput: (e) => { actor.tag = e.target.value; this.state.markDirty(); },
-            })),
-            field('Layer', numberInput(actor.layer, (v) => {
+                oninput: (e) => { actor.tag = e.target.value; },
+            }))),
+            field('Layer', this._trackFieldEdit('Set actor layer', numberInput(actor.layer, (v) => {
                 actor.layer = Math.round(v);
-                this.state.markDirty();
-            }, { step: 1 })),
+            }, { step: 1 }))),
             field('Active', this._checkbox(actor.isActive, (v) => {
                 actor.isActive = v;
-                this.state.markDirty();
                 this.state.notifyHierarchy();
-            })),
-            field('Life span', numberInput(actor.lifeSpan, (v) => {
+            }, 'Set actor active state')),
+            field('Life span', this._trackFieldEdit('Set actor life span', numberInput(actor.lifeSpan, (v) => {
                 actor.lifeSpan = v;
-                this.state.markDirty();
-            }, { step: 0.1, min: 0 })),
+            }, { step: 0.1, min: 0 }))),
         ], { id: `Actor #${actor.id}` });
     }
 
@@ -86,16 +84,13 @@ export class InspectorPanel {
         return this._section('Transform (2D)', [
             field('Position', ...this._vectorInputs(t.localPosition, (v) => {
                 t.localPosition = v;
-                this.state.markDirty();
-            }, ['x', 'y'])),
-            field('Rotation', numberInput(t.localRotation * 180 / Math.PI, (v) => {
+            }, ['x', 'y'], { historyLabel: 'Set 2D position' })),
+            field('Rotation', this._trackFieldEdit('Set 2D rotation', numberInput(t.localRotation * 180 / Math.PI, (v) => {
                 t.localRotation = v * Math.PI / 180;
-                this.state.markDirty();
-            }, { step: 1 }), el('span.sb-unit', { text: '°' })),
+            }, { step: 1 })), el('span.sb-unit', { text: '°' })),
             field('Scale', ...this._vectorInputs(t.localScale, (v) => {
                 t.localScale = v;
-                this.state.markDirty();
-            }, ['x', 'y'])),
+            }, ['x', 'y'], { historyLabel: 'Set 2D scale' })),
         ]);
     }
 
@@ -108,16 +103,13 @@ export class InspectorPanel {
         return this._section('Transform (3D)', [
             field('Position', ...this._vectorInputs(t.localPosition, (v) => {
                 t.localPosition = v;
-                this.state.markDirty();
-            }, ['x', 'y', 'z'])),
+            }, ['x', 'y', 'z'], { historyLabel: 'Set 3D position' })),
             field('Rotation', ...this._vectorInputs(euler, (v) => {
                 t.localEulerAngles = v;
-                this.state.markDirty();
-            }, ['x', 'y', 'z'], { step: 1 })),
+            }, ['x', 'y', 'z'], { step: 1, historyLabel: 'Set 3D rotation' })),
             field('Scale', ...this._vectorInputs(t.localScale, (v) => {
                 t.localScale = v;
-                this.state.markDirty();
-            }, ['x', 'y', 'z'])),
+            }, ['x', 'y', 'z'], { historyLabel: 'Set 3D scale' })),
         ]);
     }
 
@@ -141,10 +133,8 @@ export class InspectorPanel {
 
         const schema = schemaOf(component.constructor);
         const rows = [
-            field('Enabled', this._checkbox(component.enabled, (v) => {
-                component.enabled = v;
-                this.state.markDirty();
-            })),
+            field('Enabled', this._checkbox(component.enabled, (v) => { component.enabled = v; },
+                `Set ${name} enabled`)),
         ];
 
         for (const [key, descriptor] of Object.entries(schema)) {
@@ -154,10 +144,12 @@ export class InspectorPanel {
 
         return this._section(name, rows, {
             onRemove: () => {
-                actor.removeComponent(component);
-                this.state.markDirty();
-                this.render();
-                this.state.notifyHierarchy();
+                this.editor.history.snapshot(`Remove ${name}`, () => {
+                    actor.removeComponent(component);
+                    this.state.markDirty();
+                    this.render();
+                    this.state.notifyHierarchy();
+                });
             },
         });
     }
@@ -167,65 +159,67 @@ export class InspectorPanel {
     _propertyField(target, key, descriptor) {
         const label = humanise(key);
         const value = target[key];
-        const commit = (next) => { target[key] = next; this.state.markDirty(); };
+        const commit = (next) => { target[key] = next; };
+        const historyLabel = `Set ${label}`;
 
         switch (descriptor.type) {
             case PropertyType.Bool:
-                return field(label, this._checkbox(value, commit));
+                return field(label, this._checkbox(value, commit, historyLabel));
 
             case PropertyType.Int:
-                return field(label, numberInput(value, (v) => commit(Math.round(v)),
-                    { step: 1, min: descriptor.min, max: descriptor.max }));
+                return field(label, this._trackFieldEdit(historyLabel, numberInput(value, (v) => commit(Math.round(v)),
+                    { step: 1, min: descriptor.min, max: descriptor.max })));
 
             case PropertyType.Number:
-                return field(label, numberInput(value, commit,
-                    { step: descriptor.step ?? 0.1, min: descriptor.min, max: descriptor.max }));
+                return field(label, this._trackFieldEdit(historyLabel, numberInput(value, commit,
+                    { step: descriptor.step ?? 0.1, min: descriptor.min, max: descriptor.max })));
 
             case PropertyType.String:
-                return field(label, el('input.sb-text', {
+                return field(label, this._trackFieldEdit(historyLabel, el('input.sb-text', {
                     type: 'text', value: value ?? '',
                     oninput: (e) => commit(e.target.value),
-                }));
+                })));
 
             case PropertyType.Asset:
-                return field(label, el('input.sb-text', {
+                return field(label, this._trackFieldEdit(historyLabel, el('input.sb-text', {
                     type: 'text',
                     value: value ?? '',
                     placeholder: descriptor.assetKind ?? 'path',
                     oninput: (e) => commit(e.target.value),
-                }));
+                })));
 
             case PropertyType.Vector2:
-                return field(label, ...this._vectorInputs(value, commit, ['x', 'y']));
+                return field(label, ...this._vectorInputs(value, commit, ['x', 'y'], { historyLabel }));
 
             case PropertyType.Vector3:
-                return field(label, ...this._vectorInputs(value, commit, ['x', 'y', 'z']));
+                return field(label, ...this._vectorInputs(value, commit, ['x', 'y', 'z'], { historyLabel }));
 
             case PropertyType.Vector4:
-                return field(label, ...this._vectorInputs(value, commit, ['x', 'y', 'z', 'w']));
+                return field(label, ...this._vectorInputs(value, commit, ['x', 'y', 'z', 'w'], { historyLabel }));
 
             case PropertyType.Quaternion:
                 return field(label, ...this._vectorInputs(
                     Quaternion.toEuler(value), (v) => commit(Quaternion.fromEuler(v)),
-                    ['x', 'y', 'z'], { step: 1 }));
+                    ['x', 'y', 'z'], { step: 1, historyLabel }));
 
             case PropertyType.Color:
-                return field(label, this._colorInput(value, commit));
+                return field(label, this._colorInput(value, commit, historyLabel));
 
             case PropertyType.Enum:
-                return field(label, el('select.sb-select', {
+                return field(label, this._trackFieldEdit(historyLabel, el('select.sb-select', {
                     onchange: (e) => commit(e.target.value),
                 }, ...(descriptor.values ?? []).map((option) =>
-                    el('option', { value: option, text: option, selected: option === value }))));
+                    el('option', { value: option, text: option, selected: option === value })))));
 
             case PropertyType.List:
-                return field(label, el('span.sb-note-inline', {
-                    text: `${Array.isArray(value) ? value.length : 0} item(s)`,
-                    title: 'Lists are preserved on save but not editable here yet.',
-                }));
+                return field(label, this._listInput(value, descriptor, commit, historyLabel));
 
             default:
-                return field(label, el('span.sb-note-inline', { text: String(value) }));
+                return field(label, el('span.sb-note-inline', {
+                    text: 'Read-only in the browser editor',
+                    title: `No portable widget is registered for ${descriptor.type ?? 'this'} values. `
+                        + 'The saved value is preserved unchanged.',
+                }));
         }
     }
 
@@ -238,16 +232,19 @@ export class InspectorPanel {
      */
     _vectorInputs(value, commit, axes, options = {}) {
         const read = (axis) => value?.[axis] ?? 0;
+        const { historyLabel = null, ...numberOptions } = options;
 
-        return axes.map((axis) => el('span.sb-axis', {},
-            el('i.sb-axis-label', { text: axis, dataset: { axis } }),
-            numberInput(read(axis), (v) => {
+        return axes.map((axis) => {
+            const input = this._trackFieldEdit(historyLabel, numberInput(read(axis), (v) => {
                 const next = Object.fromEntries(axes.map((a) => [a, a === axis ? v : read(a)]));
                 commit(rebuildVector(value, next, axes));
-            }, options)));
+            }, numberOptions));
+            return el('span.sb-axis', {},
+                el('i.sb-axis-label', { text: axis, dataset: { axis } }), input);
+        });
     }
 
-    _colorInput(value, commit) {
+    _colorInput(value, commit, historyLabel) {
         const colour = Color.from(value);
 
         const swatch = el('input.sb-color', {
@@ -271,15 +268,112 @@ export class InspectorPanel {
             },
         });
 
-        return el('span.sb-color-field', {}, swatch, alpha);
+        return el('span.sb-color-field', {},
+            this._trackFieldEdit(historyLabel, swatch),
+            this._trackFieldEdit(historyLabel, alpha));
     }
 
-    _checkbox(checked, commit) {
-        return el('input.sb-check', {
+    /**
+     * Portable list editing deliberately uses scene-format JSON for now.  That
+     * supports every serialisable element shape (including nested vectors) and
+     * validates before changing the component, without pretending every family
+     * already has a bespoke array UI.  The schema's `of` descriptor rehydrates
+     * parsed values into their runtime type.
+     */
+    _listInput(value, descriptor, commit, historyLabel) {
+        const count = el('span.sb-note-inline', {
+            text: `${Array.isArray(value) ? value.length : 0} item(s)`,
+        });
+        const source = el('textarea.sb-list-editor', {
+            rows: 3,
+            value: formatListValue(value, descriptor),
+            title: 'Editable JSON array. Changes are validated before they are applied.',
+        });
+
+        const apply = () => {
+            try {
+                const next = parseListValue(source.value, descriptor);
+                source.classList.remove('is-invalid');
+                source.setCustomValidity('');
+                count.textContent = `${next.length} item(s)`;
+                commit(next);
+            } catch (error) {
+                source.classList.add('is-invalid');
+                source.setCustomValidity(error.message);
+                this.state.error(error.message);
+            }
+        };
+        source.addEventListener('change', apply);
+
+        return el('span.sb-list-field', {},
+            this._trackFieldEdit(historyLabel, source),
+            el('span.sb-list-actions', {},
+                el('button.sb-btn.sb-btn-small', {
+                    type: 'button', text: '+', title: 'Add an item using the schema default',
+                    onclick: () => {
+                        this.editor.history.snapshot(historyLabel, () => {
+                            const next = appendListValue(value, descriptor);
+                            commit(next);
+                            this.state.markDirty();
+                            this.render();
+                        });
+                    },
+                }),
+                count));
+    }
+
+    _checkbox(checked, commit, historyLabel = null) {
+        return this._trackFieldEdit(historyLabel, el('input.sb-check', {
             type: 'checkbox',
             checked: Boolean(checked),
             onchange: (e) => commit(e.target.checked),
+        }));
+    }
+
+    /** Starts a transaction on focus and closes it on a field commit or blur. */
+    _trackFieldEdit(label, control) {
+        if (!label) return control;
+        control.addEventListener('focus', () => this._beginFieldTransaction(label));
+        control.addEventListener('change', () => this._commitFieldTransaction());
+        control.addEventListener('blur', () => this._commitFieldTransaction());
+        control.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            this._cancelFieldTransaction();
+            control.blur();
         });
+        return control;
+    }
+
+    _beginFieldTransaction(label) {
+        if (!this.editor?.history || !this.editor.scene) return;
+        this._commitFieldTransaction();
+        this._fieldTransaction = {
+            label,
+            before: this.editor.captureHistorySnapshot(),
+            wasDirty: this.state.sceneDirty,
+        };
+    }
+
+    _commitFieldTransaction() {
+        const transaction = this._fieldTransaction;
+        if (!transaction) return;
+        this._fieldTransaction = null;
+        const after = this.editor.captureHistorySnapshot();
+        if (transaction.before.scene === after.scene) return;
+
+        this.editor.history.push(transaction.label,
+            () => this.editor.restoreHistorySnapshot(transaction.before),
+            () => this.editor.restoreHistorySnapshot(after));
+        this.state.markDirty();
+    }
+
+    _cancelFieldTransaction() {
+        const transaction = this._fieldTransaction;
+        if (!transaction) return;
+        this._fieldTransaction = null;
+        this.editor.restoreHistorySnapshot(transaction.before);
+        if (!transaction.wasDirty) this.state.markClean();
     }
 
     _section(title, rows, { onRemove = null, id = null, missing = false } = {}) {
@@ -323,10 +417,12 @@ export class InspectorPanel {
             if (!name) return;
 
             try {
-                actor.addComponent(name);
-                this.state.markDirty();
-                this.render();
-                this.state.notifyHierarchy();
+                this.editor.history.snapshot(`Add ${name}`, () => {
+                    actor.addComponent(name);
+                    this.state.markDirty();
+                    this.render();
+                    this.state.notifyHierarchy();
+                });
             } catch (err) {
                 this.state.error(`Could not add ${name}: ${err.message}`);
             }

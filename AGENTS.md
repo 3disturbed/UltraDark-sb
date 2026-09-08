@@ -99,7 +99,9 @@ Rules for this phase, and the reason for each:
   navigable with a pad or a TV remote because any button is focusable. Text works on both engines.
   Do not build another HUD out of world-space sprites over the player's head, and do not hand-place
   rows by adding up glyph heights; reach for the `hud-kit` cookie, and `screen-effects` for shake,
-  flash, fade and hit-stop. `wiki/11-scripting.md` is the reference.
+  flash, fade and hit-stop. A UI that genuinely belongs in the scene -- a terminal on a wall, a
+  sign -- is the same tree with `UI.space = "world"`, and a marker that tracks something is a node
+  with `worldFollow`; neither needs sprites. `wiki/11-scripting.md` is the reference.
 - **Do not read the engine source to write a game.** Read `wiki/11-scripting.md` and the
   template's own scripts. The engine is over 50,000 lines of C#; putting it in context is the
   single most expensive thing a session can do.

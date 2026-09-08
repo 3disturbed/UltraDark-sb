@@ -383,6 +383,8 @@ rb.AngularVelocity = Vector3.Zero;
 rb.LinearDamping   = 0.05f;
 rb.AngularDamping  = 0.05f;
 rb.IsKinematic     = false;
+rb.UseGravity      = true;    // false and the body hangs where it is
+rb.FreezeRotation  = false;   // true and nothing can spin it
 
 rb.AddForce(new Vector3(0, 500, 0));
 rb.AddImpulse(new Vector3(0, 6, 0));
@@ -395,6 +397,17 @@ In `Awake`, `Rigidbody3D` looks for a `Collider3D` on the actor and calls
 `RegisterShape`. **If there is no collider it falls back to a sphere of radius
 0.5** — so a body with no collider still simulates, as a ball.
 
+`UseGravity` is real per-body gravity, not a stored hint: Bepu applies gravity in
+the pose integrator, so switching it off registers the body with
+`PhysicsSystem3D.SetGravityEnabled` and the integrator zeroes that body's share
+of the pull. `Rigidbody2D.GravityScale` is the opposite — Aether has no per-body
+gravity, and that one is stored for game logic only.
+
+`FreezeRotation` locks the body's orientation by zeroing its inverse inertia
+tensor, so `AddTorque` and contacts both land on a body that cannot answer them.
+The tensor is put back when the lock comes off. It is how a character stays
+upright.
+
 ## Collider3D
 
 ```csharp
@@ -406,15 +419,20 @@ sphere.Radius = 0.5f;
 
 var capsule = actor.AddComponent<CapsuleCollider3D>();
 capsule.Radius = 0.4f;
-capsule.Length = 1.2f;      // cylindrical section, excluding the caps
+capsule.Height = 2.0f;      // total, caps included — what a scene file stores
+capsule.Length = 1.2f;      // the same dimension seen as the shaft, caps excluded
 ```
+
+`Height` and `Length` are two views of one capsule: `Length == Height - 2 × Radius`.
+`Height` is the one the browser stores and the one written to a scene file, so
+size a capsule with it and let `Length` be the number Bepu is handed.
 
 Shared: `IsTrigger`, `Friction` (default 0.5), `Restitution` (default 0).
 
 `Collider3D.Awake` adds a `Rigidbody3D` if the actor has none, and
 `Rigidbody3D.Awake` calls `collider.RegisterShape(...)`. So adding just the
 collider is enough — but the **same "shape is built at `Awake`" problem as 2D
-applies**: `Radius`, `Length` and `HalfExtents` are read at registration time,
+applies**: `Radius`, `Height` and `HalfExtents` are read at registration time,
 before you get a chance to set them.
 
 Rebuild by removing the body and re-running `Awake` on the rigidbody:
@@ -423,9 +441,9 @@ Rebuild by removing the body and re-running `Awake` on the rigidbody:
 var t3d = actor.AddComponent<Transform3D>();
 t3d.Position = spawn;
 
-var col = actor.AddComponent<CapsuleCollider3D>();   // registers a 0.5 × 1 capsule
+var col = actor.AddComponent<CapsuleCollider3D>();   // registers the default 0.5 × 2 capsule
 col.Radius = 0.4f;
-col.Length = 1.2f;
+col.Height = 2.0f;
 
 var rb = actor.GetComponent<Rigidbody3D>()!;          // added by the collider
 PhysicsSystem3D.Instance.RemoveBody(actor);           // drop the stale body
@@ -447,6 +465,19 @@ PhysicsSystem3D.Instance.AddStaticBox(
 
 PhysicsSystem3D.Instance.AddStaticMesh(vertices, indices, position);
 ```
+
+`MeshCollider3D` bakes an actor's own geometry as a static, once, at `Start`:
+
+```csharp
+var terrain = actor.AddComponent<MeshCollider3D>();
+terrain.SetMesh(vertices, indices);        // or SetMeshFromModel(path)
+terrain.Padding = 0.05f;                   // clearance, in local units
+```
+
+`Padding` pushes every vertex out along its normal before the bake, so the
+collision stands that far proud of the art — a floor rises by it, a wall thickens
+by it, and a character stops short of the surface instead of scraping it. It is
+read at bake time along with the geometry, so set it before `Start`.
 
 ## Direct body creation
 
@@ -473,12 +504,22 @@ Combined with `Camera3D.ScreenToWorldRay`, this is your mouse picker.
 
 ```csharp
 var cc = actor.AddComponent<CharacterController3D>();   // adds Rigidbody3D
+cc.Radius       = 0.35f;
+cc.Height       = 1.8f;    // total, caps included
 cc.MoveSpeed    = 5f;
 cc.JumpSpeed    = 8f;
+cc.Gravity      = -20f;    // signed, and about twice life so falling does not read as floaty
+cc.AirControl   = 0.4f;    // fraction of the requested speed granted in mid-air
 cc.StepUpHeight = 0.3f;
 cc.SlopeLimit   = 45f;
 cc.SnapDistance = 0.1f;
 ```
+
+A `CapsuleCollider3D` on the same actor wins over `Radius` and `Height`, because
+it is the shape the simulation sees; set them here when there is no collider.
+The controller integrates its own vertical speed rather than letting the
+simulation do it — a character that is simulated slides down slopes, tips over
+and fights the player — so `Gravity` is the controller's, not the world's.
 
 ```csharp
 public override void Update(float dt)
@@ -491,8 +532,10 @@ public override void Update(float dt)
 ```
 
 `Move` takes a **velocity**, not a displacement — do not multiply by `dt`.
-Read-only: `IsGrounded`, `IsOnSlope`, `SlopeAngle`. Ground detection and step-up
-use downward raycasts against the Bepu simulation.
+Read-only: `IsGrounded`, `IsOnSlope`, `SlopeAngle`, and `FootOffset` — the drop
+from the actor's origin to the soles, which anything placing a character on a
+surface has to add or the character starts half-buried. Ground detection and
+step-up use downward raycasts against the Bepu simulation.
 
 ---
 

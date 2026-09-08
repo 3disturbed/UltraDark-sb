@@ -282,9 +282,86 @@ public sealed class RenderSystem3D : IDisposable
             _stats.DrawCalls++;
         }
 
+        // World-space UI, after the scene it hangs in and before nothing at all: a canvas on
+        // a wall is transparent geometry like any other, and it reads depth so a pillar in
+        // front of it still hides it.
+        DrawWorldCanvases(view, proj);
+
         _gd.DepthStencilState = DepthStencilState.Default;
         _gd.BlendState        = BlendState.Opaque;
     }
+
+    /// <summary>
+    /// Draws every world-space <see cref="UI.UiCanvas"/> as a textured quad.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The blend state is the whole subtlety here. <c>UiPainter</c> writes <em>straight</em>
+    /// alpha — <see cref="BlendState.NonPremultiplied"/> — so that a panel written
+    /// <c>#161920e6</c> is the colour it says it is. The transparent pass this sits in uses
+    /// <see cref="BlendState.AlphaBlend"/>, which in MonoGame means <em>premultiplied</em>.
+    /// Handing a straight-alpha texture to it multiplies the alpha in a second time and every
+    /// translucent panel comes out visibly dark. So the blend is swapped for these quads and
+    /// put back afterwards, the way <c>ParticleSystem3D</c> already brackets its own state.
+    /// </para>
+    /// <para>
+    /// <c>UiWorldPaintTests</c> pins the colour rather than leaving it to the eye, because a
+    /// uniformly-too-dark UI is exactly the kind of wrongness that looks deliberate.
+    /// </para>
+    /// </remarks>
+    private void DrawWorldCanvases(Matrix view, Matrix proj)
+    {
+        var geometry = PrimitiveMesh.Get(MeshPrimitive.Quad, _gd);
+        if (geometry == null) return;
+
+        BlendState previousBlend = _gd.BlendState;
+        RasterizerState previousRasteriser = _gd.RasterizerState;
+        bool drew = false;
+
+        foreach (UI.UiCanvas canvas in UI.UiCanvas.All)
+        {
+            if (canvas.Space != UI.UiSpace.World || !canvas.Enabled) continue;
+            if (canvas.WorldTarget is not { } texture) continue;
+            if (!canvas.IsWithinDrawDistance) continue;
+            if (canvas.WorldBasis() is not { } basis) continue;
+
+            if (!drew)
+            {
+                _gd.BlendState = BlendState.NonPremultiplied;
+                drew = true;
+            }
+
+            _gd.DepthStencilState = canvas.DepthTest ? DepthStencilState.DepthRead : DepthStencilState.None;
+            _gd.RasterizerState   = canvas.DoubleSided ? RasterizerState.CullNone : previousRasteriser;
+
+            _worldCanvasEffect ??= new BasicEffect(_gd) { TextureEnabled = true, LightingEnabled = false };
+            _worldCanvasEffect.World      = UI.UiWorld.QuadTransform(basis);
+            _worldCanvasEffect.View       = view;
+            _worldCanvasEffect.Projection = proj;
+            _worldCanvasEffect.Texture    = texture;
+            _worldCanvasEffect.Alpha      = 1f;
+            _worldCanvasEffect.DiffuseColor = Vector3.One;
+
+            _gd.SetVertexBuffer(geometry.VertexBuffer);
+            _gd.Indices = geometry.IndexBuffer;
+
+            foreach (var pass in _worldCanvasEffect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, geometry.PrimitiveCount);
+            }
+
+            _stats.DrawCalls++;
+        }
+
+        if (!drew) return;
+
+        _gd.BlendState        = previousBlend;
+        _gd.RasterizerState   = previousRasteriser;
+        _gd.DepthStencilState = DepthStencilState.DepthRead;
+    }
+
+    private BasicEffect? _worldCanvasEffect;
 
     // -------------------------------------------------------------------------
     // Gathering
@@ -707,6 +784,8 @@ public sealed class RenderSystem3D : IDisposable
         if (_sceneTarget != null && _sceneTarget.Width == width
                                  && _sceneTarget.Height == height) return;
 
+        _worldCanvasEffect?.Dispose();
+        _worldCanvasEffect = null;
         _sceneTarget?.Dispose();
         _ppPing?.Dispose();
 

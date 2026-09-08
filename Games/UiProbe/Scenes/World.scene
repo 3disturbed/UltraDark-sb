@@ -1,0 +1,88 @@
+{
+  "name": "World",
+  "layers": [
+    {
+      "name": "Default",
+      "actors": [
+        {
+          "name": "Main Camera",
+          "tag": "MainCamera3D",
+          "components": [
+            { "type": "Camera3D", "properties": { "FieldOfView": 60.0, "NearClip": 0.1, "FarClip": 1000.0 } }
+          ],
+          "transform3d": { "x": 0, "y": 1.6, "z": 6, "rotX": 0, "rotY": 0, "rotZ": 0, "scaleX": 1, "scaleY": 1, "scaleZ": 1 }
+        },
+        {
+          "name": "Sun",
+          "tag": "Light",
+          "components": [
+            { "type": "Light3D", "properties": { "Type": "Directional", "Intensity": 1.0 } }
+          ],
+          "transform3d": { "x": 0, "y": 5, "z": 0, "rotX": -50, "rotY": 30, "rotZ": 0, "scaleX": 1, "scaleY": 1, "scaleZ": 1 }
+        },
+        {
+          "name": "Floor",
+          "components": [
+            { "type": "MeshRenderer", "properties": { "MeshType": "Plane" } }
+          ],
+          "transform3d": { "x": 0, "y": 0, "z": 0, "rotX": 0, "rotY": 0, "rotZ": 0, "scaleX": 20, "scaleY": 1, "scaleZ": 20 }
+        },
+        {
+          "name": "Occluder",
+          "components": [
+            { "type": "MeshRenderer", "properties": { "MeshType": "Cube" } }
+          ],
+          "transform3d": { "x": -1.2, "y": 0.6, "z": 1.5, "rotX": 0, "rotY": 0, "rotZ": 0, "scaleX": 1.2, "scaleY": 1.2, "scaleZ": 1.2 }
+        },
+        {
+          "name": "Wall Terminal",
+          "components": [
+            {
+              "type": "UiCanvas",
+              "properties": {
+                "Space": "World",
+                "Facing": "Plane",
+                "ReferenceResolution": { "X": 400.0, "Y": 220.0 },
+                "PixelsPerUnit": 140.0,
+                "Document": "Assets/UI/terminal.ui"
+              }
+            }
+          ],
+          "transform3d": { "x": 0, "y": 1.4, "z": -2, "rotX": 0, "rotY": 0, "rotZ": 0, "scaleX": 1, "scaleY": 1, "scaleZ": 1 }
+        },
+        {
+          "name": "Floating Nameplate",
+          "components": [
+            {
+              "type": "UiCanvas",
+              "properties": {
+                "Space": "World",
+                "Facing": "VerticalBillboard",
+                "ReferenceResolution": { "X": 400.0, "Y": 220.0 },
+                "PixelsPerUnit": 260.0,
+                "MaxDrawDistance": 25.0,
+                "DepthTest": false,
+                "Document": "Assets/UI/terminal.ui"
+              }
+            }
+          ],
+          "transform3d": { "x": 2.4, "y": 1.8, "z": 0, "rotX": 0, "rotY": 0, "rotZ": 0, "scaleX": 1, "scaleY": 1, "scaleZ": 1 }
+        },
+        {
+          "name": "Screen HUD",
+          "components": [
+            {
+              "type": "UiCanvas",
+              "properties": {
+                "Order": 10,
+                "Document": "Assets/UI/terminal.ui"
+              }
+            },
+            { "type": "ScriptComponent", "properties": { "ScriptPath": "Scripts/WorldProbe.js" } }
+          ],
+          "transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 }
+        }
+      ]
+    }
+  ]
+}

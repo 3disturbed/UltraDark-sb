@@ -94,13 +94,17 @@ public sealed class Gizmo3D
             return false;
         }
 
-        // Local axes, so the gizmo follows the object's own orientation.
-        var axes = new[]
-        {
-            XnaVector3.Transform(XnaVector3.Right,   transform.Rotation),
-            XnaVector3.Transform(XnaVector3.Up,      transform.Rotation),
-            XnaVector3.Transform(XnaVector3.Forward, transform.Rotation),
-        };
+        // Local is the legacy behaviour. World deliberately uses the scene's fixed
+        // cardinal axes, including for the rotation ring, so moving a rotated actor
+        // can be constrained against the level rather than its own orientation.
+        var axes = EditorState.GizmoTransformSpace == GizmoTransformSpace.World
+            ? new[] { XnaVector3.Right, XnaVector3.Up, XnaVector3.Forward }
+            : new[]
+            {
+                XnaVector3.Transform(XnaVector3.Right,   transform.Rotation),
+                XnaVector3.Transform(XnaVector3.Up,      transform.Rotation),
+                XnaVector3.Transform(XnaVector3.Forward, transform.Rotation),
+            };
 
         // Work out each axis's screen direction and how many world units one pixel is
         // along it, by projecting a probe point one world unit out.
@@ -135,7 +139,21 @@ public sealed class Gizmo3D
             axisEnd[i]         = originScreen + axisScreenDir[i] * AxisLengthPixels;
         }
 
-        UpdateDrag(transform, originScreen, axes, axisScreenDir, worldUnitsPerPx, mouse);
+        // The centre handle moves in the view plane. Project the camera's right/up
+        // basis at the selected actor so its screen drag remains correct at any
+        // depth and under perspective, rather than guessing a world-unit scale.
+        var cameraTransform = camera.GetTransform3D();
+        var viewPlaneAxes = new[] { cameraTransform.Right, cameraTransform.Up };
+        var viewPlaneProjection = new Vector2[2];
+        for (int i = 0; i < viewPlaneAxes.Length; i++)
+        {
+            viewPlaneProjection[i] = TryProject(origin + viewPlaneAxes[i], viewProj, viewportMin, viewportSize, out var probe)
+                ? probe - originScreen
+                : Vector2.Zero;
+        }
+
+        UpdateDrag(transform, originScreen, axes, axisScreenDir, worldUnitsPerPx,
+            viewPlaneAxes, viewPlaneProjection, cameraTransform.Forward, mouse);
         DrawHandles(originScreen, axisEnd);
 
         return IsDragging;
@@ -146,7 +164,9 @@ public sealed class Gizmo3D
     // -------------------------------------------------------------------------
 
     private void UpdateDrag(Transform3D transform, Vector2 originScreen, XnaVector3[] axes,
-                            Vector2[] axisScreenDir, float[] worldUnitsPerPx, Vector2 mouse)
+                            Vector2[] axisScreenDir, float[] worldUnitsPerPx,
+                            XnaVector3[] viewPlaneAxes, Vector2[] viewPlaneProjection,
+                            XnaVector3 cameraForward, Vector2 mouse)
     {
         bool down = ImGui.IsMouseDown(ImGuiMouseButton.Left);
 
@@ -177,18 +197,43 @@ public sealed class Gizmo3D
 
         switch (EditorState.GizmoMode)
         {
-            case GizmoMode.Translate: ApplyTranslate(transform, axes, axisScreenDir, worldUnitsPerPx, totalDelta); break;
-            case GizmoMode.Scale:     ApplyScale(transform, axisScreenDir, totalDelta); break;
-            case GizmoMode.Rotate:    ApplyRotate(transform, axes, originScreen, mouse); break;
+            case GizmoMode.Translate:
+                ApplyTranslate(transform, axes, axisScreenDir, worldUnitsPerPx,
+                    viewPlaneAxes, viewPlaneProjection, totalDelta);
+                break;
+            case GizmoMode.Scale:  ApplyScale(transform, axisScreenDir, totalDelta); break;
+            case GizmoMode.Rotate: ApplyRotate(transform, axes, cameraForward, originScreen, mouse); break;
         }
     }
 
     private void ApplyTranslate(Transform3D transform, XnaVector3[] axes, Vector2[] axisScreenDir,
-                                float[] worldUnitsPerPx, Vector2 totalDelta)
+                                float[] worldUnitsPerPx, XnaVector3[] viewPlaneAxes,
+                                Vector2[] viewPlaneProjection, Vector2 totalDelta)
     {
         if (_activeAxis == 3)
         {
-            // Centre handle: not implemented as free-move, which would need a drag plane.
+            // Invert the camera right/up projection so an arbitrary screen delta
+            // becomes movement in the plane facing the editor camera.
+            var right = viewPlaneProjection[0];
+            var up    = viewPlaneProjection[1];
+            float determinant = right.X * up.Y - right.Y * up.X;
+            if (MathF.Abs(determinant) < 1e-4f) return;
+
+            float alongRight = (totalDelta.X * up.Y - totalDelta.Y * up.X) / determinant;
+            float alongUp    = (right.X * totalDelta.Y - right.Y * totalDelta.X) / determinant;
+            var position = _dragStartPosition
+                         + viewPlaneAxes[0] * alongRight
+                         + viewPlaneAxes[1] * alongUp;
+
+            if (EditorState.SnapEnabled && EditorState.TranslateSnap > 0f)
+            {
+                float snap = EditorState.TranslateSnap;
+                position = new XnaVector3(
+                    MathF.Round(position.X / snap) * snap,
+                    MathF.Round(position.Y / snap) * snap,
+                    MathF.Round(position.Z / snap) * snap);
+            }
+            transform.Position = position;
             return;
         }
 
@@ -203,17 +248,23 @@ public sealed class Gizmo3D
 
     private void ApplyScale(Transform3D transform, Vector2[] axisScreenDir, Vector2 totalDelta)
     {
-        if (_activeAxis == 3) return;
-
         // Scale is unitless, so pixels map to a factor directly rather than through the
         // axis's world length — dragging 100px always doubles, near or far.
-        float pixels = Vector2.Dot(totalDelta, axisScreenDir[_activeAxis]);
+        float pixels = _activeAxis == 3
+            ? totalDelta.X - totalDelta.Y
+            : Vector2.Dot(totalDelta, axisScreenDir[_activeAxis]);
         float factor = MathF.Max(0.01f, 1f + pixels / 100f);
 
         if (EditorState.SnapEnabled && EditorState.ScaleSnap > 0f)
             factor = MathF.Max(EditorState.ScaleSnap, MathF.Round(factor / EditorState.ScaleSnap) * EditorState.ScaleSnap);
 
         var scale = _dragStartScale;
+        if (_activeAxis == 3)
+        {
+            scale *= factor;
+            transform.LocalScale = scale;
+            return;
+        }
         switch (_activeAxis)
         {
             case 0: scale.X = _dragStartScale.X * factor; break;
@@ -224,10 +275,9 @@ public sealed class Gizmo3D
         transform.LocalScale = scale;
     }
 
-    private void ApplyRotate(Transform3D transform, XnaVector3[] axes, Vector2 originScreen, Vector2 mouse)
+    private void ApplyRotate(Transform3D transform, XnaVector3[] axes, XnaVector3 cameraForward,
+                             Vector2 originScreen, Vector2 mouse)
     {
-        if (_activeAxis == 3) return;
-
         // Angle swept around the gizmo centre, measured from where the drag started.
         float startAngle = MathF.Atan2(_dragStartMouse.Y - originScreen.Y, _dragStartMouse.X - originScreen.X);
         float nowAngle   = MathF.Atan2(mouse.Y - originScreen.Y, mouse.X - originScreen.X);
@@ -236,8 +286,9 @@ public sealed class Gizmo3D
         if (EditorState.SnapEnabled && EditorState.RotateSnap > 0f)
             degrees = MathF.Round(degrees / EditorState.RotateSnap) * EditorState.RotateSnap;
 
+        var axis = _activeAxis == 3 ? cameraForward : axes[_activeAxis];
         var delta = XnaQuaternion.CreateFromAxisAngle(
-            XnaVector3.Normalize(axes[_activeAxis]), degrees * MathF.PI / 180f);
+            XnaVector3.Normalize(axis), degrees * MathF.PI / 180f);
 
         transform.Rotation = delta * _dragStartRotation;
     }

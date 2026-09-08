@@ -218,11 +218,11 @@ public sealed class ViewportPanel
         var pos      = _vpMin + new Vector2(8f, 8f);
         float btnW   = 28f, btnH = 22f, gap = 4f;
 
-        DrawGizmoBtn(drawList, pos, btnW, btnH, "T", GizmoMode.Translate, "Translate (G)");
+        DrawGizmoBtn(drawList, pos, btnW, btnH, "W", GizmoMode.Translate, "Move (W)");
         pos.X += btnW + gap;
-        DrawGizmoBtn(drawList, pos, btnW, btnH, "R", GizmoMode.Rotate,    "Rotate (R)");
+        DrawGizmoBtn(drawList, pos, btnW, btnH, "E", GizmoMode.Rotate,    "Rotate (E)");
         pos.X += btnW + gap;
-        DrawGizmoBtn(drawList, pos, btnW, btnH, "S", GizmoMode.Scale,     "Scale (S)");
+        DrawGizmoBtn(drawList, pos, btnW, btnH, "R", GizmoMode.Scale,     "Scale (R)");
     }
 
     private void DrawGizmoBtn(ImDrawListPtr dl, Vector2 pos, float w, float h,
@@ -490,7 +490,7 @@ public sealed class ViewportPanel
         if (EditorState.SelectedActor is { } selected) FrameActor(cameraTransform, selected);
     }
 
-    /// <summary>Moves the editor camera to look at an actor from a short distance. Shared with the focus_actor tool.</summary>
+    /// <summary>Moves the editor camera to look at an actor from a short distance. Shared with editor_camera's focus tool.</summary>
     public static void FrameActor(Transform3D cameraTransform, Actor actor)
     {
         var target = actor.GetComponent<Transform3D>();
@@ -539,12 +539,12 @@ public sealed class ViewportPanel
         var io       = ImGui.GetIO();
         var mousePos = new Vector2(io.MousePos.X, io.MousePos.Y);
 
-        // Gizmo mode shortcuts (Blender-style), unless a text field has the keyboard.
+        // Match the 3D viewport and the browser workbench's UE-style shortcuts.
         if (!io.WantTextInput)
         {
-            if (ImGui.IsKeyPressed(ImGuiKey.G)) EditorState.GizmoMode = GizmoMode.Translate;
-            if (ImGui.IsKeyPressed(ImGuiKey.R)) EditorState.GizmoMode = GizmoMode.Rotate;
-            if (ImGui.IsKeyPressed(ImGuiKey.S)) EditorState.GizmoMode = GizmoMode.Scale;
+            if (ImGui.IsKeyPressed(ImGuiKey.W)) EditorState.GizmoMode = GizmoMode.Translate;
+            if (ImGui.IsKeyPressed(ImGuiKey.E)) EditorState.GizmoMode = GizmoMode.Rotate;
+            if (ImGui.IsKeyPressed(ImGuiKey.R)) EditorState.GizmoMode = GizmoMode.Scale;
         }
 
         // Right-click drag = pan

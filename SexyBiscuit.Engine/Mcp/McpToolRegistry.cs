@@ -426,8 +426,12 @@ public sealed class McpToolRegistry
             {
                 if (McpSchema.IsInjected(p)) continue;
 
-                string entry = $"`{p.Name}`: {ValueConverter.Describe(p.ParameterType)}";
-                if (p.HasDefaultValue) entry += p.DefaultValue is null ? " (optional)" : $" (default {FormatDefault(p.DefaultValue)})";
+                // Describe already says "(optional)" for a nullable type; saying it twice was what
+                // the generated wiki table printed for every bool? parameter.
+                string described = ValueConverter.Describe(p.ParameterType);
+                string entry = $"`{p.Name}`: {described}";
+                if (p.HasDefaultValue && p.DefaultValue is not null) entry += $" (default {FormatDefault(p.DefaultValue)})";
+                else if (p.HasDefaultValue && !described.EndsWith("(optional)", StringComparison.Ordinal)) entry += " (optional)";
                 parameters.Add(entry);
             }
 

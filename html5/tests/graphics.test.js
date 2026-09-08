@@ -17,6 +17,8 @@ import { GraphicsCapabilities } from '../src/rendering/GraphicsCapabilities.js';
 import { PlayerPrefs } from '../src/save/PlayerPrefs.js';
 import presets from '../src/rendering/graphics-presets.json' with { type: 'json' };
 import { VERSION, statusLine } from '../src/core/EngineInfo.js';
+import { Skybox } from '../src/rendering/Skybox.js';
+import { RenderSystem3D, uploadCubemap } from '../src/rendering/RenderSystem3D.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '..', '..');
@@ -247,3 +249,149 @@ function installFakeStorage() {
         removeItem: (k) => data.delete(k),
     };
 }
+
+// -----------------------------------------------------------------------------
+// Skybox — one cubemap convention, spelled the same way on both engines
+// -----------------------------------------------------------------------------
+
+test('a cubemap folder stands for the same six faces on both engines', () => {
+    assert.deepEqual(Skybox.facePathsFor('Assets/Sky'), [
+        'Assets/Sky/px.png', 'Assets/Sky/nx.png',
+        'Assets/Sky/py.png', 'Assets/Sky/ny.png',
+        'Assets/Sky/pz.png', 'Assets/Sky/nz.png',
+    ]);
+    assert.deepEqual(Skybox.facePathsFor('Assets/Sky/'), Skybox.facePathsFor('Assets/Sky'));
+
+    // A scene stores one folder, so the six names it stands for are the contract. Spelled
+    // differently on the two engines, a project would find a sky on one and a gradient on
+    // the other, which is the exact class of defect the mirror map exists to catch.
+    const source = csharp('SexyBiscuit.Engine', 'Rendering', 'Skybox.cs');
+    const names = source.match(/FaceNames\s*=\s*\{([^}]*)\}/)[1]
+        .split(',').map((name) => name.trim().replace(/"/g, '')).filter(Boolean);
+    assert.deepEqual(names, Skybox.faceNames);
+    assert.match(source, /public static string\[\] CubemapFacePaths/);
+});
+
+test('a skybox with a cubemap path hands the renderer six faces to upload', () => {
+    const sky = new Skybox();
+    sky.cubemapPath = 'Assets/Dusk';
+    try {
+        sky.awake();
+        assert.deepEqual(sky.pendingFaces, Skybox.facePathsFor('Assets/Dusk'));
+    } finally {
+        Skybox.active = null;
+    }
+});
+
+test('exposure starts at one on both engines and is drawn through, not merely stored', () => {
+    assert.equal(Skybox.schema.exposure.default, 1);
+    assert.equal(new Skybox().exposure, 1);
+
+    // The browser scales the sky in the fragment shader; C# rides it on the effect's diffuse
+    // colour. A property that parsed and changed nothing would be worse than no property.
+    const source = csharp('SexyBiscuit.Engine', 'Rendering', 'Skybox.cs');
+    assert.match(source, /public float Exposure \{ get; set; \} = 1f;/);
+    assert.equal(source.match(/DiffuseColor\s*=\s*Vector3\.One\s*\*\s*MathF\.Max\(0f, Exposure\)/g)?.length, 2,
+        'both the gradient and the cubemap draw should scale by Exposure');
+});
+
+/**
+ * A WebGL2 stand-in that records what the cubemap path asks of it.
+ *
+ * Only the handful of entry points that path touches, and the constants it names by hand.
+ * The face enums keep their real values because the upload adds an index to POSITIVE_X, so
+ * a stub that numbered them 0..5 would agree with any order at all.
+ */
+function fakeGL() {
+    return {
+        TEXTURE_CUBE_MAP: 0x8513,
+        TEXTURE_CUBE_MAP_POSITIVE_X: 0x8515,
+        TEXTURE0: 0x84C0,
+        RGBA: 0x1908,
+        UNSIGNED_BYTE: 0x1401,
+        UNPACK_FLIP_Y_WEBGL: 0x9240,
+        TEXTURE_MIN_FILTER: 0x2801,
+        TEXTURE_MAG_FILTER: 0x2800,
+        TEXTURE_WRAP_S: 0x2802,
+        TEXTURE_WRAP_T: 0x2803,
+        TEXTURE_WRAP_R: 0x8072,
+        LINEAR: 0x2601,
+        CLAMP_TO_EDGE: 0x812F,
+
+        uploads: [],
+        params: {},
+        flipY: null,
+        bound: null,
+
+        createTexture() { return { id: 'cube' }; },
+        bindTexture(target, texture) { this.bound = { target, texture }; },
+        pixelStorei(name, value) { if (name === this.UNPACK_FLIP_Y_WEBGL) this.flipY = value; },
+        texImage2D(target, level, internalFormat, format, type, source) {
+            this.uploads.push({ target, source });
+        },
+        texParameteri(target, name, value) { this.params[name] = value; },
+    };
+}
+
+/** Six faces that resolve at once, and a record of what was asked for. */
+function fakeAssets(requested) {
+    return { loadTexture: (path) => { requested.push(path); return Promise.resolve({ source: { path } }); } };
+}
+
+test('a cubemap uploads its faces in the order the face names list them', () => {
+    const gl = fakeGL();
+    const sources = Skybox.faceNames.map((name) => ({ name }));
+
+    assert.ok(uploadCubemap(gl, sources));
+    assert.deepEqual(gl.uploads.map((upload) => upload.source.name), Skybox.faceNames);
+
+    // POSITIVE_X + i, and the GL enums run +X, -X, +Y, -Y, +Z, -Z from there — the order
+    // Skybox.faceNames and C#'s Skybox.FaceOrder both use.
+    assert.deepEqual(gl.uploads.map((upload) => upload.target - gl.TEXTURE_CUBE_MAP_POSITIVE_X),
+        [0, 1, 2, 3, 4, 5]);
+
+    // A cube is sampled by direction, not by a texture coordinate: flipping turns the sky
+    // over, and Texture2D leaves the flag on after every upload of its own.
+    assert.equal(gl.flipY, false);
+    assert.equal(gl.params[gl.TEXTURE_WRAP_R], gl.CLAMP_TO_EDGE, 'the third axis clamps too');
+});
+
+test('a skybox waiting on faces is loaded once, however many frames go by', async () => {
+    const requested = [];
+    const sky = new Skybox();
+    sky.cubemapPath = 'Assets/Dusk';
+    sky.actor = { scene: { engine: { assets: fakeAssets(requested) } } };
+
+    const renderer = new RenderSystem3D(fakeGL());
+    try {
+        sky.awake();
+        assert.deepEqual(sky.pendingFaces, Skybox.facePathsFor('Assets/Dusk'));
+
+        // Three frames while six images are in flight: the guard is the whole point, since
+        // pendingFaces stays set until the upload lands.
+        renderer._resolveCubemap(sky);
+        renderer._resolveCubemap(sky);
+        renderer._resolveCubemap(sky);
+        await new Promise((done) => setTimeout(done, 0));
+
+        assert.deepEqual(requested, Skybox.facePathsFor('Assets/Dusk'), 'six faces, asked for once');
+        assert.ok(sky.cubemapTexture, 'the renderer handed the texture back to the skybox');
+        assert.equal(sky.pendingFaces, null, 'and the skybox stopped asking');
+    } finally {
+        Skybox.active = null;
+    }
+});
+
+test('a skybox with no asset manager behind it draws the gradient rather than throwing', () => {
+    const sky = new Skybox();
+    sky.cubemapPath = 'Assets/Dusk';
+
+    const renderer = new RenderSystem3D(fakeGL());
+    try {
+        sky.awake();
+        renderer._resolveCubemap(sky);          // no actor, so no scene, so no assets
+        assert.equal(sky.cubemapTexture, null);
+    } finally {
+        Skybox.active = null;
+    }
+});

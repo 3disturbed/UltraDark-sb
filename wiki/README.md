@@ -56,6 +56,7 @@ start at [`../tutorials/`](../tutorials/README.md).
 | [28. The CookieJar](28-the-cookiejar.md) | The module library: cookies and jars, installing into a project, baking work back out, and the trust gate |
 | [29. Darks Games](29-darksgames.md) | Accounts and social: identity, presence, Join, parties, cloud saves and achievements, in both engines and in the exported build |
 | [30. MakeChibi](30-makechibi.md) | Characters built from primitives at runtime: the recipe, the sixteen-joint rig, procedural and keyed clips, the `Chibi` scripting global, and the editor panel |
+| [31. Editor Workbench Status](31-editor-workbench.md) | The shared editor-workbench contract, current native/browser capability matrix, certification checklist and tracked parity gaps |
 
 ## Reference
 

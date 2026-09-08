@@ -39,7 +39,7 @@ checkout (or in CI through `release.yml`).
    Inside the editor (the `sexybiscuit` MCP server is connected) the same run is `run_tests`
    for the gate and `export_build` with `platforms: ["all"]` for the build, then
    `publish_build` to send the archives — it publishes what is already on disk, so a failed
-   publish never costs another twenty-minute desktop build. `get_build_report` reads a run
+   publish never costs another twenty-minute desktop build. `export_build` with `report=true` reads a run
    that outlived the wait.
 
 5. **Read the summary, not the log.** One line per target. Open the log (`dist/<Platform>/`

@@ -42,12 +42,25 @@ public static class EngineRepoLocator
 
             if (!File.Exists(solution) || !File.Exists(engine)) return null;
 
-            return new EngineRepo(full, engine, editor, tests, solution, Directory.Exists(Path.Combine(full, ".git")));
+            return new EngineRepo(full, engine, editor, tests, solution, IsGitCheckout(full));
         }
         catch (Exception)
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="root"/> is a git checkout. In a linked worktree — which is what
+    /// <c>git worktree add</c> and Claude Code's own <c>--worktree</c> produce — <c>.git</c> is a
+    /// file pointing at the real folder, not a directory, so testing only for a directory reports
+    /// every worktree as "not a checkout": the engine-repo report loses its branch and commit, and
+    /// GitInfo, which follows the pointer correctly, disagrees with the locator that found it.
+    /// </summary>
+    private static bool IsGitCheckout(string root)
+    {
+        string dotGit = Path.Combine(root, ".git");
+        return Directory.Exists(dotGit) || File.Exists(dotGit);
     }
 
     private static EngineRepo? WalkUp(string start)

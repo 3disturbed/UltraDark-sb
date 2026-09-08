@@ -77,7 +77,7 @@ and resizable. Drag a panel by its tab to rearrange; the layout persists in
 | Menu | Items |
 |---|---|
 | **File** | New Scene · Open Scene… · Save Scene (Ctrl+S) · Save Scene As… · Exit |
-| **Edit** | Undo (Ctrl+Z) · Redo (Ctrl+Y) — the scene undo stack, each item named after the change |
+| **Edit** | Undo (Ctrl+Z) · Redo (Ctrl+Y) — currently the MCP/assistant scene history; interactive panel edits are not yet all routed through one transaction history |
 | **Play** | Play (F5) · Pause (F6) · Stop (F7 / Ctrl+S) · Fullscreen Viewport (Ctrl+P) |
 | **View** | 3D Viewport · Render Stats · API Reference · Code Editor · Git · C# Project · Assistant (F8) · Project Manager · Reset Layout |
 | **Tools** | Assistant Settings… · Focus Assistant (F8) · Stop Assistant (Shift+F8) · New / Resume / Stop Assistant Session · Write .mcp.json · Copy MCP Connect Command · Rebuild Engine & Restart |
@@ -92,7 +92,7 @@ and resizable. Drag a panel by its tab to rearrange; the layout persists in
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> (<kbd>Cmd</kbd> on macOS) | The game over the whole window, while playing (again to leave) |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Undo / Redo a scene edit (not while a text field has focus) |
 | <kbd>F8</kbd> / <kbd>Shift</kbd>+<kbd>F8</kbd> | Focus the Assistant composer / stop Claude |
-| <kbd>G</kbd> / <kbd>R</kbd> / <kbd>S</kbd> | Translate / Rotate / Scale gizmo (while hovering the viewport and no text field has focus) |
+| <kbd>W</kbd> / <kbd>E</kbd> / <kbd>R</kbd> | Move / Rotate / Scale gizmo (while hovering the viewport and no text field has focus) |
 
 ---
 
@@ -145,15 +145,28 @@ Types outside that set are listed but not editable — the same constraint as
 **Add Component** search box lists every non-abstract `Component` subclass found
 by reflection.
 
+The native inspector does not yet provide collection, map, nested-object, typed
+asset-picker or per-component specialist widgets. These are tracked as editor
+parity work rather than being represented by inert controls; see
+[31. Editor Workbench Status](31-editor-workbench.md).
+
 ### Viewport
 
 The engine rendering into a `RenderTarget2D`, resized with the panel.
 
 Navigation, while the pointer is over the viewport: **right-drag pans**,
 **scroll zooms** toward the cursor. Gizmo mode is switched with
-<kbd>G</kbd> / <kbd>R</kbd> / <kbd>S</kbd> or the T/R/S buttons in the corner,
-and held in `EditorState.GizmoMode`. The selected actor's handles are drawn and
-draggable.
+<kbd>W</kbd> / <kbd>E</kbd> / <kbd>R</kbd> or the matching buttons in the
+toolbar and held in `EditorState.GizmoMode`.
+
+In the 3D viewport, one selected `Transform3D` can be translated along a local
+axis or in the camera plane, rotated about a local axis or the screen-facing
+axis, and scaled per-axis or uniformly from the centre handle. Translation,
+rotation and scale snapping are configurable in the toolbar. 2D has its own
+single-actor handles. There is **not yet** multi-selection, box selection,
+world/local switching, pivot modes, plane handles, surface/vertex snapping or
+transactional undo for all interactive edits; the workbench status page is the
+authoritative feature record.
 
 Toggle **View → 3D Viewport** (`EditorState.Viewport3D`) to render through the
 3D pipeline instead of the 2D sprite pass. The renderer prefers the *scene's*
@@ -208,7 +221,7 @@ with **View → Render Stats**.
 The palette on the left: every `ActorPresets` entry grouped by category (Basic,
 Geometry, Lights, Cameras, Gameplay, UI, 2D) plus a **Project** group for actor
 classes from the project's own C# assembly. Click to place on the selected layer.
-The same presets back the Create menu and the `place_actor` tool.
+The same presets back the Create menu and `spawn_actor`'s `preset` argument.
 
 ### C# Project
 
@@ -323,7 +336,7 @@ full standalone order — time, game instance, fixed steps with physics, `Update
 tweens, timers, coroutines, `LateUpdate`, audio — with input reaching the game
 only in play mode. A component that throws is disabled after three consecutive
 exceptions (the Output Log names it); anything that escapes ends play mode
-instead of the editor. While paused, the `step_frame` tool advances fixed frames
+instead of the editor. While paused, `play_mode` with `action: "step"` advances fixed frames
 one at a time.
 
 The 2D viewport draws with a plain `SpriteBatch.Begin()` / `End()` and **no
