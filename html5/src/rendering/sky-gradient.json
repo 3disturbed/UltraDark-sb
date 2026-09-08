@@ -1,0 +1,70 @@
+{
+  "$comment": "The colour of the sky, the sun and the ambient light through one day, read by BOTH engines: SexyBiscuit.Engine/Rendering/SkyGradient.cs and html5/src/rendering/SkyGradient.js. A day/night cycle is almost entirely colour, and colour written twice is two different dusks -- the desktop build warm and the web build blue, with nothing able to see it. Time runs 0 to 1 with 0 at midnight and 0.5 at noon. Keys are interpolated linearly and the table wraps, so the value at 0.99 blends towards the key at 0.",
+  "version": 1,
+  "$keyComment": "zenith and horizon paint the sky gradient; sun is the directional light's colour and sunIntensity its strength; ambientSky and ambientGround are the hemisphere ambient; fog is the distance haze and fogDensity how thick it is.",
+  "keys": [
+    {
+      "time": 0.00, "name": "midnight",
+      "zenith": "#05070f", "horizon": "#0d1220",
+      "sun": "#33406b", "sunIntensity": 0.06,
+      "ambientSky": "#141a2e", "ambientGround": "#0a0c14",
+      "fog": "#0a0e1a", "fogDensity": 0.030
+    },
+    {
+      "time": 0.21, "name": "astronomical dawn",
+      "zenith": "#0a1024", "horizon": "#1d2338",
+      "sun": "#4a4f78", "sunIntensity": 0.10,
+      "ambientSky": "#1c2440", "ambientGround": "#12141d",
+      "fog": "#151a2a", "fogDensity": 0.034
+    },
+    {
+      "time": 0.26, "name": "sunrise",
+      "zenith": "#2a3a63", "horizon": "#d98a52",
+      "sun": "#ff9d5c", "sunIntensity": 0.55,
+      "ambientSky": "#43506f", "ambientGround": "#3a2c22",
+      "fog": "#8a7a72", "fogDensity": 0.028
+    },
+    {
+      "time": 0.32, "name": "morning",
+      "zenith": "#3f6fb5", "horizon": "#a8c4dd",
+      "sun": "#ffd9a8", "sunIntensity": 0.90,
+      "ambientSky": "#6d8ab5", "ambientGround": "#4a4438",
+      "fog": "#b6c6d6", "fogDensity": 0.014
+    },
+    {
+      "time": 0.50, "name": "noon",
+      "zenith": "#3a5ca8", "horizon": "#b2c6e0",
+      "sun": "#fff6e2", "sunIntensity": 1.00,
+      "ambientSky": "#7091c8", "ambientGround": "#4a4438",
+      "fog": "#c3d2e2", "fogDensity": 0.010
+    },
+    {
+      "time": 0.68, "name": "afternoon",
+      "zenith": "#3f6ab0", "horizon": "#c1c9d6",
+      "sun": "#ffe9c4", "sunIntensity": 0.88,
+      "ambientSky": "#6f88b4", "ambientGround": "#4a4034",
+      "fog": "#bcc6d2", "fogDensity": 0.014
+    },
+    {
+      "time": 0.74, "name": "sunset",
+      "zenith": "#2f3a72", "horizon": "#e08050",
+      "sun": "#ff8442", "sunIntensity": 0.50,
+      "ambientSky": "#4a4a7a", "ambientGround": "#3d2b1f",
+      "fog": "#8c7166", "fogDensity": 0.026
+    },
+    {
+      "time": 0.79, "name": "dusk",
+      "zenith": "#131a38", "horizon": "#3b3358",
+      "sun": "#5c4c7a", "sunIntensity": 0.16,
+      "ambientSky": "#25294a", "ambientGround": "#14131c",
+      "fog": "#2a2740", "fogDensity": 0.032
+    },
+    {
+      "time": 1.00, "name": "midnight",
+      "zenith": "#05070f", "horizon": "#0d1220",
+      "sun": "#33406b", "sunIntensity": 0.06,
+      "ambientSky": "#141a2e", "ambientGround": "#0a0c14",
+      "fog": "#0a0e1a", "fogDensity": 0.030
+    }
+  ]
+}

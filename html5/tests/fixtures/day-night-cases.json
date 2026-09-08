@@ -1,0 +1,399 @@
+{
+  "$comment": "Golden day/night samples, read by BOTH engines: SexyBiscuit.Tests/TimeOfDayTests.cs and html5/tests/timeOfDay.test.js. A day/night cycle is a clock and a colour ramp, and both are pure arithmetic that two independent implementations agree on only where something forces them to. A sun elevation off by a degree moves dawn; a channel off by a byte makes the desktop dusk warm and the web dusk blue. Neither would fail any other test in this repository. sunTilt is 35 for every sample, which is the component default.",
+  "version": 1,
+  "sunTilt": 35,
+  "sunAzimuth": 90,
+  "samples": [
+    {
+      "time": 0,
+      "clock": "00:00",
+      "phase": "Night",
+      "sunElevation": -72.5,
+      "darkness": 1,
+      "isNight": true,
+      "sunDirection": [
+        0,
+        0.95372,
+        -0.30071
+      ],
+      "sky": {
+        "zenith": "#05070f",
+        "horizon": "#0d1220",
+        "sun": "#33406b",
+        "sunIntensity": 0.06,
+        "ambientSky": "#141a2e",
+        "ambientGround": "#0a0c14",
+        "fog": "#0a0e1a",
+        "fogDensity": 0.03
+      }
+    },
+    {
+      "time": 0.05,
+      "clock": "01:12",
+      "phase": "Night",
+      "sunElevation": -65.0993,
+      "darkness": 1,
+      "isNight": true,
+      "sunDirection": [
+        0.13011,
+        0.90704,
+        -0.40044
+      ],
+      "sky": {
+        "zenith": "#060914",
+        "horizon": "#111626",
+        "sun": "#38446e",
+        "sunIntensity": 0.06952,
+        "ambientSky": "#161c32",
+        "ambientGround": "#0c0e16",
+        "fog": "#0d111e",
+        "fogDensity": 0.030952
+      }
+    },
+    {
+      "time": 0.21,
+      "clock": "05:02",
+      "phase": "Night",
+      "sunElevation": -13.7201,
+      "darkness": 1,
+      "isNight": true,
+      "sunDirection": [
+        0.94095,
+        0.23718,
+        -0.24159
+      ],
+      "sky": {
+        "zenith": "#0a1024",
+        "horizon": "#1d2338",
+        "sun": "#4a4f78",
+        "sunIntensity": 0.1,
+        "ambientSky": "#1c2440",
+        "ambientGround": "#12141d",
+        "fog": "#151a2a",
+        "fogDensity": 0.034
+      }
+    },
+    {
+      "time": 0.24,
+      "clock": "05:46",
+      "phase": "Dawn",
+      "sunElevation": -3.4332,
+      "darkness": 0.7861,
+      "isNight": true,
+      "sunDirection": [
+        0.99624,
+        0.05988,
+        -0.06268
+      ],
+      "sky": {
+        "zenith": "#1d294a",
+        "horizon": "#8e6148",
+        "sun": "#b77e67",
+        "sunIntensity": 0.37,
+        "ambientSky": "#333e5c",
+        "ambientGround": "#2a2220",
+        "fog": "#5b5455",
+        "fogDensity": 0.0304
+      }
+    },
+    {
+      "time": 0.26,
+      "clock": "06:14",
+      "phase": "Dawn",
+      "sunElevation": 3.4332,
+      "darkness": 0.2139,
+      "isNight": false,
+      "sunDirection": [
+        0.99624,
+        -0.05988,
+        0.06268
+      ],
+      "sky": {
+        "zenith": "#2a3a63",
+        "horizon": "#d98a52",
+        "sun": "#ff9d5c",
+        "sunIntensity": 0.55,
+        "ambientSky": "#43506f",
+        "ambientGround": "#3a2c22",
+        "fog": "#8a7a72",
+        "fogDensity": 0.028
+      }
+    },
+    {
+      "time": 0.3,
+      "clock": "07:12",
+      "phase": "Day",
+      "sunElevation": 17.1404,
+      "darkness": 0,
+      "isNight": false,
+      "sunDirection": [
+        0.90882,
+        -0.29471,
+        0.29529
+      ],
+      "sky": {
+        "zenith": "#385d9a",
+        "horizon": "#b8b1af",
+        "sun": "#ffc58f",
+        "sunIntensity": 0.78333,
+        "ambientSky": "#5f779e",
+        "ambientGround": "#453c31",
+        "fog": "#a7adb5",
+        "fogDensity": 0.018667
+      }
+    },
+    {
+      "time": 0.32,
+      "clock": "07:41",
+      "phase": "Day",
+      "sunElevation": 23.9584,
+      "darkness": 0,
+      "isNight": false,
+      "sunDirection": [
+        0.82687,
+        -0.40607,
+        0.38909
+      ],
+      "sky": {
+        "zenith": "#3f6fb5",
+        "horizon": "#a8c4dd",
+        "sun": "#ffd9a8",
+        "sunIntensity": 0.9,
+        "ambientSky": "#6d8ab5",
+        "ambientGround": "#4a4438",
+        "fog": "#b6c6d6",
+        "fogDensity": 0.014
+      }
+    },
+    {
+      "time": 0.41,
+      "clock": "09:50",
+      "phase": "Day",
+      "sunElevation": 53.6344,
+      "darkness": 0,
+      "isNight": false,
+      "sunDirection": [
+        0.31771,
+        -0.80525,
+        0.50063
+      ],
+      "sky": {
+        "zenith": "#3d66af",
+        "horizon": "#adc5df",
+        "sun": "#ffe8c5",
+        "sunIntensity": 0.95,
+        "ambientSky": "#6f8ebf",
+        "ambientGround": "#4a4438",
+        "fog": "#bdccdc",
+        "fogDensity": 0.012
+      }
+    },
+    {
+      "time": 0.5,
+      "clock": "12:00",
+      "phase": "Day",
+      "sunElevation": 72.5,
+      "darkness": 0,
+      "isNight": false,
+      "sunDirection": [
+        0,
+        -0.95372,
+        0.30071
+      ],
+      "sky": {
+        "zenith": "#3a5ca8",
+        "horizon": "#b2c6e0",
+        "sun": "#fff6e2",
+        "sunIntensity": 1,
+        "ambientSky": "#7091c8",
+        "ambientGround": "#4a4438",
+        "fog": "#c3d2e2",
+        "fogDensity": 0.01
+      }
+    },
+    {
+      "time": 0.59,
+      "clock": "14:10",
+      "phase": "Day",
+      "sunElevation": 53.6344,
+      "darkness": 0,
+      "isNight": false,
+      "sunDirection": [
+        -0.31771,
+        -0.80525,
+        0.50063
+      ],
+      "sky": {
+        "zenith": "#3d63ac",
+        "horizon": "#bac8db",
+        "sun": "#fff0d3",
+        "sunIntensity": 0.94,
+        "ambientSky": "#708dbe",
+        "ambientGround": "#4a4236",
+        "fog": "#c0ccda",
+        "fogDensity": 0.012
+      }
+    },
+    {
+      "time": 0.68,
+      "clock": "16:19",
+      "phase": "Day",
+      "sunElevation": 23.9584,
+      "darkness": 0,
+      "isNight": false,
+      "sunDirection": [
+        -0.82687,
+        -0.40607,
+        0.38909
+      ],
+      "sky": {
+        "zenith": "#3f6ab0",
+        "horizon": "#c1c9d6",
+        "sun": "#ffe9c4",
+        "sunIntensity": 0.88,
+        "ambientSky": "#6f88b4",
+        "ambientGround": "#4a4034",
+        "fog": "#bcc6d2",
+        "fogDensity": 0.014
+      }
+    },
+    {
+      "time": 0.71,
+      "clock": "17:02",
+      "phase": "Day",
+      "sunElevation": 13.7201,
+      "darkness": 0,
+      "isNight": false,
+      "sunDirection": [
+        -0.94095,
+        -0.23718,
+        0.24159
+      ],
+      "sky": {
+        "zenith": "#375291",
+        "horizon": "#d0a593",
+        "sun": "#ffb783",
+        "sunIntensity": 0.69,
+        "ambientSky": "#5d6997",
+        "ambientGround": "#44362a",
+        "fog": "#a49c9c",
+        "fogDensity": 0.02
+      }
+    },
+    {
+      "time": 0.74,
+      "clock": "17:46",
+      "phase": "Dusk",
+      "sunElevation": 3.4332,
+      "darkness": 0.2139,
+      "isNight": false,
+      "sunDirection": [
+        -0.99624,
+        -0.05988,
+        0.06268
+      ],
+      "sky": {
+        "zenith": "#2f3a72",
+        "horizon": "#e08050",
+        "sun": "#ff8442",
+        "sunIntensity": 0.5,
+        "ambientSky": "#4a4a7a",
+        "ambientGround": "#3d2b1f",
+        "fog": "#8c7166",
+        "fogDensity": 0.026
+      }
+    },
+    {
+      "time": 0.79,
+      "clock": "18:58",
+      "phase": "Night",
+      "sunElevation": -13.7201,
+      "darkness": 1,
+      "isNight": true,
+      "sunDirection": [
+        -0.94095,
+        0.23718,
+        -0.24159
+      ],
+      "sky": {
+        "zenith": "#131a38",
+        "horizon": "#3b3358",
+        "sun": "#5c4c7a",
+        "sunIntensity": 0.16,
+        "ambientSky": "#25294a",
+        "ambientGround": "#14131c",
+        "fog": "#2a2740",
+        "fogDensity": 0.032
+      }
+    },
+    {
+      "time": 0.85,
+      "clock": "20:24",
+      "phase": "Night",
+      "sunElevation": -34.096,
+      "darkness": 1,
+      "isNight": true,
+      "sunDirection": [
+        -0.66995,
+        0.56058,
+        -0.48674
+      ],
+      "sky": {
+        "zenith": "#0f152c",
+        "horizon": "#2e2a48",
+        "sun": "#504976",
+        "sunIntensity": 0.13143,
+        "ambientSky": "#202542",
+        "ambientGround": "#11111a",
+        "fog": "#212035",
+        "fogDensity": 0.031429
+      }
+    },
+    {
+      "time": 0.95,
+      "clock": "22:48",
+      "phase": "Night",
+      "sunElevation": -65.0993,
+      "darkness": 1,
+      "isNight": true,
+      "sunDirection": [
+        -0.13011,
+        0.90704,
+        -0.40044
+      ],
+      "sky": {
+        "zenith": "#080c19",
+        "horizon": "#181a2d",
+        "sun": "#3d436f",
+        "sunIntensity": 0.08381,
+        "ambientSky": "#181e35",
+        "ambientGround": "#0c0e16",
+        "fog": "#121423",
+        "fogDensity": 0.030476
+      }
+    },
+    {
+      "time": 0.999,
+      "clock": "23:59",
+      "phase": "Night",
+      "sunElevation": -72.4964,
+      "darkness": 1,
+      "isNight": true,
+      "sunDirection": [
+        -0.00189,
+        0.9537,
+        -0.30076
+      ],
+      "sky": {
+        "zenith": "#05070f",
+        "horizon": "#0d1220",
+        "sun": "#33406b",
+        "sunIntensity": 0.06048,
+        "ambientSky": "#141a2e",
+        "ambientGround": "#0a0c14",
+        "fog": "#0a0e1a",
+        "fogDensity": 0.03001
+      }
+    }
+  ]
+}

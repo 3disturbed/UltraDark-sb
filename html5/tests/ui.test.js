@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { UiCanvas, ANCHORS, widestLine } from '../src/ui/UiCanvas.js';
+import { ScriptUi, ANCHORS, widestLine } from '../src/ui/ScriptUi.js';
 import { measure, measureHeight, GLYPH_WIDTH, GLYPH_HEIGHT } from '../src/ui/BitmapFont.js';
 import font from '../src/ui/font5x7.json' with { type: 'json' };
 
@@ -41,7 +41,7 @@ test('the C# engine embeds the same font file rather than a copy of it', () => {
 });
 
 test('an anchored element stays put when the window changes size', () => {
-    const ui = new UiCanvas({ width: 800, height: 600 });
+    const ui = new ScriptUi({ width: 800, height: 600 });
     const badge = ui.add('panel', { anchor: 'bottomright', x: -12, y: -12, width: 80, height: 28 });
 
     const small = ui.rectOf(badge);
@@ -74,12 +74,12 @@ test('the host keeps the UI viewport in step with the drawing buffer', () => {
     assert.match(body, /this\.ui\??\.setViewport\(/,
         'EngineHost.resize() does not send the new size to the UI canvas');
 
-    assert.doesNotMatch(source, /new UiCanvas\(\{\s*width:\s*this\.canvas2D\.width/,
+    assert.doesNotMatch(source, /new ScriptUi\(\{\s*width:\s*this\.canvas2D\.width/,
         'the UI canvas is sized from an un-resized canvas, which is 300x150');
 });
 
 test('every anchor name resolves, and centre really is the centre', () => {
-    const ui = new UiCanvas({ width: 1000, height: 500 });
+    const ui = new ScriptUi({ width: 1000, height: 500 });
     for (const name of Object.keys(ANCHORS)) {
         const el = ui.add('panel', { anchor: name, width: 100, height: 50 });
         const r = ui.rectOf(el);
@@ -92,7 +92,7 @@ test('every anchor name resolves, and centre really is the centre', () => {
 });
 
 test('a click is a release inside the element, and only for one frame', () => {
-    const ui = new UiCanvas({ width: 400, height: 300 });
+    const ui = new ScriptUi({ width: 400, height: 300 });
     const button = ui.add('button', { x: 100, y: 100, width: 80, height: 30, text: 'GO' });
 
     ui.setPointer(120, 110, true); ui.update();
@@ -107,7 +107,7 @@ test('a click is a release inside the element, and only for one frame', () => {
 });
 
 test('a release outside the element is not a click', () => {
-    const ui = new UiCanvas({ width: 400, height: 300 });
+    const ui = new ScriptUi({ width: 400, height: 300 });
     const button = ui.add('button', { x: 100, y: 100, width: 80, height: 30 });
 
     ui.setPointer(10, 10, true); ui.update();
@@ -116,7 +116,7 @@ test('a release outside the element is not a click', () => {
 });
 
 test('only buttons are interactive, so a label never eats a click', () => {
-    const ui = new UiCanvas({ width: 400, height: 300 });
+    const ui = new ScriptUi({ width: 400, height: 300 });
     const label = ui.add('label', { x: 0, y: 0, width: 400, height: 300, text: 'hello' });
 
     ui.setPointer(200, 150, true); ui.update();
@@ -135,7 +135,7 @@ test('measuring matches what drawing will lay down', () => {
 });
 
 test('clear takes everything away', () => {
-    const ui = new UiCanvas({});
+    const ui = new ScriptUi({});
     const a = ui.add('panel', {});
     ui.add('label', { text: 'x' });
     ui.clear();
@@ -144,12 +144,12 @@ test('clear takes everything away', () => {
 });
 
 test('an unknown element kind is refused rather than silently ignored', () => {
-    const ui = new UiCanvas({});
+    const ui = new ScriptUi({});
     assert.throws(() => ui.add('dropdown', {}), /unknown element kind/);
 });
 
 test('a label with no size measures itself, so anchoring works without hand-measuring', () => {
-    const ui = new UiCanvas({ width: 1000, height: 500 });
+    const ui = new ScriptUi({ width: 1000, height: 500 });
 
     const right = ui.add('label', { anchor: 'bottomright', x: -12, y: -12, text: 'bottom right', scale: 2 });
     const r = ui.rectOf(right);

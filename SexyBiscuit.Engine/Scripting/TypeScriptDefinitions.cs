@@ -345,6 +345,51 @@ public static class TypeScriptDefinitions
         }
 
         // ---------------------------------------------------------------------------
+        // Chibi — MakeChibi's characters
+        // ---------------------------------------------------------------------------
+
+        /**
+         * Spawning, dressing and animating a chibi character.
+         *
+         * These are namespace functions rather than members of the actor you get back,
+         * because a script-created actor proxy has no attachTo of its own.
+         */
+        declare namespace Chibi {
+            /**
+             * Spawns a character from a `.chibi` recipe under Assets/.
+             *
+             * The recipe is read from disk, so the body appears a frame or two later;
+             * the actor itself is usable at once.
+             */
+            function spawn(recipePath: string, x?: number, y?: number, z?: number): ActorProxy | null;
+
+            /** A coordinated random character. The same seed is always the same character. */
+            function random(seed: number, x?: number, y?: number, z?: number): ActorProxy | null;
+
+            /**
+             * Plays a clip, cross-fading over `blend` seconds.
+             * Locomotion: "idle", "walk", "run". Keyed: "wave", "hit", "jump", "cheer",
+             * "sit", "die". False for a name that is neither.
+             */
+            function play(chibi: ActorProxy, clip: string, blend?: number): boolean;
+
+            /** Stops whatever is playing, returning the character to rest. */
+            function stop(chibi: ActorProxy): void;
+
+            /** Repaints one colour slot: skin, hair, eyes, top, bottom, shoes, accent. */
+            function setColour(chibi: ActorProxy, slot: string, hex: string): boolean;
+
+            /** Swaps one style slot — head, hair, eyes, body, legs, feet — and rebuilds. */
+            function setStyle(chibi: ActorProxy, slot: string, variant: string): boolean;
+
+            /** Hangs an actor off a socket: Head, Face, Hand_L, Hand_R, Back. */
+            function attach(chibi: ActorProxy, socket: string, actor: ActorProxy): boolean;
+
+            /** The socket's own actor, for reading where it is. Null for an unknown name. */
+            function socket(chibi: ActorProxy, socket: string): ActorProxy | null;
+        }
+
+        // ---------------------------------------------------------------------------
         // Lifecycle function stubs — define these in your script as needed
         // ---------------------------------------------------------------------------
 

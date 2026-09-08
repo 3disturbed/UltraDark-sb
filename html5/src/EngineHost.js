@@ -24,7 +24,14 @@ import { AudioManager } from './audio/AudioManager.js';
 import { SpriteBatch } from './rendering/SpriteBatch.js';
 import { RenderSystem3D } from './rendering/RenderSystem3D.js';
 import { Camera2D } from './rendering/Camera2D.js';
+import { ScriptUi } from './ui/ScriptUi.js';
 import { UiCanvas } from './ui/UiCanvas.js';
+import { paintAll as paintUiCanvases } from './ui/UiPainter.js';
+import { GraphicsMenu } from './ui/GraphicsMenu.js';
+import { GraphicsSettings, loadGraphicsSettings, saveGraphicsSettings } from './rendering/GraphicsSettings.js';
+import { GraphicsCapabilities } from './rendering/GraphicsCapabilities.js';
+import { GraphicsBenchmark, describe as describeBenchmark } from './debug/GraphicsBenchmark.js';
+import { PlayerPrefs } from './save/PlayerPrefs.js';
 import { PhysicsSystem2D } from './physics/PhysicsSystem2D.js';
 import { PhysicsSystem3D } from './physics/PhysicsSystem3D.js';
 import { GameInstance } from './gameplay/GameInstance.js';
@@ -38,6 +45,10 @@ export class EngineConfig {
         this.windowHeight = init.windowHeight ?? 720;
         this.fullscreen = init.fullscreen ?? false;
         this.vsync = init.vsync ?? true;
+
+        // The quality preset a fresh install starts on, or empty to probe the machine.
+        // Only a starting point either way: a player's saved choice wins.
+        this.graphicsPreset = init.graphicsPreset ?? '';
         this.showCursor = init.showCursor ?? true;
         this.allowResize = init.allowResize ?? true;
 
@@ -87,6 +98,7 @@ export class EngineConfig {
             showCursor: read('showCursor'),
             allowResize: read('allowResize'),
             startScene: read('startScene'),
+            graphicsPreset: read('graphicsPreset'),
             fixedTimestep: read('fixedTimestep'),
             maxFixedStepsPerFrame: read('maxFixedStepsPerFrame'),
             enable3D: read('enable3D'),
@@ -230,7 +242,7 @@ export class EngineHost {
         // first resize(), and a freshly created <canvas> with no width/height
         // attributes is 300x150. Taking that would leave UI.width at 300 for the
         // life of the page. resize() is what keeps it right from here on.
-        this.ui = new UiCanvas({
+        this.ui = new ScriptUi({
             width: this.config.windowWidth,
             height: this.config.windowHeight,
         });
@@ -238,6 +250,15 @@ export class EngineHost {
         // Input listens on the top canvas: it is the one the pointer actually hits.
         this.input.attach(this.canvas2D);
         if (!this.config.showCursor) this.input.hideCursor();
+
+        // After the WebGL context, because the probe asks it what it can do.
+        this._graphicsMenu = null;
+        this._benchmark = null;
+
+        /** The key that opens the settings screen, or null to disable it. */
+        this.graphicsMenuKey = 'F10';
+
+        this.initialiseGraphics();
 
         this.resize();
         this._watchResize();
@@ -349,6 +370,19 @@ export class EngineHost {
         // Input runs on unscaled time so menus stay live while the game is paused.
         if (pumpInput) this.input.update(unscaledDt);
 
+        // Before the game ticks, so a script reading node.clicked in update() sees this
+        // frame's click rather than the previous one's. Ahead of the simulate check as
+        // well: a paused editor still has to be able to drive a menu.
+        if (pumpInput) this._updateUiCanvases(unscaledDt);
+
+        if (pumpInput && this.graphicsMenuKey && this.input?.isKeyPressed?.(this.graphicsMenuKey)) {
+            this.toggleGraphicsMenu();
+        }
+
+        // Unscaled, so a game paused behind the menu still drives it.
+        this._graphicsMenu?.tick();
+        this._tickBenchmark(unscaledDt);
+
         // Not simulating: the clock and input still advance, so the editor's own
         // camera and its panels keep working, but the world is left alone.
         if (!this.simulate) {
@@ -432,6 +466,195 @@ export class EngineHost {
             this.ui.update();
             this.ui.draw(this.ctx);
         }
+
+        this._drawUiCanvases();
+    }
+
+    // -------------------------------------------------------------------------
+    // Graphics settings
+    // -------------------------------------------------------------------------
+
+    /**
+     * Picks the settings this session starts on, and applies them.
+     *
+     * A saved choice always wins. Failing that the project may pin a preset -- a
+     * pixel-art 2D game runs at Ultra on a netbook, and probing it down would turn its
+     * own post-processing off for no reason -- and only when neither exists is the
+     * machine measured. Probing on every launch would silently undo the choice of
+     * anybody who had deliberately turned something down.
+     */
+    initialiseGraphics() {
+        this.capabilities = GraphicsCapabilities.probe(this.gl ?? null);
+
+        let settings = loadGraphicsSettings(PlayerPrefs);
+        if (!settings) {
+            settings = new GraphicsSettings();
+            settings.applyPreset(this.config.graphicsPreset || this.capabilities.suggestPreset());
+        }
+
+        this.applyGraphics(settings);
+
+        // A laptop unplugged mid-session is exactly when a battery preset earns its
+        // place, so the answer is asked for even though it arrives late.
+        this.capabilities.probeBattery?.();
+        return settings;
+    }
+
+    /** Adopts a settings object and pushes every value to its real owner. */
+    applyGraphics(settings) {
+        this.graphics = settings;
+        settings.apply(this);
+    }
+
+    /**
+     * The engine's graphics settings screen, built on first use.
+     *
+     * Every game gets this without asking for it, which is the point: a settings screen
+     * each game writes for itself is a settings screen most games never write.
+     */
+    get graphicsMenu() {
+        if (!this._graphicsMenu) this._graphicsMenu = this._buildGraphicsMenu();
+        return this._graphicsMenu;
+    }
+
+    /** Whether the settings screen is currently up. */
+    get isGraphicsMenuOpen() { return this._graphicsMenu?.isOpen ?? false; }
+
+    /** Opens the settings screen. */
+    openGraphicsMenu() { this.graphicsMenu.open(); }
+
+    /** Opens the settings screen, or closes it if it is already up. */
+    toggleGraphicsMenu() {
+        if (this.isGraphicsMenuOpen) this._graphicsMenu.close();
+        else this.graphicsMenu.open();
+    }
+
+    _buildGraphicsMenu() {
+        if (!this.graphics) this.initialiseGraphics();
+
+        this._benchmark = new GraphicsBenchmark();
+
+        const menu = new GraphicsMenu(this.graphics, this.capabilities);
+        menu.onChanged = (settings) => {
+            this.applyGraphics(settings);
+            saveGraphicsSettings(settings, PlayerPrefs);
+        };
+        menu.onBenchmark = () => this._startBenchmark();
+        return menu;
+    }
+
+    /**
+     * Switches to the benchmark preset and starts timing.
+     *
+     * The player's own settings are kept and put back when the run ends. A benchmark
+     * that left the machine on Ultra afterwards would be a benchmark that made every
+     * laptop unplayable to run once.
+     */
+    _startBenchmark() {
+        if (!this._benchmark || !this._graphicsMenu) return;
+
+        this._benchmark.restore = this.graphics.clone();
+
+        const running = this.graphics.clone();
+        running.applyPreset('benchmark');
+        this.applyGraphics(running);
+
+        this._graphicsMenu.adopt(running, this.capabilities);
+        this._graphicsMenu.note = 'Running…';
+        this._graphicsMenu.refresh();
+        this._benchmark.start();
+    }
+
+    _tickBenchmark(unscaledDt) {
+        if (!this._benchmark?.isRunning) return;
+
+        if (this._graphicsMenu) {
+            this._graphicsMenu.note = `Running… ${Math.round(this._benchmark.progress * 100)}%`;
+            this._graphicsMenu.refresh();
+        }
+
+        const result = this._benchmark.tick(unscaledDt, this.renderer3D?.stats ?? null);
+        if (!result) return;
+
+        if (this._benchmark.restore) this.applyGraphics(this._benchmark.restore);
+
+        if (this._graphicsMenu) {
+            this._graphicsMenu.adopt(this.graphics, this.capabilities);
+            this._graphicsMenu.note = describeBenchmark(result);
+            this._graphicsMenu.refresh();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // The retained UI
+    // -------------------------------------------------------------------------
+
+    /**
+     * Lays out every UiCanvas and feeds it this frame's input.
+     *
+     * Layout happens here rather than in the paint pass because hit-testing needs
+     * this frame's rectangles, and the paint pass runs after the game has had its
+     * turn. A clean tree costs the dirty-flag check and nothing more.
+     */
+    _updateUiCanvases(unscaledDt) {
+        if (UiCanvas.all.length === 0) return;
+
+        const frame = this._buildUiInputFrame(unscaledDt);
+        const width = this.canvas2D?.width ?? this.config.windowWidth;
+        const height = this.canvas2D?.height ?? this.config.windowHeight;
+
+        // A copy, because a script reacting to a click may destroy a canvas.
+        for (const canvas of [...UiCanvas.all]) {
+            canvas.setViewport(width, height);
+            canvas.layout();
+            canvas.input.update(frame);
+        }
+    }
+
+    _buildUiInputFrame(unscaledDt) {
+        const input = this.input;
+        const pad = input?.isGamepadConnected?.() ? input.getGamepad(0) : null;
+        const stick = pad?.leftStick ?? { x: 0, y: 0 };
+        const typed = input?.typedText ?? '';
+
+        // The stick's y is up-positive and the UI's is down-positive, so the axis is
+        // flipped once here rather than in every direction test downstream.
+        return {
+            deltaTime: unscaledDt,
+            pointer: { x: input?.mousePosition?.x ?? -1, y: input?.mousePosition?.y ?? -1 },
+            pointerDelta: { x: input?.mouseDelta?.x ?? 0, y: input?.mouseDelta?.y ?? 0 },
+            pointerDown: input?.isMouseButtonDown?.() ?? false,
+            pointerIsTouch: (input?.touch?.touches?.length ?? 0) > 0,
+            wheel: input?.scrollDelta ?? 0,
+            navAxis: { x: stick.x, y: -stick.y },
+            navUp: input?.isKeyPressed?.('ArrowUp') || (pad?.isButtonPressed?.('DPadUp') ?? false),
+            navDown: input?.isKeyPressed?.('ArrowDown') || (pad?.isButtonPressed?.('DPadDown') ?? false),
+            navLeft: input?.isKeyPressed?.('ArrowLeft') || (pad?.isButtonPressed?.('DPadLeft') ?? false),
+            navRight: input?.isKeyPressed?.('ArrowRight') || (pad?.isButtonPressed?.('DPadRight') ?? false),
+            confirm: input?.isKeyPressed?.('Enter') || input?.isKeyPressed?.('Space')
+                || (pad?.isButtonPressed?.('A') ?? false),
+            cancel: input?.isKeyPressed?.('Escape') || (pad?.isButtonPressed?.('B') ?? false),
+            typed: typed.replaceAll('\b', ''),
+            backspace: typed.includes('\b'),
+        };
+    }
+
+    /**
+     * Paints every canvas over the world, outside the camera transform.
+     *
+     * The UI this replaces drew through Component.draw, inside the camera-transformed
+     * world batch, so a HUD panned, zoomed and shook with the camera. Painting here is
+     * the whole reason UiCanvas is not a drawing component.
+     */
+    _drawUiCanvases() {
+        if (!this.ctx || UiCanvas.all.length === 0) return;
+
+        const ring = UiCanvas.all[0].input.focus.modes.showFocusRing;
+        paintUiCanvases(this.ctx, this.canvas2D.width, this.canvas2D.height, {
+            showFocusRing: ring,
+            texture: (path) => this.assets?.get(path) ?? null,
+            time: Time.realtimeSinceStartup,
+        });
     }
 
     // -------------------------------------------------------------------------

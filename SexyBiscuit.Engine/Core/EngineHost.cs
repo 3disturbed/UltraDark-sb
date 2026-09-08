@@ -1,5 +1,7 @@
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using SexyBiscuit.Engine.Animation;
 using SexyBiscuit.Engine.Assets;
 using SexyBiscuit.Engine.Audio;
@@ -120,6 +122,8 @@ public sealed class EngineHost : IDisposable
         Renderer3D = new RenderSystem3D();
         Renderer3D.Initialize(graphicsDevice);
 
+        InitialiseGraphics();
+
         GameInstance = Config.GameInstanceFactory?.Invoke() ?? new GameInstance();
         GameInstance.InternalInit();
         GameInstance.InternalStart();
@@ -153,6 +157,17 @@ public sealed class EngineHost : IDisposable
             var backBuffer = GraphicsDevice.PresentationParameters;
             Input.Touch.SetScreenSize(backBuffer.BackBufferWidth, backBuffer.BackBufferHeight);
         }
+
+        // Before the game ticks, so a script reading UiNode.Clicked in Update sees this
+        // frame's click rather than the previous one's.
+        if (pumpInput) UpdateUiCanvases(unscaledDt);
+
+        if (pumpInput && GraphicsMenuKey != Keys.None && Input.IsKeyPressed(GraphicsMenuKey))
+            ToggleGraphicsMenu();
+
+        // Unscaled, so a game paused behind the menu still drives it.
+        _graphicsMenu?.Tick();
+        TickBenchmark(unscaledDt);
 
         GameInstance.InternalTick(dt);
 
@@ -210,6 +225,7 @@ public sealed class EngineHost : IDisposable
         Renderer2D.RenderScene(SpriteBatch, scene, Rendering.Camera2D.Main);
 
         DrawScriptUi();
+        DrawUiCanvases();
     }
 
     /// <summary>
@@ -237,6 +253,233 @@ public sealed class EngineHost : IDisposable
         SpriteBatch.Begin(blendState: BlendState.NonPremultiplied, samplerState: SamplerState.PointClamp);
         ui.Draw(SpriteBatch);
         SpriteBatch.End();
+    }
+
+    // -------------------------------------------------------------------------
+    // Graphics settings
+    // -------------------------------------------------------------------------
+
+    /// <summary>The quality settings currently in force.</summary>
+    public Rendering.GraphicsSettings Graphics { get; private set; } = new();
+
+    /// <summary>
+    /// Applies the back-buffer half of a settings change: resolution, fullscreen, vsync
+    /// and multisampling. Set by whatever owns the window.
+    /// </summary>
+    /// <remarks>
+    /// A delegate because the <c>GraphicsDeviceManager</c> belongs to the MonoGame
+    /// <c>Game</c>, which the host deliberately does not have — an editor and a headless
+    /// server run this same loop. Nothing in this repository had ever called
+    /// <c>ApplyChanges</c>, so changing a resolution at runtime was not merely
+    /// unimplemented but impossible.
+    /// </remarks>
+    public Action<Rendering.GraphicsSettings>? ApplyDisplaySettings { get; set; }
+
+    /// <summary>What this machine can actually do, probed once at startup.</summary>
+    public Rendering.GraphicsCapabilities Capabilities { get; private set; } = new();
+
+    /// <summary>Adopts a settings object and pushes every value to its real owner.</summary>
+    public void ApplyGraphics(Rendering.GraphicsSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        Graphics = settings;
+        settings.Apply(this);
+    }
+
+    /// <summary>
+    /// Picks the settings this session starts on, and applies them.
+    /// </summary>
+    /// <remarks>
+    /// A saved choice always wins. Failing that the project may pin a preset — a
+    /// pixel-art 2D game runs at Ultra on a netbook, and probing it down would turn its
+    /// own post-processing off for no reason — and only when neither exists is the
+    /// machine measured. Probing on every launch would silently undo the choice of
+    /// anybody who had deliberately turned something down.
+    /// </remarks>
+    private void InitialiseGraphics()
+    {
+        Capabilities = Rendering.GraphicsCapabilities.Probe(GraphicsDevice, Renderer3D);
+
+        var settings = Rendering.GraphicsSettings.Load();
+        if (settings is null)
+        {
+            settings = new Rendering.GraphicsSettings();
+            settings.ApplyPreset(string.IsNullOrWhiteSpace(Config.GraphicsPreset)
+                ? Capabilities.SuggestPreset()
+                : Config.GraphicsPreset);
+        }
+
+        ApplyGraphics(settings);
+    }
+
+    // -------------------------------------------------------------------------
+    // The graphics menu
+    // -------------------------------------------------------------------------
+
+    private UI.GraphicsMenu?         _graphicsMenu;
+    private Debug.GraphicsBenchmark? _benchmark;
+
+    /// <summary>
+    /// The engine's graphics settings screen, built on first use.
+    /// </summary>
+    /// <remarks>
+    /// Every game gets this without asking for it, which is the point: a settings screen
+    /// each game writes for itself is a settings screen most games never write.
+    /// </remarks>
+    public UI.GraphicsMenu GraphicsMenu => _graphicsMenu ??= BuildGraphicsMenu();
+
+    /// <summary>Whether the settings screen is currently up.</summary>
+    public bool IsGraphicsMenuOpen => _graphicsMenu?.IsOpen ?? false;
+
+    /// <summary>The key that opens the settings screen, or <c>Keys.None</c> to disable it.</summary>
+    public Keys GraphicsMenuKey { get; set; } = Keys.F10;
+
+    /// <summary>Opens the settings screen.</summary>
+    public void OpenGraphicsMenu() => GraphicsMenu.Open();
+
+    /// <summary>Opens the settings screen, or closes it if it is already up.</summary>
+    public void ToggleGraphicsMenu()
+    {
+        if (IsGraphicsMenuOpen) GraphicsMenu.Close();
+        else GraphicsMenu.Open();
+    }
+
+    private UI.GraphicsMenu BuildGraphicsMenu()
+    {
+        _benchmark = new Debug.GraphicsBenchmark();
+
+        var menu = new UI.GraphicsMenu(Graphics, Capabilities)
+        {
+            Changed = settings =>
+            {
+                ApplyGraphics(settings);
+                settings.Save();
+            },
+            BenchmarkRequested = StartBenchmark,
+        };
+
+        return menu;
+    }
+
+    /// <summary>
+    /// Switches to the benchmark preset and starts timing.
+    /// </summary>
+    /// <remarks>
+    /// The player's own settings are kept and put back when the run ends. A benchmark
+    /// that left the machine on Ultra afterwards would be a benchmark that made every
+    /// laptop unplayable to run once.
+    /// </remarks>
+    private void StartBenchmark()
+    {
+        if (_benchmark is null || _graphicsMenu is null) return;
+
+        _benchmark.Restore = Graphics.Clone();
+
+        var running = Graphics.Clone();
+        running.ApplyPreset("benchmark");
+        ApplyGraphics(running);
+
+        _graphicsMenu.Adopt(running, Capabilities);
+        _graphicsMenu.Note = "Running…";
+        _graphicsMenu.Refresh();
+        _benchmark.Start();
+    }
+
+    private void TickBenchmark(float unscaledDt)
+    {
+        if (_benchmark is not { IsRunning: true }) return;
+
+        if (_graphicsMenu != null)
+        {
+            _graphicsMenu.Note = $"Running… {_benchmark.Progress * 100f:0}%";
+            _graphicsMenu.Refresh();
+        }
+
+        Debug.BenchmarkResult? result = _benchmark.Tick(unscaledDt, Renderer3D.Stats);
+        if (result is not { } done) return;
+
+        if (_benchmark.Restore is { } previous) ApplyGraphics(previous);
+
+        if (_graphicsMenu != null)
+        {
+            _graphicsMenu.Adopt(Graphics, Capabilities);
+            _graphicsMenu.Note = done.ToString();
+            _graphicsMenu.Refresh();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // The retained UI
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Lays out every <see cref="UI.UiCanvas"/> and feeds it this frame's input.
+    /// </summary>
+    /// <remarks>
+    /// Layout happens here rather than in the paint pass because hit-testing needs
+    /// this frame's rectangles, and the paint pass runs after the game has had its turn.
+    /// A clean tree costs the dirty-flag check and nothing more.
+    /// </remarks>
+    private void UpdateUiCanvases(float unscaledDt)
+    {
+        if (UI.UiCanvas.All.Count == 0) return;
+
+        var frame = BuildUiInputFrame(unscaledDt);
+        var viewport = GraphicsDevice.Viewport;
+
+        // A copy, because a script reacting to a click is allowed to destroy a canvas.
+        foreach (UI.UiCanvas canvas in new List<UI.UiCanvas>(UI.UiCanvas.All))
+        {
+            canvas.SetViewport(viewport.Width, viewport.Height);
+            canvas.Layout();
+            canvas.Input.Update(frame);
+        }
+    }
+
+    private UI.UiInputFrame BuildUiInputFrame(float unscaledDt)
+    {
+        var pad = Input.IsGamepadConnected(0) ? Input.GetGamepad(0) : null;
+        Vector2 stick = pad?.LeftStick ?? Vector2.Zero;
+
+        // The stick's Y is up-positive and the UI's is down-positive, so the axis is
+        // flipped once here rather than in every direction test below it.
+        return new UI.UiInputFrame
+        {
+            DeltaTime      = unscaledDt,
+            Pointer        = Input.MousePosition,
+            PointerDelta   = Input.MouseDelta,
+            PointerDown    = Input.IsMouseButtonDown(SexyBiscuit.Engine.Input.MouseButton.Left),
+            PointerIsTouch = Input.Touch.Touches.Count > 0,
+            Wheel          = Input.ScrollDelta,
+            NavAxis        = new Vector2(stick.X, -stick.Y),
+            NavUp          = Input.IsKeyPressed(Keys.Up)    || (pad?.IsButtonPressed(Buttons.DPadUp)    ?? false),
+            NavDown        = Input.IsKeyPressed(Keys.Down)  || (pad?.IsButtonPressed(Buttons.DPadDown)  ?? false),
+            NavLeft        = Input.IsKeyPressed(Keys.Left)  || (pad?.IsButtonPressed(Buttons.DPadLeft)  ?? false),
+            NavRight       = Input.IsKeyPressed(Keys.Right) || (pad?.IsButtonPressed(Buttons.DPadRight) ?? false),
+            Confirm        = Input.IsKeyPressed(Keys.Enter) || Input.IsKeyPressed(Keys.Space)
+                                                           || (pad?.IsButtonPressed(Buttons.A) ?? false),
+            Cancel         = Input.IsKeyPressed(Keys.Escape) || (pad?.IsButtonPressed(Buttons.B) ?? false),
+            Typed          = Input.TypedText.Replace("\b", ""),
+            Backspace      = Input.TypedText.Contains('\b') || Input.IsKeyPressed(Keys.Back),
+        };
+    }
+
+    /// <summary>
+    /// Paints every canvas over the world, outside the camera transform.
+    /// </summary>
+    /// <remarks>
+    /// The UI this replaces drew through <c>Component.Draw</c>, inside the camera-transformed
+    /// world batch, so a HUD panned, zoomed and shook with the camera. Painting here is the
+    /// whole reason <see cref="UI.UiCanvas"/> is not a drawing component.
+    /// </remarks>
+    private void DrawUiCanvases()
+    {
+        if (UI.UiCanvas.All.Count == 0) return;
+
+        var viewport = GraphicsDevice.Viewport;
+        bool ring = UI.UiCanvas.All.Count > 0 && UI.UiCanvas.All[0].Input.Focus.Modes.ShowFocusRing;
+
+        UI.UiPainter.PaintAll(SpriteBatch, viewport.Width, viewport.Height, ring);
     }
 
     public void Dispose()

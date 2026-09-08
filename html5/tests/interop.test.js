@@ -16,6 +16,7 @@ import {
     SpriteRenderer, Camera2D, Rigidbody2D, BoxCollider2D, ScriptComponent,
     Light3D, MeshRenderer, Color, Vector2, Vector3, Quaternion,
     EngineConfig, resolveComponent, ActionMap, GamepadState, SCRIPT_HOOKS,
+    MeshPrimitive, getPrimitive, getPrimitiveBounds,
 } from '../src/index.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -362,4 +363,72 @@ test('the C# runtime dispatches every hook the JavaScript bridge does', () => {
 
     const hooks = [...block[1].matchAll(/"(\w+)"/g)].map((m) => m[1]).sort();
     assert.deepEqual(hooks, [...SCRIPT_HOOKS].sort());
+});
+
+test('both engines generate the same set of primitive shapes', () => {
+    // A scene stores a MeshPrimitive by name, so a shape one engine can build and the
+    // other cannot does not fail loudly -- it falls through to a cube. Capsule and Torus
+    // were exactly that for as long as this test did not exist.
+    const csharp = fs.readFileSync(
+        path.join(repoRoot, 'SexyBiscuit.Engine', 'Rendering', 'PrimitiveMesh.cs'), 'utf8');
+
+    const block = csharp.match(/enum MeshPrimitive\s*\{([\s\S]*?)\n\}/);
+    assert.ok(block, 'could not find the C# MeshPrimitive enum');
+
+    // Members are the identifiers at the start of a line, past the XML doc comments.
+    const shapes = [...block[1].matchAll(/^\s{4}(\w+),/gm)].map((m) => m[1]).sort();
+    assert.deepEqual(shapes, Object.keys(MeshPrimitive).sort());
+});
+
+test('every primitive builds geometry with unit normals', () => {
+    // The C# side gets its bounds from the vertices it just built; this side declares
+    // them separately, so a builder that produces nothing still reports a size. Building
+    // each one here is what catches that.
+    for (const shape of Object.keys(MeshPrimitive)) {
+        if (shape === 'None') {
+            assert.equal(getPrimitive(MeshPrimitive.None), null);
+            continue;
+        }
+
+        const geometry = getPrimitive(MeshPrimitive[shape]);
+        assert.ok(geometry, `${shape} built nothing`);
+        assert.ok(geometry.triangleCount > 0, `${shape} has no triangles`);
+        assert.equal(geometry.indices.length % 3, 0, `${shape} has a partial triangle`);
+
+        for (let i = 0; i < geometry.vertices.length; i += 8) {
+            const [nx, ny, nz] = [geometry.vertices[i + 3], geometry.vertices[i + 4], geometry.vertices[i + 5]];
+            const length = Math.hypot(nx, ny, nz);
+            assert.ok(Math.abs(length - 1) < 1e-3,
+                `${shape} vertex ${i / 8} has a normal of length ${length}`);
+        }
+    }
+});
+
+test('a primitive declares the bounds its vertices actually occupy', () => {
+    // getPrimitiveBounds answers before the geometry exists, so nothing forces it to
+    // agree with the builder. It said a quad was flat on the floor when a quad stands
+    // upright, and the renderer culled billboards seen from the side because of it.
+    for (const shape of Object.keys(MeshPrimitive)) {
+        if (shape === 'None') continue;
+
+        const geometry = getPrimitive(MeshPrimitive[shape]);
+        const declared = getPrimitiveBounds(MeshPrimitive[shape]);
+        const min = [Infinity, Infinity, Infinity];
+        const max = [-Infinity, -Infinity, -Infinity];
+
+        for (let i = 0; i < geometry.vertices.length; i += 8) {
+            for (let axis = 0; axis < 3; axis++) {
+                min[axis] = Math.min(min[axis], geometry.vertices[i + axis]);
+                max[axis] = Math.max(max[axis], geometry.vertices[i + axis]);
+            }
+        }
+
+        const actual = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+        const size = [declared.size.x, declared.size.y, declared.size.z];
+
+        for (let axis = 0; axis < 3; axis++) {
+            assert.ok(Math.abs(size[axis] - actual[axis]) < 0.01,
+                `${shape} declares ${size} but its vertices span ${actual}`);
+        }
+    }
 });

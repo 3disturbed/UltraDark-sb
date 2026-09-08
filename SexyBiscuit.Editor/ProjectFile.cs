@@ -5,7 +5,7 @@ namespace SexyBiscuit.Editor;
 public class ProjectFile
 {
     public string ProjectName { get; set; } = "Untitled";
-    public string EngineVersion { get; set; } = "1.0.0";
+    public string EngineVersion { get; set; } = SexyBiscuit.Engine.EngineInfo.Version;
     public string DefaultScene { get; set; } = "";
     public List<string> AssetDirectories { get; set; } = new() { "Assets" };
     public List<string> ScriptDirectories { get; set; } = new() { "Scripts" };

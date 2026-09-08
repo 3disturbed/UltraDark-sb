@@ -94,7 +94,44 @@ public class SBEngine : Game
         Host = new EngineHost(GraphicsDevice, Content, Config);
         Host.Input.CursorVisibilityChanged = visible => IsMouseVisible = visible;
 
+        // Text comes from the window, never from polling Keys: only the platform knows
+        // about keyboard layouts, dead keys and input methods.
+        Window.TextInput += (_, e) => Host.Input.QueueTypedCharacter(e.Character);
+
+        // The device manager is this class's, not the host's, so the host reaches the
+        // back buffer through here. This is the only ApplyChanges call in the engine.
+        Host.ApplyDisplaySettings = ApplyDisplaySettings;
+
         OnEngineReady();
+    }
+
+    /// <summary>
+    /// Pushes the display half of a settings change onto the device.
+    /// </summary>
+    /// <remarks>
+    /// Resolution, fullscreen, vsync and multisampling are all properties of the back
+    /// buffer, so none of them take effect until <c>ApplyChanges</c> recreates it — which
+    /// is why they were previously fixed for the life of the process at whatever the
+    /// constructor was handed.
+    /// </remarks>
+    private void ApplyDisplaySettings(GraphicsSettings settings)
+    {
+        if (settings.ResolutionWidth > 0 && settings.ResolutionHeight > 0)
+        {
+            Graphics.PreferredBackBufferWidth  = settings.ResolutionWidth;
+            Graphics.PreferredBackBufferHeight = settings.ResolutionHeight;
+        }
+
+        Graphics.IsFullScreen                   = settings.Fullscreen;
+        Graphics.SynchronizeWithVerticalRetrace = settings.VSync;
+        Graphics.PreferMultiSampling            = settings.Msaa > 1;
+
+        // Uncapped means uncapped: MonoGame's own fixed step is the wrong tool, because
+        // the engine runs its own fixed-update accumulator on top of a variable frame.
+        IsFixedTimeStep = settings.FrameCap > 0 && !settings.VSync;
+        if (IsFixedTimeStep) TargetElapsedTime = TimeSpan.FromSeconds(1.0 / settings.FrameCap);
+
+        Graphics.ApplyChanges();
     }
 
     protected override void LoadContent()
@@ -164,6 +201,16 @@ public class EngineConfig
     public Color  ClearColour   { get; set; } = Color.CornflowerBlue;
     public bool   HotReload     { get; set; } = true;  // disabled in Release builds
     public string StartScene    { get; set; } = "";
+
+    /// <summary>
+    /// The quality preset a fresh install starts on, or empty to probe the machine.
+    /// </summary>
+    /// <remarks>
+    /// A shipped game usually wants to pin this: a pixel-art 2D game runs at Ultra on a
+    /// netbook, and probing it into "low" would turn its own post-processing off for no
+    /// reason. It is only the starting point either way — a player's saved choice wins.
+    /// </remarks>
+    public string GraphicsPreset { get; set; } = "";
 
     /// <summary>
     /// Runs the 3D render pass before the 2D pass each frame. Turn off for a pure 2D game
@@ -239,6 +286,7 @@ public class EngineConfig
                     case "enablephysics2d":  config.EnablePhysics2D = ReadBool(value, config.EnablePhysics2D); break;
                     case "enablephysics3d":  config.EnablePhysics3D = ReadBool(value, config.EnablePhysics3D); break;
                     case "startscene":       if (value.ValueKind == System.Text.Json.JsonValueKind.String) config.StartScene = value.GetString() ?? ""; break;
+                    case "graphicspreset":   if (value.ValueKind == System.Text.Json.JsonValueKind.String) config.GraphicsPreset = value.GetString() ?? ""; break;
                     case "fixedtimestep":    if (value.TryGetSingle(out float step) && step > 0f) config.FixedTimestep = step; break;
                     case "maxfixedstepsperframe": if (value.TryGetInt32(out int steps) && steps > 0) config.MaxFixedStepsPerFrame = steps; break;
                 }

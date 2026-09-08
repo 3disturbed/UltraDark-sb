@@ -588,3 +588,107 @@ html, body {
     .sb-row-action { opacity: 1; }
     .sb-palette-item { padding: 9px 8px; }
 }
+
+/* ---- MakeChibi ---------------------------------------------------------- */
+
+.sb-chibi-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+}
+
+.sb-chibi-name { flex: 1 1 120px; min-width: 90px; }
+
+.sb-chibi-link {
+    flex: 1 1 100%;
+    color: var(--dim);
+    font-size: 11px;
+}
+.sb-chibi-link.is-loose { font-style: italic; }
+
+.sb-chibi-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex: 1 1 100%;
+}
+
+.sb-chibi-button {
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--panel-2);
+    color: var(--fg);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+.sb-chibi-button:hover { border-color: var(--accent); }
+
+.sb-chibi-tabs {
+    display: flex;
+    gap: 2px;
+    margin: 8px 0 6px;
+}
+
+.sb-chibi-tab {
+    flex: 1;
+    padding: 4px 2px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--dim);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+.sb-chibi-tab.is-active { color: var(--fg); border-bottom-color: var(--accent); }
+
+.sb-chibi-slider { flex: 1; min-width: 0; }
+
+.sb-chibi-readout {
+    width: 34px;
+    text-align: right;
+    color: var(--dim);
+    font-size: 11px;
+}
+
+.sb-chibi-select { flex: 1; min-width: 0; }
+
+.sb-chibi-colour {
+    width: 28px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+}
+
+/* A row of swatches rather than only a picker: the palettes are what keep a
+   random character from looking like mud, and they should be as easy to reach. */
+.sb-chibi-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    flex: 1;
+}
+
+.sb-chibi-swatch {
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    cursor: pointer;
+}
+.sb-chibi-swatch:hover { border-color: var(--accent); }
+
+.sb-chibi-note { color: var(--dim); font-size: 11px; margin: 6px 0; }
+
+.sb-chibi-clips { display: flex; flex-wrap: wrap; gap: 3px; }
+.sb-chibi-clips .sb-palette-item { width: auto; flex: 0 0 auto; }
+.sb-chibi-clips .sb-palette-item.is-active { border-color: var(--accent); color: var(--fg); }

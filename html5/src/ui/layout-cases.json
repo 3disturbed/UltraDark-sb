@@ -1,0 +1,1164 @@
+{
+  "$comment": "Golden layout cases, read by BOTH engines: SexyBiscuit.Tests/UiLayoutTests.cs and html5/tests/uiLayout.test.js. Two independent layout implementations agree only where something forces them to, and reading each other's source with a regex cannot see a numeric disagreement. Every case is pure geometry with fixed sizes -- text measurement is pinned separately by the glyph-table tests, and mixing it in here would make a font change look like a layout bug. Expected rectangles are [x, y, width, height] in canvas units.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "a named anchor hangs the node's own matching corner there",
+      "why": "The flat script UI has always meant both things by 'anchor', and hud-kit, draft-picker and screen-effects all depend on it. These three numbers are the compatibility contract.",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "children": [
+          {
+            "name": "tl",
+            "absolute": true,
+            "anchor": "topleft",
+            "x": 12,
+            "y": 12,
+            "width": 268,
+            "height": 96
+          },
+          {
+            "name": "c",
+            "absolute": true,
+            "anchor": "center",
+            "x": 0,
+            "y": 0,
+            "width": 200,
+            "height": 44
+          },
+          {
+            "name": "br",
+            "absolute": true,
+            "anchor": "bottomright",
+            "x": -12,
+            "y": -12,
+            "width": 100,
+            "height": 30
+          }
+        ]
+      },
+      "expect": {
+        "tl": [
+          12,
+          12,
+          268,
+          96
+        ],
+        "c": [
+          300,
+          278,
+          200,
+          44
+        ],
+        "br": [
+          688,
+          558,
+          100,
+          30
+        ]
+      }
+    },
+    {
+      "name": "a row lays children out along x with the gap between them",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "row",
+        "gap": 10,
+        "children": [
+          {
+            "name": "a",
+            "width": 100,
+            "height": 50
+          },
+          {
+            "name": "b",
+            "width": 100,
+            "height": 50
+          },
+          {
+            "name": "c",
+            "width": 100,
+            "height": 50
+          }
+        ]
+      },
+      "expect": {
+        "a": [
+          0,
+          0,
+          100,
+          50
+        ],
+        "b": [
+          110,
+          0,
+          100,
+          50
+        ],
+        "c": [
+          220,
+          0,
+          100,
+          50
+        ]
+      }
+    },
+    {
+      "name": "grow hands the leftover space to whoever asked for it",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "row",
+        "children": [
+          {
+            "name": "fixed",
+            "width": 100,
+            "height": 50
+          },
+          {
+            "name": "rest",
+            "grow": 1,
+            "height": 50
+          }
+        ]
+      },
+      "expect": {
+        "fixed": [
+          0,
+          0,
+          100,
+          50
+        ],
+        "rest": [
+          100,
+          0,
+          700,
+          50
+        ]
+      }
+    },
+    {
+      "name": "two equal grows split what is left evenly",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "row",
+        "children": [
+          {
+            "name": "a",
+            "grow": 1,
+            "height": 50
+          },
+          {
+            "name": "b",
+            "grow": 1,
+            "height": 50
+          }
+        ]
+      },
+      "expect": {
+        "a": [
+          0,
+          0,
+          400,
+          50
+        ],
+        "b": [
+          400,
+          0,
+          400,
+          50
+        ]
+      }
+    },
+    {
+      "name": "a stretched column gives every child the same width",
+      "why": "This is what makes a menu's buttons line up without the author measuring the longest label.",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "column",
+        "gap": 8,
+        "padding": 16,
+        "crossAlign": "stretch",
+        "children": [
+          {
+            "name": "a",
+            "height": 40
+          },
+          {
+            "name": "b",
+            "height": 40
+          },
+          {
+            "name": "c",
+            "height": 40
+          }
+        ]
+      },
+      "expect": {
+        "a": [
+          16,
+          16,
+          768,
+          40
+        ],
+        "b": [
+          16,
+          64,
+          768,
+          40
+        ],
+        "c": [
+          16,
+          112,
+          768,
+          40
+        ]
+      }
+    },
+    {
+      "name": "main-axis centring puts the spare space on both sides",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "row",
+        "mainAlign": "center",
+        "children": [
+          {
+            "name": "a",
+            "width": 200,
+            "height": 50
+          }
+        ]
+      },
+      "expect": {
+        "a": [
+          300,
+          0,
+          200,
+          50
+        ]
+      }
+    },
+    {
+      "name": "space-between pushes the ends out and shares the rest",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "row",
+        "mainAlign": "spacebetween",
+        "children": [
+          {
+            "name": "a",
+            "width": 100,
+            "height": 50
+          },
+          {
+            "name": "b",
+            "width": 100,
+            "height": 50
+          },
+          {
+            "name": "c",
+            "width": 100,
+            "height": 50
+          }
+        ]
+      },
+      "expect": {
+        "a": [
+          0,
+          0,
+          100,
+          50
+        ],
+        "b": [
+          350,
+          0,
+          100,
+          50
+        ],
+        "c": [
+          700,
+          0,
+          100,
+          50
+        ]
+      }
+    },
+    {
+      "name": "a percentage is a share of the parent's content box",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "children": [
+          {
+            "name": "half",
+            "width": "50%",
+            "height": "25%"
+          }
+        ]
+      },
+      "expect": {
+        "half": [
+          0,
+          0,
+          400,
+          150
+        ]
+      }
+    },
+    {
+      "name": "padding is inside a node and margin is outside it",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "row",
+        "padding": 20,
+        "children": [
+          {
+            "name": "a",
+            "width": 100,
+            "height": 50,
+            "margin": [
+              5,
+              6,
+              7,
+              8
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "a": [
+          25,
+          26,
+          100,
+          50
+        ]
+      }
+    },
+    {
+      "name": "a maximum clamps a size that asked for more",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "children": [
+          {
+            "name": "wide",
+            "width": 1000,
+            "height": 50,
+            "maxWidth": 300
+          }
+        ]
+      },
+      "expect": {
+        "wide": [
+          0,
+          0,
+          300,
+          50
+        ]
+      }
+    },
+    {
+      "name": "a wrapping row starts a new line when the next child will not fit",
+      "viewport": [
+        250,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "row",
+        "wrap": true,
+        "gap": 10,
+        "children": [
+          {
+            "name": "a",
+            "width": 100,
+            "height": 50
+          },
+          {
+            "name": "b",
+            "width": 100,
+            "height": 50
+          },
+          {
+            "name": "c",
+            "width": 100,
+            "height": 50
+          },
+          {
+            "name": "d",
+            "width": 100,
+            "height": 50
+          }
+        ]
+      },
+      "expect": {
+        "a": [
+          0,
+          0,
+          100,
+          50
+        ],
+        "b": [
+          110,
+          0,
+          100,
+          50
+        ],
+        "c": [
+          0,
+          60,
+          100,
+          50
+        ],
+        "d": [
+          110,
+          60,
+          100,
+          50
+        ]
+      }
+    },
+    {
+      "name": "a grid divides the row into equal columns",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "grid",
+        "columns": 3,
+        "gap": 10,
+        "children": [
+          {
+            "name": "c0",
+            "height": 40
+          },
+          {
+            "name": "c1",
+            "height": 40
+          },
+          {
+            "name": "c2",
+            "height": 40
+          },
+          {
+            "name": "c3",
+            "height": 40
+          },
+          {
+            "name": "c4",
+            "height": 40
+          },
+          {
+            "name": "c5",
+            "height": 40
+          }
+        ]
+      },
+      "expect": {
+        "c0": [
+          0,
+          0,
+          260,
+          40
+        ],
+        "c1": [
+          270,
+          0,
+          260,
+          40
+        ],
+        "c2": [
+          540,
+          0,
+          260,
+          40
+        ],
+        "c3": [
+          0,
+          50,
+          260,
+          40
+        ],
+        "c4": [
+          270,
+          50,
+          260,
+          40
+        ],
+        "c5": [
+          540,
+          50,
+          260,
+          40
+        ]
+      }
+    },
+    {
+      "name": "a stretched cross axis fills the line",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "row",
+        "children": [
+          {
+            "name": "tall",
+            "width": 100,
+            "height": "*"
+          }
+        ]
+      },
+      "expect": {
+        "tall": [
+          0,
+          0,
+          100,
+          600
+        ]
+      }
+    },
+    {
+      "name": "a row nested in a column is laid out inside the rect the column gave it",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "column",
+        "padding": 10,
+        "children": [
+          {
+            "name": "bar",
+            "layout": "row",
+            "gap": 5,
+            "height": 50,
+            "width": "*",
+            "children": [
+              {
+                "name": "x",
+                "width": 60,
+                "height": 20
+              },
+              {
+                "name": "y",
+                "width": 60,
+                "height": 20
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "bar": [
+          10,
+          10,
+          780,
+          50
+        ],
+        "x": [
+          10,
+          10,
+          60,
+          20
+        ],
+        "y": [
+          75,
+          10,
+          60,
+          20
+        ]
+      }
+    },
+    {
+      "name": "a scroll region measures its children unbounded and shifts them by the offset",
+      "why": "The unbounded axis is positive infinity on both engines, never zero. Zero-as-unbounded is the classic way two layout engines drift while both look right alone.",
+      "viewport": [
+        800,
+        200
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "column",
+        "scroll": "vertical",
+        "scrollOffset": [
+          0,
+          100
+        ],
+        "children": [
+          {
+            "name": "r0",
+            "width": 100,
+            "height": 60
+          },
+          {
+            "name": "r1",
+            "width": 100,
+            "height": 60
+          },
+          {
+            "name": "r2",
+            "width": 100,
+            "height": 60
+          },
+          {
+            "name": "r3",
+            "width": 100,
+            "height": 60
+          },
+          {
+            "name": "r4",
+            "width": 100,
+            "height": 60
+          }
+        ]
+      },
+      "expect": {
+        "r0": [
+          0,
+          -100,
+          100,
+          60
+        ],
+        "r2": [
+          0,
+          20,
+          100,
+          60
+        ],
+        "r4": [
+          0,
+          140,
+          100,
+          60
+        ]
+      }
+    },
+    {
+      "name": "a scroll offset past the end is clamped to the content that exists",
+      "viewport": [
+        800,
+        200
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "column",
+        "scroll": "vertical",
+        "scrollOffset": [
+          0,
+          9999
+        ],
+        "children": [
+          {
+            "name": "r0",
+            "width": 100,
+            "height": 60
+          },
+          {
+            "name": "r1",
+            "width": 100,
+            "height": 60
+          },
+          {
+            "name": "r2",
+            "width": 100,
+            "height": 60
+          },
+          {
+            "name": "r3",
+            "width": 100,
+            "height": 60
+          },
+          {
+            "name": "r4",
+            "width": 100,
+            "height": 60
+          }
+        ]
+      },
+      "expect": {
+        "r0": [
+          0,
+          -100,
+          100,
+          60
+        ],
+        "r4": [
+          0,
+          140,
+          100,
+          60
+        ]
+      }
+    },
+    {
+      "name": "an absolute child hangs off its parent's content box, not the screen",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "padding": 0,
+        "children": [
+          {
+            "name": "panel",
+            "width": 400,
+            "height": 300,
+            "padding": 20,
+            "children": [
+              {
+                "name": "pin",
+                "absolute": true,
+                "anchor": "bottomright",
+                "x": -5,
+                "y": -5,
+                "width": 50,
+                "height": 20
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "panel": [
+          0,
+          0,
+          400,
+          300
+        ],
+        "pin": [
+          325,
+          255,
+          50,
+          20
+        ]
+      }
+    },
+    {
+      "name": "stretching between two different anchors fills the span",
+      "why": "The widget tree this replaces declared AnchorMax and then ignored it, so nothing could ever stretch without a second manual pass.",
+      "viewport": [
+        800,
+        600
+      ],
+      "tree": {
+        "name": "root",
+        "children": [
+          {
+            "name": "band",
+            "absolute": true,
+            "anchorMin": [
+              0,
+              0
+            ],
+            "anchorMax": [
+              1,
+              0
+            ],
+            "pivot": [
+              0,
+              0
+            ],
+            "offset": [
+              16,
+              8
+            ],
+            "offsetMax": [
+              -16,
+              0
+            ],
+            "height": 40
+          }
+        ]
+      },
+      "expect": {
+        "band": [
+          16,
+          8,
+          768,
+          40
+        ]
+      }
+    },
+    {
+      "name": "a tab strip spreads equal segments across its width",
+      "why": "The painter and the hit test both divide Rect.Width by the option count, so a settings menu's tabs cannot be lit and unclickable.",
+      "viewport": [
+        1280,
+        720
+      ],
+      "tree": {
+        "name": "root",
+        "children": [
+          {
+            "name": "tabs",
+            "type": "tabstrip",
+            "absolute": true,
+            "anchor": "topleft",
+            "x": 0,
+            "y": 0,
+            "width": 480,
+            "height": 32,
+            "options": [
+              "Presets",
+              "Display",
+              "Quality",
+              "Advanced"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tabs": [
+          0,
+          0,
+          480,
+          32
+        ]
+      }
+    },
+    {
+      "name": "a settings row puts a label against a control that takes the rest",
+      "why": "Every row of a graphics menu is this shape. Grow on the control is what stops the author measuring the longest label.",
+      "viewport": [
+        1280,
+        720
+      ],
+      "tree": {
+        "name": "root",
+        "layout": "column",
+        "padding": 16,
+        "crossAlign": "stretch",
+        "children": [
+          {
+            "name": "row",
+            "layout": "row",
+            "gap": 12,
+            "height": 32,
+            "crossAlign": "center",
+            "children": [
+              {
+                "name": "label",
+                "type": "label",
+                "width": 180,
+                "height": 24
+              },
+              {
+                "name": "control",
+                "type": "slider",
+                "grow": 1,
+                "height": 24
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "row": [
+          16,
+          16,
+          1248,
+          32
+        ],
+        "label": [
+          16,
+          20,
+          180,
+          24
+        ],
+        "control": [
+          208,
+          20,
+          1056,
+          24
+        ]
+      }
+    },
+    {
+      "name": "a column of settings rows stacks with an even gap and a common width",
+      "why": "crossAlign stretch is what makes every control in a settings panel line up on both edges without any of them stating a width.",
+      "viewport": [
+        1280,
+        720
+      ],
+      "tree": {
+        "name": "root",
+        "children": [
+          {
+            "name": "panel",
+            "absolute": true,
+            "anchor": "topleft",
+            "x": 0,
+            "y": 0,
+            "width": 600,
+            "height": 300,
+            "layout": "column",
+            "gap": 8,
+            "padding": 16,
+            "crossAlign": "stretch",
+            "children": [
+              {
+                "name": "a",
+                "height": 32
+              },
+              {
+                "name": "b",
+                "height": 32
+              },
+              {
+                "name": "c",
+                "height": 32
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "panel": [
+          0,
+          0,
+          600,
+          300
+        ],
+        "a": [
+          16,
+          16,
+          568,
+          32
+        ],
+        "b": [
+          16,
+          56,
+          568,
+          32
+        ],
+        "c": [
+          16,
+          96,
+          568,
+          32
+        ]
+      }
+    },
+    {
+      "name": "a scrolling list reports content taller than the box it is shown in",
+      "why": "ContentSize minus the content box is the scroll range, which is what the wheel clamps against and what sizes the thumb.",
+      "viewport": [
+        1280,
+        720
+      ],
+      "tree": {
+        "name": "root",
+        "children": [
+          {
+            "name": "list",
+            "type": "scrollview",
+            "absolute": true,
+            "x": 0,
+            "y": 0,
+            "width": 300,
+            "height": 120,
+            "scroll": "vertical",
+            "layout": "column",
+            "gap": 10,
+            "children": [
+              {
+                "name": "r1",
+                "width": 280,
+                "height": 50
+              },
+              {
+                "name": "r2",
+                "width": 280,
+                "height": 50
+              },
+              {
+                "name": "r3",
+                "width": 280,
+                "height": 50
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "list": [
+          0,
+          0,
+          300,
+          120
+        ],
+        "r1": [
+          0,
+          0,
+          280,
+          50
+        ],
+        "r2": [
+          0,
+          60,
+          280,
+          50
+        ]
+      }
+    },
+    {
+      "name": "a scrolled list moves its rows up and leaves its own box alone",
+      "why": "ScrollOffset is applied when children are arranged, not by moving the view, so the clip rectangle stays put while the content slides under it.",
+      "viewport": [
+        1280,
+        720
+      ],
+      "tree": {
+        "name": "root",
+        "children": [
+          {
+            "name": "list",
+            "type": "scrollview",
+            "absolute": true,
+            "x": 0,
+            "y": 0,
+            "width": 300,
+            "height": 120,
+            "scroll": "vertical",
+            "scrollOffset": [
+              0,
+              40
+            ],
+            "layout": "column",
+            "gap": 10,
+            "children": [
+              {
+                "name": "r1",
+                "width": 280,
+                "height": 50
+              },
+              {
+                "name": "r2",
+                "width": 280,
+                "height": 50
+              },
+              {
+                "name": "r3",
+                "width": 280,
+                "height": 50
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "list": [
+          0,
+          0,
+          300,
+          120
+        ],
+        "r1": [
+          0,
+          -40,
+          280,
+          50
+        ],
+        "r2": [
+          0,
+          20,
+          280,
+          50
+        ]
+      }
+    },
+    {
+      "name": "a status line pinned to the bottom stays there at any window size",
+      "why": "The graphics menu carries the engine version on a line at its foot, and it must not drift when the panel is resized.",
+      "viewport": [
+        1024,
+        640
+      ],
+      "tree": {
+        "name": "root",
+        "children": [
+          {
+            "name": "panel",
+            "absolute": true,
+            "anchor": "topleft",
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 640,
+            "layout": "column",
+            "padding": 12,
+            "crossAlign": "stretch",
+            "children": [
+              {
+                "name": "body",
+                "grow": 1
+              },
+              {
+                "name": "status",
+                "type": "label",
+                "height": 18
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "body": [
+          12,
+          12,
+          1000,
+          598
+        ],
+        "status": [
+          12,
+          610,
+          1000,
+          18
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "name": "Villager",
+  "seed": 0,
+  "proportions": {
+    "height": 1.0,
+    "headSize": 1.0,
+    "bodyWidth": 1.0,
+    "limbThickness": 1.0,
+    "legLength": 1.0,
+    "armLength": 1.0
+  },
+  "style": {
+    "head": "Round",
+    "hair": "Bob",
+    "eyes": "Dot",
+    "body": "Tunic",
+    "legs": "Trousers",
+    "feet": "Shoes"
+  },
+  "colours": {
+    "skin": "#F2C6A0",
+    "hair": "#4A2E1E",
+    "eyes": "#241C18",
+    "top": "#5B8C5A",
+    "bottom": "#3A4A6B",
+    "shoes": "#2E2A28",
+    "accent": "#D9A441"
+  },
+  "accessories": []
+}

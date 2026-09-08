@@ -118,7 +118,10 @@ public class SceneToolTests
         Assert.Equal(new Vector3(0f, 1f, 0f), actor.GetComponent<Transform3D>()!.Position);
         Assert.Equal(new Vector3(2f, 2f, 2f), actor.GetComponent<Transform3D>()!.Scale);
 
-        var bad = h.Fails("spawn_primitive", new { shape = "Torus" });
+        // Not "Torus": that was this test's example of a shape the engine has not got
+        // until MakeChibi added it, along with Capsule. Anything named here has to be a
+        // shape MeshPrimitive genuinely lacks, or the test passes for the wrong reason.
+        var bad = h.Fails("spawn_primitive", new { shape = "Dodecahedron" });
         Assert.Contains("Cube, Sphere", bad.FirstText);
     }
 

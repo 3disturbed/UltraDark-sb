@@ -1,0 +1,6 @@
+{
+  "WindowTitle": "ChibiProbe",
+  "WindowWidth": 1280,
+  "WindowHeight": 720,
+  "StartScene": "Scenes/Single"
+}

@@ -64,12 +64,22 @@ public sealed class ActorTools
         return result;
     }
 
+    /// <summary>Every shape <c>spawn_primitive</c> accepts, for its description and its error.</summary>
+    /// <remarks>
+    /// Read off the enum rather than written out, because it was written out: Capsule and
+    /// Torus were in the browser's MeshPrimitive for months, and this tool went on telling
+    /// callers that six shapes existed.
+    /// </remarks>
+    private static readonly string ShapeList = string.Join(", ",
+        Enum.GetNames<MeshPrimitive>().Where(n => n != nameof(MeshPrimitive.None)));
+
     [McpTool("spawn_primitive",
         "Place a built-in shape with its own coloured material: Cube, Sphere, Plane (1x1 floor tile), Quad (1x1 wall), " +
-        "Cylinder or Cone, all unit-sized — use scale for dimensions. The new actor becomes selected.",
+        "Cylinder, Cone, Capsule (two units tall) or Torus, otherwise unit-sized — use scale for dimensions. " +
+        "The new actor becomes selected.",
         Mutating = true, Label = "Spawn {shape}")]
     public McpToolResult SpawnPrimitive(
-        [McpParam("Cube, Sphere, Plane, Quad, Cylinder or Cone")] string shape,
+        [McpParam("Cube, Sphere, Plane, Quad, Cylinder, Cone, Capsule or Torus")] string shape,
         [McpParam("Actor name; defaults to the shape")] string? name = null,
         [McpParam("[x, y, z] world units")] float[]? position = null,
         [McpParam("[pitch, yaw, roll] degrees")] float[]? rotation = null,
@@ -83,7 +93,7 @@ public sealed class ActorTools
         var scene = RequireScene(_host);
 
         if (!Enum.TryParse<MeshPrimitive>(shape, ignoreCase: true, out var primitive) || primitive == MeshPrimitive.None)
-            throw new McpToolException($"'{shape}' is not a primitive shape.", "Use Cube, Sphere, Plane, Quad, Cylinder or Cone.");
+            throw new McpToolException($"'{shape}' is not a primitive shape.", $"Use one of: {ShapeList}.");
 
         var actor = new Actor(name ?? primitive.ToString());
         if (tag != null) actor.Tag = tag;

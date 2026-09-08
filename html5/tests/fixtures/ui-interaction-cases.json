@@ -1,0 +1,399 @@
+{
+  "$comment": "Golden interaction cases, read by BOTH engines: SexyBiscuit.Tests/UiInteractionTests.cs and html5/tests/uiInteraction.test.js. Layout is pinned by layout-cases.json and navigation scoring by nav-cases.json; this file pins what happens when somebody actually uses the thing -- what counts as a click, when a slider snaps, which way a wheel scrolls, what a gamepad does to an open list. All of that is state machines and numbers, so two hand-written suites would drift the moment one engine's author made a judgement call the other's did not. Each case lays out a tree, feeds the frames in order, and checks node state after the last one. Pointer coordinates are device pixels; every frame field not given takes its default from the empty frame.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "a press and a release on the same button is one click",
+      "why": "The definition of a click every other toolkit uses, and the one the flat script UI already used.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "go", "type": "button", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 40, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "pointer": [20, 10], "pointerDown": true },
+        { "pointer": [20, 10], "pointerDown": false }
+      ],
+      "expect": { "go": { "clicked": true, "pressed": false } }
+    },
+    {
+      "name": "a click is over the frame after it happened",
+      "why": "A caller reads Clicked once a frame. Leaving it set fires every button twice.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "go", "type": "button", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 40, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "pointer": [20, 10], "pointerDown": true },
+        { "pointer": [20, 10], "pointerDown": false },
+        { "pointer": [20, 10], "pointerDown": false }
+      ],
+      "expect": { "go": { "clicked": false } }
+    },
+    {
+      "name": "dragging off a button and letting go does not fire it",
+      "why": "The escape hatch a player uses when they realise they pressed the wrong thing.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "go", "type": "button", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 40, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "pointer": [20, 10], "pointerDown": true },
+        { "pointer": [600, 400], "pointerDown": false }
+      ],
+      "expect": { "go": { "clicked": false, "pressed": false } }
+    },
+    {
+      "name": "the node under the pointer is the hovered one and the others are not",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "a", "type": "button", "absolute": true, "x": 0, "y": 0, "width": 100, "height": 40, "background": "#334455" },
+          { "name": "b", "type": "button", "absolute": true, "x": 0, "y": 100, "width": 100, "height": 40, "background": "#334455" }
+        ]
+      },
+      "frames": [ { "pointer": [50, 110] } ],
+      "expect": { "a": { "hovered": false }, "b": { "hovered": true } }
+    },
+    {
+      "name": "a toggle flips once per click, not once per frame it is held",
+      "why": "Flipping on press and again on release is the bug this ordering exists to prevent.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "vsync", "type": "toggle", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 24, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "pointer": [10, 10], "pointerDown": true },
+        { "pointer": [10, 10], "pointerDown": true },
+        { "pointer": [10, 10], "pointerDown": false }
+      ],
+      "expect": { "vsync": { "checked": true } }
+    },
+    {
+      "name": "a slider takes its value from where along the track the pointer is",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "volume", "type": "slider", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 24,
+            "minValue": 0, "maxValue": 100, "value": 0, "background": "#334455" }
+        ]
+      },
+      "frames": [ { "pointer": [150, 12], "pointerDown": true } ],
+      "expect": { "volume": { "value": 75 } }
+    },
+    {
+      "name": "a slider keeps following the pointer while the button is held",
+      "why": "Dragging is the whole point. Setting the value only on press makes a slider a three-state button.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "volume", "type": "slider", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 24,
+            "minValue": 0, "maxValue": 100, "value": 0, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "pointer": [20, 12], "pointerDown": true },
+        { "pointer": [100, 12], "pointerDown": true }
+      ],
+      "expect": { "volume": { "value": 50 } }
+    },
+    {
+      "name": "a slider with a step lands on a step and never between two",
+      "why": "A render-scale slider that reports 0.7431 is a settings menu nobody can describe in a bug report.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "scale", "type": "slider", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 24,
+            "minValue": 0, "maxValue": 100, "value": 0, "step": 25, "background": "#334455" }
+        ]
+      },
+      "frames": [ { "pointer": [130, 12], "pointerDown": true } ],
+      "expect": { "scale": { "value": 75 } }
+    },
+    {
+      "name": "a slider clamps to its bounds however far past them the pointer goes",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "volume", "type": "slider", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 24,
+            "minValue": 0, "maxValue": 100, "value": 50, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "pointer": [100, 12], "pointerDown": true },
+        { "pointer": [-400, 12], "pointerDown": true }
+      ],
+      "expect": { "volume": { "value": 0 } }
+    },
+    {
+      "name": "a dropdown opens on a click and picks the row that was clicked",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "preset", "type": "dropdown", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 30,
+            "background": "#334455", "options": ["Battery", "Low", "Medium", "High"] }
+        ]
+      },
+      "frames": [
+        { "pointer": [10, 10], "pointerDown": true },
+        { "pointer": [10, 10], "pointerDown": false },
+        { "pointer": [10, 95], "pointerDown": true },
+        { "pointer": [10, 95], "pointerDown": false }
+      ],
+      "expect": { "preset": { "selectedIndex": 2, "expanded": false } }
+    },
+    {
+      "name": "a press outside an open list closes it and changes nothing",
+      "why": "Clicking away is how everybody cancels a dropdown, and it must not also pick whatever was under the cursor.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "preset", "type": "dropdown", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 30,
+            "background": "#334455", "options": ["Battery", "Low", "Medium", "High"] }
+        ]
+      },
+      "frames": [
+        { "pointer": [10, 10], "pointerDown": true },
+        { "pointer": [10, 10], "pointerDown": false },
+        { "pointer": [600, 400], "pointerDown": true },
+        { "pointer": [600, 400], "pointerDown": false }
+      ],
+      "expect": { "preset": { "selectedIndex": 0, "expanded": false } }
+    },
+    {
+      "name": "cancel closes an open list before it does anything else",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "preset", "type": "dropdown", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 30,
+            "background": "#334455", "options": ["Battery", "Low", "Medium"] }
+        ]
+      },
+      "frames": [
+        { "pointer": [10, 10], "pointerDown": true },
+        { "pointer": [10, 10], "pointerDown": false },
+        { "cancel": true }
+      ],
+      "expect": { "preset": { "expanded": false, "selectedIndex": 0 } }
+    },
+    {
+      "name": "a tab strip selects the segment the pointer is actually over",
+      "why": "Painting and hit-testing share one rectangle function, so a tab cannot be lit and unclickable.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "tabs", "type": "tabstrip", "absolute": true, "x": 0, "y": 0, "width": 400, "height": 32,
+            "background": "#334455", "options": ["Presets", "Display", "Quality", "Advanced"] }
+        ]
+      },
+      "frames": [ { "pointer": [250, 16], "pointerDown": true } ],
+      "expect": { "tabs": { "selectedIndex": 2 } }
+    },
+    {
+      "name": "a wheel notch scrolls a scroll view down and stops at the end",
+      "why": "Positive is away from the player and moves the content up, which is what every operating system means by it.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "list", "type": "scrollview", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 100,
+            "scroll": "vertical", "layout": "column", "background": "#222222",
+            "children": [
+              { "name": "r1", "width": 180, "height": 60, "background": "#334455" },
+              { "name": "r2", "width": 180, "height": 60, "background": "#334455" },
+              { "name": "r3", "width": 180, "height": 60, "background": "#334455" }
+            ]
+          }
+        ]
+      },
+      "frames": [ { "pointer": [50, 50], "wheel": -1 } ],
+      "expect": { "list": { "scrollOffsetY": 48 } }
+    },
+    {
+      "name": "scrolling never goes past the end of the content",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "list", "type": "scrollview", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 100,
+            "scroll": "vertical", "layout": "column", "background": "#222222",
+            "children": [
+              { "name": "r1", "width": 180, "height": 60, "background": "#334455" },
+              { "name": "r2", "width": 180, "height": 60, "background": "#334455" },
+              { "name": "r3", "width": 180, "height": 60, "background": "#334455" }
+            ]
+          }
+        ]
+      },
+      "frames": [
+        { "pointer": [50, 50], "wheel": -10 },
+        { "pointer": [50, 50], "wheel": -10 }
+      ],
+      "expect": { "list": { "scrollOffsetY": 80 } }
+    },
+    {
+      "name": "a wheel over nothing scrollable leaves every offset alone",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "panel", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 100, "background": "#222222" }
+        ]
+      },
+      "frames": [ { "pointer": [50, 50], "wheel": -3 } ],
+      "expect": { "panel": { "scrollOffsetY": 0 } }
+    },
+    {
+      "name": "down moves focus to the next control and up brings it back",
+      "why": "The whole reason the focus model exists: a pad and a TV remote have to reach a widget.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "a", "type": "button", "absolute": true, "x": 0, "y": 0,   "width": 200, "height": 40, "background": "#334455" },
+          { "name": "b", "type": "button", "absolute": true, "x": 0, "y": 60,  "width": 200, "height": 40, "background": "#334455" },
+          { "name": "c", "type": "button", "absolute": true, "x": 0, "y": 120, "width": 200, "height": 40, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "navDown": true },
+        { "navDown": true },
+        { "navUp": true }
+      ],
+      "expect": { "a": { "focused": false }, "b": { "focused": true }, "c": { "focused": false } }
+    },
+    {
+      "name": "left and right on a focused slider move the value, not the focus",
+      "why": "Pressing right on a volume slider means louder. Anything else is a UI nobody can use with a pad.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "volume", "type": "slider", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 24,
+            "minValue": 0, "maxValue": 100, "value": 50, "step": 5, "background": "#334455" },
+          { "name": "other", "type": "button", "absolute": true, "x": 300, "y": 0, "width": 200, "height": 24, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "navRight": true },
+        { "navRight": true }
+      ],
+      "expect": { "volume": { "value": 60, "focused": true }, "other": { "focused": false } }
+    },
+    {
+      "name": "up and down walk an open list instead of leaving the control",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "preset", "type": "dropdown", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 30,
+            "background": "#334455", "options": ["Battery", "Low", "Medium", "High"] },
+          { "name": "below", "type": "button", "absolute": true, "x": 0, "y": 300, "width": 200, "height": 30, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "pointer": [10, 10], "pointerDown": true },
+        { "pointer": [10, 10], "pointerDown": false },
+        { "navDown": true },
+        { "navDown": true },
+        { "confirm": true }
+      ],
+      "expect": { "preset": { "selectedIndex": 2, "expanded": false, "focused": true } }
+    },
+    {
+      "name": "a modal traps navigation inside itself",
+      "why": "Focus escaping a dialog onto the HUD behind it is the failure the Modal flag exists to stop.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "hud", "type": "button", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 40, "background": "#334455" },
+          { "name": "dialog", "modal": true, "absolute": true, "anchor": "center", "x": 0, "y": 0, "width": 300, "height": 200,
+            "layout": "column", "gap": 8, "padding": 16, "background": "#161920",
+            "children": [
+              { "name": "ok",     "type": "button", "width": "*", "height": 40, "background": "#334455" },
+              { "name": "cancel", "type": "button", "width": "*", "height": 40, "background": "#334455" }
+            ]
+          }
+        ]
+      },
+      "frames": [
+        { "navDown": true },
+        { "navDown": true },
+        { "navDown": true }
+      ],
+      "expect": { "hud": { "focused": false }, "cancel": { "focused": true } }
+    },
+    {
+      "name": "typing reaches the focused text field and backspace takes it back",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "field", "type": "textfield", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 30,
+            "text": "", "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "typed": "Ada" },
+        { "typed": "!" },
+        { "backspace": true }
+      ],
+      "expect": { "field": { "text": "Ada", "focused": true } }
+    },
+    {
+      "name": "a canvas that is not interactive reports nothing at all",
+      "why": "The flag has to switch the whole surface off, not merely stop the hit test.",
+      "viewport": [800, 600],
+      "interactive": false,
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "go", "type": "button", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 40, "background": "#334455" }
+        ]
+      },
+      "frames": [
+        { "pointer": [20, 10], "pointerDown": true },
+        { "pointer": [20, 10], "pointerDown": false }
+      ],
+      "expect": { "go": { "clicked": false, "hovered": false, "focused": false } }
+    },
+    {
+      "name": "a disabled control is not a hole for the one behind it",
+      "why": "A node that is not interactive still blocks the pointer; only a node that paints nothing lets it through.",
+      "viewport": [800, 600],
+      "tree": {
+        "name": "root",
+        "children": [
+          { "name": "behind", "type": "button", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 40, "background": "#334455" },
+          { "name": "front",  "type": "button", "absolute": true, "x": 0, "y": 0, "width": 200, "height": 40, "background": "#223344", "interactive": false }
+        ]
+      },
+      "frames": [
+        { "pointer": [20, 10], "pointerDown": true },
+        { "pointer": [20, 10], "pointerDown": false }
+      ],
+      "expect": { "behind": { "clicked": false }, "front": { "clicked": false, "pressed": false } }
+    }
+  ]
+}

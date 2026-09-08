@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "make-chibi",
+  "name": "MakeChibi Characters",
+  "version": "1.0.0",
+  "summary": "A player character that picks its own walk cycle, and a village of distinct NPCs from one integer.",
+  "description": "The engine's Chibi namespace spawns and animates characters; this is the layer every game writes on top of it and would otherwise write again. ChibiMover puts a character under the movement axes and chooses between idle, walk and run from how fast it is actually going, turning to face its heading. ChibiCrowd fills an area with seeded villagers who wander, pause and wave — the same seeds give the same village every run and on both engines, so a crowd is something you can debug. Nothing here needs an art asset: a chibi is built from primitives at runtime.",
+  "tags": ["character", "npc", "crowd", "3d", "animation", "player", "chibi"],
+  "engines": ["js"],
+  "engineVersion": { "min": "1.0.0" },
+  "requires": [],
+  "provides": {
+    "components": [],
+    "actorClasses": [],
+    "scripts": ["ChibiMover.js", "ChibiCrowd.js"],
+    "prefabs": [],
+    "tools": []
+  },
+  "nextSteps": [
+    "Put ChibiMover.js on an empty actor. It spawns its own character; you do not add a ChibiCharacter yourself.",
+    "Give it a `recipePath` of an Assets/Characters/*.chibi, or a non-zero `seed` for a random one.",
+    "Its `getChibi()` returns the character's actor, which is what a camera should follow -- not the actor the script is on.",
+    "Put ChibiCrowd.js on a second empty actor for NPCs, and call `everyone(\"cheer\")` on it when something good happens.",
+    "The scene needs a Camera3D tagged MainCamera3D and a directional Light3D, or everything renders black."
+  ]
+}

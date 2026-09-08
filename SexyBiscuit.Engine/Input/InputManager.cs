@@ -69,6 +69,10 @@ public sealed class InputManager : IInputSource
     // =========================================================================
     public void Update(float dt)
     {
+        // Published for this frame and then reset, so a field reads each character once.
+        TypedText   = _pendingText.ToString();
+        _pendingText.Clear();
+
         Sample(Keyboard.GetState(), Mouse.GetState());
 
         if (_cursorLocked)
@@ -115,7 +119,35 @@ public sealed class InputManager : IInputSource
     /// no scroll and no mouse movement. Call when input resumes after a gap, such as the
     /// editor entering play mode, or the stale frame becomes a jump.
     /// </summary>
-    public void ResetDeltas() => _primed = false;
+    public void ResetDeltas()
+    {
+        _primed = false;
+        _pendingText.Clear();
+        TypedText = "";
+    }
+
+    // =========================================================================
+    // Typed text
+    // =========================================================================
+
+    private readonly System.Text.StringBuilder _pendingText = new();
+
+    /// <summary>
+    /// The characters typed during the last frame, with <c>\b</c> for a backspace.
+    /// </summary>
+    /// <remarks>
+    /// The mirror of the browser's <c>input.typedText</c>. Text never comes from polling
+    /// <see cref="Keys"/>: only the platform knows about keyboard layouts, dead keys and
+    /// input methods, so the host feeds this from the window's own text event.
+    /// </remarks>
+    public string TypedText { get; private set; } = "";
+
+    /// <summary>Queues a character the window reported. Control characters are dropped.</summary>
+    public void QueueTypedCharacter(char character)
+    {
+        if (character == '\b') { _pendingText.Append('\b'); return; }
+        if (!char.IsControl(character)) _pendingText.Append(character);
+    }
 
     // =========================================================================
     // Keyboard

@@ -75,6 +75,7 @@ public sealed class ScriptBridge
     public ObjectInstance NetworkProxy   { get; }
     public ObjectInstance DarksGamesProxy { get; }
     public ObjectInstance UiProxy        { get; }
+    public ObjectInstance ChibiProxy     { get; }
 
     /// <summary>The engine every proxy allocates on. Used by <see cref="ComponentProxy"/>.</summary>
     internal JintEngine JsEngine => _engine;
@@ -104,6 +105,7 @@ public sealed class ScriptBridge
         NetworkProxy   = BuildNetworkProxy();
         DarksGamesProxy = BuildDarksGamesProxy();
         UiProxy        = BuildUiProxy();
+        ChibiProxy     = BuildChibiProxy();
 
         // The `actor` global is a proxy too: Scene.destroy(actor) must find its way back.
         _proxyToActor.Add(ActorProxy, _actor);
@@ -1494,6 +1496,120 @@ public sealed class ScriptBridge
                 Warn($"{type.Name}.{property.Name}: {ex.Message}");
             }
         }
+    }
+
+    // =========================================================================
+    // Chibi — MakeChibi's characters
+    // =========================================================================
+
+    /// <summary>The character component behind an actor proxy, or null.</summary>
+    private Chibi.ChibiCharacter? Character(JsValue value)
+        => Unwrap(value)?.GetComponent<Chibi.ChibiCharacter>();
+
+    private JsValue SpawnChibi(string recipePath, int seed, JsValue[] args, int firstAxis)
+    {
+        var scene = GetScene();
+        if (scene == null) return JsValue.Null;
+
+        var actor = new Actor(recipePath.Length > 0 ? "Chibi" : $"Chibi {seed}");
+        actor.AddComponent<Transform3D>().LocalPosition = new Vector3(
+            Num(args.At(firstAxis)), Num(args.At(firstAxis + 1)), Num(args.At(firstAxis + 2)));
+
+        var character = actor.AddComponent<Chibi.ChibiCharacter>();
+        character.RecipePath = recipePath;
+        character.Seed = seed;
+        actor.AddComponent<Chibi.ChibiAnimator>();
+
+        scene.AddActor(actor);
+        return WrapActorAsProxy(actor);
+    }
+
+    /// <summary>
+    /// The <c>Chibi</c> global: spawn a character, dress it, animate it, hang things off it.
+    /// </summary>
+    /// <remarks>
+    /// Everything here is a namespace function rather than a member of the actor a script
+    /// holds, because the proxy <c>Scene.createActor</c> hands back has no <c>attachTo</c>,
+    /// <c>addComponent</c> or <c>children</c> — only the running script's own <c>actor</c>
+    /// global gained those. Building the body natively also keeps forty actors' worth of
+    /// construction on this side of the boundary.
+    /// </remarks>
+    private ObjectInstance BuildChibiProxy()
+    {
+        var obj = NewObj();
+
+        obj.Set("spawn", Fn("spawn", (_, args) =>
+        {
+            return SpawnChibi(Text(args.At(0), string.Empty), 0, args, 1);
+        }, length: 4));
+
+        obj.Set("random", Fn("random", (_, args) =>
+        {
+            return SpawnChibi(string.Empty, (int)Num(args.At(0)), args, 1);
+        }, length: 4));
+
+        obj.Set("play", Fn("play", (_, args) =>
+        {
+            var animator = Unwrap(args.At(0))?.GetComponent<Chibi.ChibiAnimator>();
+            if (animator == null) return Bool(false);
+
+            float? blend = args.At(2).IsUndefined() ? null : Num(args.At(2));
+            return Bool(animator.Play(Text(args.At(1), "idle"), blend));
+        }, length: 3));
+
+        obj.Set("stop", Fn("stop", (_, args) =>
+        {
+            Unwrap(args.At(0))?.GetComponent<Chibi.ChibiAnimator>()?.Stop();
+            return JsValue.Undefined;
+        }, length: 1));
+
+        obj.Set("setColour", Fn("setColour", (_, args) =>
+        {
+            var built = Character(args.At(0))?.Chibi;
+            return Bool(built != null
+                && built.SetColour(Text(args.At(1), string.Empty), Text(args.At(2), "#FFFFFF")));
+        }, length: 3));
+
+        obj.Set("setStyle", Fn("setStyle", (_, args) =>
+        {
+            var character = Character(args.At(0));
+            var built = character?.Chibi;
+            if (character == null || built == null) return Bool(false);
+
+            string slot = Text(args.At(1), string.Empty);
+            if (!built.Recipe.Style.ContainsKey(slot)) return Bool(false);
+
+            Chibi.ChibiRecipe recipe = built.Recipe;
+            recipe.Style[slot] = Text(args.At(2), string.Empty);
+            character.Rebuild(recipe);
+            // The animator cached transforms that have just been destroyed.
+            Unwrap(args.At(0))?.GetComponent<Chibi.ChibiAnimator>()?.Resolve();
+            return Bool(true);
+        }, length: 3));
+
+        obj.Set("attach", Fn("attach", (_, args) =>
+        {
+            var built = Character(args.At(0))?.Chibi;
+            Actor? target = Unwrap(args.At(2));
+            if (built == null || target == null) return Bool(false);
+            if (!built.Sockets.TryGetValue(Text(args.At(1), string.Empty), out Actor? socket))
+                return Bool(false);
+
+            if (target.GetComponent<Transform3D>() == null) target.AddComponent<Transform3D>();
+            // false: a sword's offset means "in the hand", not "where it was standing".
+            target.AttachTo(socket, keepWorldTransform: false);
+            return Bool(true);
+        }, length: 3));
+
+        obj.Set("socket", Fn("socket", (_, args) =>
+        {
+            var built = Character(args.At(0))?.Chibi;
+            if (built != null && built.Sockets.TryGetValue(Text(args.At(1), string.Empty), out Actor? socket))
+                return WrapActorAsProxy(socket);
+            return JsValue.Null;
+        }, length: 2));
+
+        return obj;
     }
 
     // =========================================================================

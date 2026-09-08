@@ -1,252 +1,255 @@
 // -----------------------------------------------------------------------------
-// UiCanvas — screen-space UI a game script can actually build.
+// UiCanvas — one screen-space surface holding a tree of UiNode.
 //
-// The shared scripting contract had no UI and, worse, no viewport: a script
-// could not ask how wide the window was, so it could not put anything in a
-// corner. Every prototype therefore grew a HUD out of world-space sprites
-// floating over the player's head, with no text anywhere, because there was no
-// other option.
+// The mirror of SexyBiscuit.Engine/UI/UiCanvas.cs, member for member. The flat
+// five-kind surface a script builds through the `UI` global is ScriptUi.js next
+// door; this is the retained tree that UiLayout, UiFocus and UiDocument work on.
 //
-// This is that option. It is deliberately small — panel, label, bar, button,
-// image — because every member has to exist on the C# side too, and a member
-// that exists on one engine only is the defect this repository keeps finding.
+// The scale and offset computed here are used by *both* painting and hit-testing.
+// The canvas this replaces had a scale matrix that nothing ever called, so pointer
+// coordinates stayed in raw pixels and hit-testing quietly disagreed with what was
+// on screen at every window size but one.
 // -----------------------------------------------------------------------------
 
-import { drawText, measure, measureHeight, lineHeight } from './BitmapFont.js';
+import { UiNode } from './UiNode.js';
+import { UiKind, UiScaleMode, SafeAreaMode } from './UiEnums.js';
+import { measure as measureLayout, arrange, hitTest as hitTestLayout, deflate } from './UiLayout.js';
+import { UiInput } from './UiInput.js';
+import { fromJson } from './UiDocument.js';
 
-/** Anchor name -> fraction of the viewport. The element aligns to the same corner. */
-export const ANCHORS = Object.freeze({
-    topleft:     [0,   0  ], top:    [0.5, 0  ], topright:     [1, 0  ],
-    left:        [0,   0.5], center: [0.5, 0.5], right:        [1, 0.5],
-    bottomleft:  [0,   1  ], bottom: [0.5, 1  ], bottomright:  [1, 1  ],
-});
-
-const KINDS = new Set(['panel', 'label', 'bar', 'button', 'image']);
-
-let nextId = 1;
-
-/** One UI element. Plain data: the bridge hands a script a proxy over this. */
-class Element {
-    constructor(kind, options) {
-        this.id = nextId++;
-        this.kind = kind;
-        this.x = 0;
-        this.y = 0;
-        this.width = 100;
-        this.height = 24;
-        this.text = '';
-        this.value = 1;                 // bars: 0..1
-        this.scale = 1;                 // text size multiplier
-        this.visible = true;
-        this.anchor = 'topleft';
-        this.tint = '#ffffff';          // text, and the filled part of a bar
-        this.background = null;         // panel/button/bar backing; null draws nothing
-        this.texturePath = '';
-        this.align = 'left';            // left | center | right, within the element
-        this.padding = 6;
-
-        this.hovered = false;
-        this.clicked = false;           // true for the frame after a release inside
-        this.destroyed = false;
-
-        Object.assign(this, options ?? {});
-    }
-}
+/** Every canvas that currently exists, for the host's screen-space pass. */
+const all = [];
 
 export class UiCanvas {
-    constructor({ width = 1280, height = 720 } = {}) {
-        this.width = width;
-        this.height = height;
-        this.elements = [];
+    constructor() {
+        // --- configuration ---
+        this.scaleMode = UiScaleMode.ConstantPixel;
+        this.referenceResolution = { x: 1920, y: 1080 };
+        this.matchWidthOrHeight = 0.5;
 
-        // Pointer state, fed by the host each frame.
-        this._pointer = { x: -1, y: -1, down: false, wasDown: false };
+        /** Paint order between canvases. Lower paints first, so higher is in front. */
+        this.order = 0;
+
+        /** Path to a `.ui` document. When set it replaces the tree at start. */
+        this.document = '';
+
+        /** Insets kept clear of notches and TV overscan, as left, top, right, bottom. */
+        this.safeArea = { x: 0, y: 0, z: 0, w: 0 };
+        this.safeAreaMode = SafeAreaMode.Ignore;
+
+        /** Whether this canvas takes pointer and navigation input at all. */
+        this.interactive = true;
+
+        /** Which player drives this canvas, or -1 for anybody's input. */
+        this.playerIndex = -1;
+
+        /** The tree. Always present; an empty root paints nothing. */
+        this.root = new UiNode({ name: 'Root', kind: UiKind.Panel });
+        this.root.canvas = this;
+
+        // --- resolved each frame ---
+        this.scale = { x: 1, y: 1 };
+        this.canvasOffset = { x: 0, y: 0 };
+        this.canvasSize = { x: 1280, y: 720 };
+
+        this._viewport = { x: 1280, y: 720 };
+        this._input = null;
+
+        all.push(this);
     }
 
-    setViewport(width, height) {
-        this.width = Math.max(1, Math.round(width));
-        this.height = Math.max(1, Math.round(height));
+    /** Every live canvas, in creation order. */
+    static get all() { return all; }
+
+    /** Drops every canvas. A test that leaks one poisons the next. */
+    static clearAll() { all.length = 0; }
+
+    /** Removes this canvas from the paint list. */
+    destroy() {
+        const i = all.indexOf(this);
+        if (i >= 0) all.splice(i, 1);
     }
 
-    /** Adds an element of one of the five kinds. Unknown kinds are refused loudly. */
-    add(kind, options) {
-        if (!KINDS.has(kind)) throw new Error(`UiCanvas: unknown element kind "${kind}"`);
-        const element = new Element(kind, options);
-        this.elements.push(element);
-        return element;
-    }
-
-    remove(element) {
-        const at = this.elements.indexOf(element);
-        if (at >= 0) this.elements.splice(at, 1);
-        if (element) element.destroyed = true;
-    }
-
-    /** Everything at once — what a script's `UI.clear()` reaches. */
-    clear() {
-        for (const element of this.elements) element.destroyed = true;
-        this.elements.length = 0;
-    }
+    // -------------------------------------------------------------------------
+    // Input
+    // -------------------------------------------------------------------------
 
     /**
-     * The element's screen rectangle.
-     *
-     * The anchor is both where on the screen the element hangs from AND which of
-     * its own corners hangs there, so `anchor: "bottomright", x: -12, y: -12`
-     * sits twelve pixels in from the bottom-right whatever the window size — the
-     * thing a script has never been able to express.
+     * This canvas's pointer, focus and control behaviour. Created on first use,
+     * because the router holds focus state that has to survive between frames.
      */
-    rectOf(element) {
-        const [ax, ay] = ANCHORS[element.anchor] ?? ANCHORS.topleft;
+    get input() {
+        if (!this._input) this._input = new UiInput(this);
+        return this._input;
+    }
 
-        // A label with no size measures itself. Without this a right-anchored
-        // label hangs its LEFT edge on the right border and runs off the screen,
-        // and a centred one starts at the centre instead of straddling it — the
-        // caller would have to measure the text and set the width by hand, every
-        // time the text changed.
-        const scale = Math.max(1, Math.round(element.scale));
-        const width = element.width > 0 ? element.width
-            : (element.kind === 'label' ? widestLine(element.text, scale) : 0);
-        const height = element.height > 0 ? element.height
-            : (element.kind === 'label' ? measureHeight(element.text, scale) : 0);
+    // -------------------------------------------------------------------------
+    // Scale
+    // -------------------------------------------------------------------------
 
-        return {
-            x: this.width * ax + element.x - width * ax,
-            y: this.height * ay + element.y - height * ay,
-            width,
-            height,
+    /** Recomputes the scale and offset for a viewport size. Call before laying out. */
+    setViewport(width, height) {
+        const w = Math.max(1, width);
+        const h = Math.max(1, height);
+        if (this._viewport.x === w && this._viewport.y === h) return;
+
+        this._viewport = { x: w, y: h };
+        this.root.invalidateMeasure();
+    }
+
+    _resolveScale() {
+        const vw = this._viewport.x;
+        const vh = this._viewport.y;
+        const rw = Math.max(1, this.referenceResolution.x);
+        const rh = Math.max(1, this.referenceResolution.y);
+
+        switch (this.scaleMode) {
+            case UiScaleMode.ScaleToFit: {
+                const s = Math.min(vw / rw, vh / rh);
+                this.scale = { x: s, y: s };
+                this.canvasSize = { x: rw, y: rh };
+                break;
+            }
+            case UiScaleMode.ScaleToFill: {
+                const s = Math.max(vw / rw, vh / rh);
+                this.scale = { x: s, y: s };
+                this.canvasSize = { x: rw, y: rh };
+                break;
+            }
+            case UiScaleMode.Match: {
+                const m = Math.min(1, Math.max(0, this.matchWidthOrHeight));
+                const s = Math.pow(vw / rw, 1 - m) * Math.pow(vh / rh, m);
+                this.scale = { x: s, y: s };
+                this.canvasSize = { x: vw / s, y: vh / s };
+                break;
+            }
+            default:
+                this.scale = { x: 1, y: 1 };
+                this.canvasSize = { x: vw, y: vh };
+                break;
+        }
+
+        // Centre whatever the scaled canvas does not cover, so a letterbox is even.
+        this.canvasOffset = {
+            x: (vw - this.canvasSize.x * this.scale.x) * 0.5,
+            y: (vh - this.canvasSize.y * this.scale.y) * 0.5,
         };
     }
 
     // -------------------------------------------------------------------------
-    // Frame
+    // Coordinates
     // -------------------------------------------------------------------------
 
-    /** Feeds this frame's pointer in. `down` is "button held", not "pressed". */
-    setPointer(x, y, down) {
-        this._pointer.wasDown = this._pointer.down;
-        this._pointer.x = x;
-        this._pointer.y = y;
-        this._pointer.down = Boolean(down);
+    /** Device pixels to canvas units. Every hit test starts here. */
+    screenToCanvas(point) {
+        return {
+            x: (point.x - this.canvasOffset.x) / this.scale.x,
+            y: (point.y - this.canvasOffset.y) / this.scale.y,
+        };
+    }
+
+    /** Canvas units to device pixels. Clip rectangles must go through this. */
+    canvasToScreen(point) {
+        return {
+            x: point.x * this.scale.x + this.canvasOffset.x,
+            y: point.y * this.scale.y + this.canvasOffset.y,
+        };
+    }
+
+    /** A canvas rectangle in device pixels, for the clip region. */
+    canvasRectToScreen(r) {
+        const topLeft = this.canvasToScreen({ x: r.x, y: r.y });
+        const bottomRight = this.canvasToScreen({ x: r.x + r.width, y: r.y + r.height });
+        return {
+            x: topLeft.x,
+            y: topLeft.y,
+            width: bottomRight.x - topLeft.x,
+            height: bottomRight.y - topLeft.y,
+        };
+    }
+
+    // -------------------------------------------------------------------------
+    // Layout
+    // -------------------------------------------------------------------------
+
+    /**
+     * The rectangle the root is laid out into: the canvas, less the safe-area
+     * insets on whichever axes they apply to.
+     */
+    get safeRect() {
+        const full = { x: 0, y: 0, width: this.canvasSize.x, height: this.canvasSize.y };
+        const s = this.safeArea;
+
+        switch (this.safeAreaMode) {
+            case SafeAreaMode.Inset:  return deflate(full, s);
+            case SafeAreaMode.InsetX: return deflate(full, { x: s.x, y: 0, z: s.z, w: 0 });
+            case SafeAreaMode.InsetY: return deflate(full, { x: 0, y: s.y, z: 0, w: s.w });
+            default:                  return full;
+        }
     }
 
     /**
-     * Resolves hover and click. A click is a release inside the element that also
-     * went down inside it, which is what every other UI toolkit means by one.
+     * Measures and arranges the tree if anything has changed since the last pass.
+     * Cheap to call every frame; that is the point of the dirty flags.
      */
-    update() {
-        const p = this._pointer;
-        const released = p.wasDown && !p.down;
+    layout() {
+        this._resolveScale();
+        if (!this.root.measureDirty && !this.root.arrangeDirty) return;
 
-        for (const element of this.elements) {
-            element.clicked = false;
-            if (!element.visible || element.kind !== 'button') { element.hovered = false; continue; }
-
-            const r = this.rectOf(element);
-            const inside = p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
-            element.hovered = inside;
-
-            if (inside && released) element.clicked = true;
-        }
-
-        // Consume the release. Without this a second update() in the same frame —
-        // or a frame the host does not feed a pointer into — sees the same
-        // release again and fires the button twice.
-        p.wasDown = p.down;
+        const area = this.safeRect;
+        measureLayout(this.root, { x: area.width, y: area.height });
+        arrange(this.root, area, { x: 0, y: 0, width: this.canvasSize.x, height: this.canvasSize.y });
     }
+
+    /** Forces a full pass next frame, whatever the dirty flags say. */
+    invalidateLayout() { this.root.invalidateMeasure(); }
 
     // -------------------------------------------------------------------------
-    // Drawing
+    // Hit testing
     // -------------------------------------------------------------------------
 
-    /** Paints every visible element, in the order they were added. */
-    draw(ctx, { images = null } = {}) {
-        for (const element of this.elements) {
-            if (!element.visible) continue;
-            const r = this.rectOf(element);
+    /** The top-most interactive node under a device-pixel point, or null. */
+    hitTest(screenPoint) {
+        if (!this.interactive) return null;
+        return hitTestLayout(this.root, this.screenToCanvas(screenPoint));
+    }
 
-            switch (element.kind) {
-                case 'panel':  this._drawBox(ctx, element, r); break;
-                case 'button': this._drawButton(ctx, element, r); break;
-                case 'bar':    this._drawBar(ctx, element, r); break;
-                case 'label':  this._drawLabel(ctx, element, r); break;
-                case 'image':  this._drawImage(ctx, element, r, images); break;
-                default: break;
-            }
+    /** Finds a node by name anywhere in this canvas. */
+    find(name) { return this.root.find(name); }
+
+    // -------------------------------------------------------------------------
+    // Documents
+    // -------------------------------------------------------------------------
+
+    /** Parses a `.ui` document and adopts it. */
+    loadDocument(source) { this.adopt(fromJson(source)); }
+
+    /**
+     * Moves a loaded document's children onto the root, replacing what was there.
+     *
+     * The document's own root is not adopted as this canvas's root — its layout
+     * properties are copied across and its children are moved. A canvas whose root
+     * could be swapped would break every reference the host and the router hold.
+     */
+    adopt(document) {
+        for (let i = this.root.children.length - 1; i >= 0; i--) {
+            this.root.remove(this.root.children[i]);
         }
-    }
 
-    _drawBox(ctx, element, r) {
-        if (!element.background) return;
-        ctx.fillStyle = element.background;
-        ctx.fillRect(r.x, r.y, r.width, r.height);
-    }
+        this.root.layout = document.layout;
+        this.root.gap = document.gap;
+        this.root.wrap = document.wrap;
+        this.root.padding = document.padding;
+        this.root.mainAlign = document.mainAlign;
+        this.root.crossAlign = document.crossAlign;
+        this.root.columns = document.columns;
+        this.root.cellSize = document.cellSize;
+        this.root.background = document.background;
+        this.root.clip = document.clip;
+        this.root.scroll = document.scroll;
+        this.root.scrollOffset = document.scrollOffset;
 
-    _drawButton(ctx, element, r) {
-        if (element.background) {
-            ctx.fillStyle = element.hovered ? lighten(element.background) : element.background;
-            ctx.fillRect(r.x, r.y, r.width, r.height);
-        }
-        this._drawLabel(ctx, element, r, 'center');
-    }
-
-    _drawBar(ctx, element, r) {
-        if (element.background) {
-            ctx.fillStyle = element.background;
-            ctx.fillRect(r.x, r.y, r.width, r.height);
-        }
-        const fraction = Math.max(0, Math.min(1, Number(element.value) || 0));
-        ctx.fillStyle = element.tint;
-        ctx.fillRect(r.x, r.y, r.width * fraction, r.height);
-
-        if (element.text) this._drawLabel(ctx, element, r, 'center');
-    }
-
-    _drawLabel(ctx, element, r, forceAlign) {
-        if (!element.text) return;
-        const align = forceAlign ?? element.align;
-        const scale = Math.max(1, Math.round(element.scale));
-
-        const textWidth = widestLine(element.text, scale);
-        const textHeight = measureHeight(element.text, scale);
-
-        let x = r.x + element.padding;
-        if (align === 'center') x = r.x + (r.width - textWidth) / 2;
-        else if (align === 'right') x = r.x + r.width - textWidth - element.padding;
-
-        const y = element.kind === 'label' && r.height <= textHeight
-            ? r.y
-            : r.y + (r.height - textHeight) / 2;
-
-        drawText(ctx, element.text, Math.round(x), Math.round(y), { scale, colour: element.tint });
-    }
-
-    _drawImage(ctx, element, r, images) {
-        const texture = images?.get?.(element.texturePath);
-        if (!texture) {
-            // No art yet: a tinted box, the same answer SpriteRenderer gives.
-            if (element.background) { ctx.fillStyle = element.background; ctx.fillRect(r.x, r.y, r.width, r.height); }
-            return;
-        }
-        ctx.drawImage(texture, r.x, r.y, r.width, r.height);
+        for (const child of [...document.children]) this.root.add(child);
+        this.invalidateLayout();
     }
 }
-
-/** The widest line in a block, which is what centring has to measure. */
-export function widestLine(text, scale = 1) {
-    return String(text ?? '').split('\n').reduce((w, line) => Math.max(w, measure(line, scale)), 0);
-}
-
-/** A hover tint that works for "#rgb", "#rrggbb" and anything else (returned as-is). */
-function lighten(colour) {
-    const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(colour));
-    if (!hex) return colour;
-
-    let body = hex[1];
-    if (body.length === 3) body = body.split('').map((c) => c + c).join('');
-
-    const channels = [0, 2, 4].map((i) => Math.min(255, Math.round(parseInt(body.slice(i, i + 2), 16) * 1.25) + 12));
-    return `#${channels.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
-}
-
-export { measure, measureHeight, lineHeight };
