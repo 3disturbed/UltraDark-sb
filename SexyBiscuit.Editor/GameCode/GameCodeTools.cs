@@ -29,9 +29,11 @@ public sealed class GameCodeTools
     [McpTool("get_code_project",
         "Describe the open project's C# code project: csproj path, Source/ files, output DLL, the loaded assembly " +
         "generation, whether it was compiled against the engine build this editor runs, and the last build. Read-only; " +
-        "use create_code_project to add one.",
+        "use create_code_project to add one. actorClasses 'engine', 'project' or 'all' adds the Actor subclasses " +
+        "spawn_actor's class accepts, with base class and doc summary.",
         MainThread = false, ReadOnly = true)]
-    public McpToolResult GetCodeProject()
+    public McpToolResult GetCodeProject(
+        [McpParam("Add the actor classes: 'engine', 'project' or 'all'")] string? actorClasses = null)
     {
         var project = _code.Project;
         var dotnet  = DotnetLocator.Find();
@@ -66,8 +68,38 @@ public sealed class GameCodeTools
         if (project == null)
             info["hint"] = "No C# project yet. create_code_project adds one with Unreal-style starter classes.";
 
+        if (actorClasses != null) info["actorClassList"] = ActorClasses(actorClasses);
+
         return McpToolResult.Json(info);
     }
+
+    /// <summary>The Actor subclasses that can be placed or named as spawn_actor's class.</summary>
+    private JsonArray ActorClasses(string source)
+    {
+        bool all = string.Equals(source, "all", StringComparison.OrdinalIgnoreCase);
+        if (!all && !source.Equals("engine", StringComparison.OrdinalIgnoreCase) && !source.Equals("project", StringComparison.OrdinalIgnoreCase))
+            throw new McpToolException($"Unknown actorClasses '{source}'.", "Use 'engine', 'project' or 'all'.");
+
+        var list = new JsonArray();
+        foreach (var type in ReflectionUtil.FindActorTypes().OrderBy(t => ComponentReflection.Source(t)).ThenBy(t => t.Name))
+        {
+            string src = _code.IsProjectType(type) ? "project" : ComponentReflection.Source(type);
+            if (!all && !string.Equals(src, source, StringComparison.OrdinalIgnoreCase)) continue;
+
+            list.Add(new JsonObject
+            {
+                ["name"]      = type.Name,
+                ["fullName"]  = type.FullName,
+                ["source"]    = src,
+                ["baseClass"] = type.BaseType?.Name,
+                ["summary"]   = XmlDocs.Summary(type),
+                ["placeable"] = ReflectionUtil.IsPlaceable(type),
+            });
+        }
+
+        return list;
+    }
+
 
     [McpTool("create_code_project",
         "Add a C# project to the open SexyBiscuit project: the csproj, Source/ with starter classes, a per-machine props " +
@@ -135,12 +167,46 @@ public sealed class GameCodeTools
     [McpTool("build_project",
         "Compile the project's C# code and return structured diagnostics. Building alone does not change the editor — " +
         "call reload_game_code, which builds for you, to make the new code live. After editing engine source call " +
-        "rebuild_engine_and_restart instead. A slow build returns a build_id for get_build_status.",
+        "rebuild_engine_and_restart instead. A slow build returns a build_id: action 'status' reads it back (the latest " +
+        "without one, and any build started by another tool), 'cancel' stops it. For an engine rebuild, state " +
+        "'restarting' means the editor is about to restart — stop calling tools, wait 15-30 seconds, then get_context.",
         MainThread = false, Label = "Build the project")]
     public async Task<McpToolResult> BuildProject(
+        [McpParam("build, status or cancel")] string action = "build",
+        [McpParam("A build id from an earlier result")] string? buildId = null,
         [McpParam("Seconds to wait before returning a build_id to poll")] int waitSeconds = 40,
         CancellationToken cancellation = default)
     {
+        switch (action.ToLowerInvariant())
+        {
+            case "build":
+                break;
+
+            case "status":
+            {
+                var existing = _code.FindJob(buildId);
+                if (existing == null)
+                    return McpToolResult.Json(new JsonObject
+                    {
+                        ["state"] = "unknown",
+                        ["note"]  = buildId == null ? "No build has run in this editor session." : "No such build; build ids do not survive an editor restart.",
+                    });
+
+                return McpToolResult.Json(JobView(existing, includeDiagnostics: true), Headline(existing));
+            }
+
+            case "cancel":
+            {
+                if (buildId == null) throw new McpToolException("cancel needs a buildId.");
+                var running = _code.FindJob(buildId) ?? throw new McpToolException($"No build '{buildId}'.");
+                bool cancelled = _code.CancelJob(running);
+                return McpToolResult.Json(new JsonObject { ["build_id"] = running.Id, ["cancelled"] = cancelled, ["state"] = running.State.ToString().ToLowerInvariant() });
+            }
+
+            default:
+                throw new McpToolException($"Unknown action '{action}'.", "Use build, status or cancel.");
+        }
+
         var job = _code.BuildGame(cancellation);
         await WaitFor(job, waitSeconds, cancellation);
 
@@ -326,46 +392,27 @@ public sealed class GameCodeTools
         || line.StartsWith("not ok", StringComparison.Ordinal) || line.TrimStart().StartsWith("✖", StringComparison.Ordinal)
         || line.Contains(": error ", StringComparison.Ordinal);
 
-    [McpTool("get_build_status",
-        "Status and diagnostics of a build started by build_project, reload_game_code, create_code_project, run_standalone " +
-        "or rebuild_engine_and_restart (the latest when build_id is omitted). For an engine rebuild, state 'restarting' " +
-        "means the editor is about to restart — stop calling tools, wait 15-30 seconds, then call get_context.",
-        MainThread = false, ReadOnly = true)]
-    public McpToolResult GetBuildStatus([McpParam("A build id from an earlier result")] string? buildId = null)
-    {
-        var job = _code.FindJob(buildId);
-        if (job == null)
-        {
-            return McpToolResult.Json(new JsonObject
-            {
-                ["state"] = "unknown",
-                ["note"]  = buildId == null ? "No build has run in this editor session." : "No such build; build ids do not survive an editor restart.",
-            });
-        }
-
-        return McpToolResult.Json(JobView(job, includeDiagnostics: true), Headline(job));
-    }
-
-    [McpTool("cancel_build", "Cancel a running build.", MainThread = false)]
-    public McpToolResult CancelBuild([McpParam("The build id")] string buildId)
-    {
-        var job = _code.FindJob(buildId) ?? throw new McpToolException($"No build '{buildId}'.");
-        bool cancelled = _code.CancelJob(job);
-        return McpToolResult.Json(new JsonObject { ["build_id"] = job.Id, ["cancelled"] = cancelled, ["state"] = job.State.ToString().ToLowerInvariant() });
-    }
-
     [McpTool("reload_game_code",
         "Build the C# project and hot-reload the assembly into the running editor, keeping the scene and its unsaved " +
         "edits. Play mode is stopped first. Reports which classes and game_ tools appeared or disappeared. Refuses " +
-        "when the game was built against a different engine than this editor runs — rebuild_engine_and_restart then.",
+        "when the game was built against a different engine than this editor runs — rebuild_engine_and_restart then. " +
+        "autoReload turns automatic build and reload on save in Source/ on or off and reloads nothing itself; it is " +
+        "off by default, so you normally call this tool explicitly.",
         MainThread = false, Label = "Reload game code")]
     public async Task<McpToolResult> ReloadGameCode(
         [McpParam("Build first")] bool build = true,
         [McpParam("Stop play mode if it is running")] bool stopPlayMode = true,
         [McpParam("Load even if the engine build differs")] bool allowEngineMismatch = false,
         [McpParam("Seconds to wait before returning a build_id to poll")] int waitSeconds = 40,
+        [McpParam("Set build-and-reload on save, and do nothing else")] bool? autoReload = null,
         CancellationToken cancellation = default)
     {
+        if (autoReload.HasValue)
+        {
+            _code.AutoReload = autoReload.Value;
+            return McpToolResult.Json(new JsonObject { ["autoReload"] = autoReload.Value });
+        }
+
         var reloadTask = _code.ReloadAsync(build, stopPlayMode, allowEngineMismatch, cancellation: cancellation, reason: "reload_game_code");
         var finished   = await Task.WhenAny(reloadTask, Task.Delay(TimeSpan.FromSeconds(Math.Clamp(waitSeconds, 1, 600)), cancellation));
 
@@ -375,7 +422,7 @@ public sealed class GameCodeTools
             {
                 ["status"]   = "running",
                 ["build_id"] = _code.LastBuild?.Id,
-                ["hint"]     = "Still building. Poll get_build_status with build_id; its 'reload' field appears when the swap is done.",
+                ["hint"]     = "Still building. Poll build_project with action 'status' and this build_id; its 'reload' field appears when the swap is done.",
             });
         }
 
@@ -393,31 +440,6 @@ public sealed class GameCodeTools
     // -------------------------------------------------------------------------
     // Types and files
     // -------------------------------------------------------------------------
-
-    [McpTool("list_actor_classes",
-        "Actor classes you can place or name in spawn_actor's class: the engine's gameplay classes (Actor, GameMode, " +
-        "Character, PlayerController…) and the project's own, with source 'engine' or 'project', base class and doc summary.", ReadOnly = true)]
-    public McpToolResult ListActorClasses([McpParam("'engine', 'project' or omit for both")] string? source = null)
-    {
-        var list = new JsonArray();
-        foreach (var type in ReflectionUtil.FindActorTypes().OrderBy(t => ComponentReflection.Source(t)).ThenBy(t => t.Name))
-        {
-            string src = _code.IsProjectType(type) ? "project" : ComponentReflection.Source(type);
-            if (source != null && !string.Equals(src, source, StringComparison.OrdinalIgnoreCase)) continue;
-
-            list.Add(new JsonObject
-            {
-                ["name"]      = type.Name,
-                ["fullName"]  = type.FullName,
-                ["source"]    = src,
-                ["baseClass"] = type.BaseType?.Name,
-                ["summary"]   = XmlDocs.Summary(type),
-                ["placeable"] = ReflectionUtil.IsPlaceable(type),
-            });
-        }
-
-        return McpToolResult.Json(list, $"{list.Count} actor class(es).");
-    }
 
     [McpTool("create_class",
         "Generate a starter C# file for a component, actor, gamemode, playercontroller, character or tool (a static class " +
@@ -478,12 +500,19 @@ public sealed class GameCodeTools
     [McpTool("run_standalone",
         "Build the project (a full build, engine included) and launch the game as its own process with the project root " +
         "as working directory, using ProjectSettings.json and its StartScene. Its output streams into the Output Log " +
-        "tagged [Game]. A previous instance is stopped first.",
+        "tagged [Game]. A previous instance is stopped first; stop=true only stops the running one.",
         MainThread = false, Label = "Run the game standalone")]
     public async Task<McpToolResult> RunStandalone(
         [McpParam("Seconds to wait for the build before returning a build_id")] int waitSeconds = 120,
+        [McpParam("Stop the running game instead of starting one")] bool stop = false,
         CancellationToken cancellation = default)
     {
+        if (stop)
+        {
+            bool stopped = _code.Standalone.Stop();
+            return McpToolResult.Json(new JsonObject { ["stopped"] = stopped, ["exitCode"] = _code.Standalone.LastExitCode });
+        }
+
         var project = _code.Project ?? throw new McpToolException("This project has no C# project.", "Call create_code_project first.");
         var dotnet  = DotnetLocator.Find() ?? throw new McpToolException("The .NET SDK was not found.");
 
@@ -491,7 +520,7 @@ public sealed class GameCodeTools
         await WaitFor(job, waitSeconds, cancellation);
 
         if (!job.IsFinished)
-            return McpToolResult.Json(JobView(job, includeDiagnostics: false), "Still building; poll get_build_status, then call run_standalone again.");
+            return McpToolResult.Json(JobView(job, includeDiagnostics: false), "Still building; poll build_project with action 'status', then call run_standalone again.");
 
         if (job.State != BuildJobState.Succeeded)
         {
@@ -509,35 +538,28 @@ public sealed class GameCodeTools
             ["command"]  = $"{dotnet.Path} {dll}",
             ["cwd"]      = project.Root,
             ["build_id"] = job.Id,
-        }, $"Started the game (pid {pid}). Its output appears in read_console as [Game].");
-    }
-
-    [McpTool("stop_standalone", "Stop the game process started by run_standalone.", MainThread = false)]
-    public McpToolResult StopStandalone()
-    {
-        bool stopped = _code.Standalone.Stop();
-        return McpToolResult.Json(new JsonObject { ["stopped"] = stopped, ["exitCode"] = _code.Standalone.LastExitCode });
+        }, $"Started the game (pid {pid}). Its output appears in the console tool as [Game].");
     }
 
     // -------------------------------------------------------------------------
     // Engine
     // -------------------------------------------------------------------------
 
-    [McpTool("get_engine_repo",
-        "Where the engine source is (repository root, engine/editor/test projects, solution), whether it is a git " +
-        "checkout and on which branch, the running editor's engine build id, and the exact dotnet commands to build the " +
-        "engine, the editor and the tests. Read this before editing engine code.",
-        MainThread = false, ReadOnly = true)]
-    public McpToolResult GetEngineRepo()
+    /// <summary>
+    /// The engine-source section of <c>get_project_info engineRepo=true</c>. It is not a tool of
+    /// its own: the composition root hands this to <see cref="McpHost.EngineRepoInfo"/>, because
+    /// only this class knows where the repo is.
+    /// </summary>
+    public JsonObject EngineRepoInfo()
     {
         var repo = _code.Repo;
         if (repo == null)
         {
-            return McpToolResult.Json(new JsonObject
+            return new JsonObject
             {
                 ["found"] = false,
                 ["hint"]  = "The editor is not running from a source checkout. Set SEXYBISCUIT_REPO to the repository root to enable engine rebuilds.",
-            });
+            };
         }
 
         string? branch = null;
@@ -554,7 +576,7 @@ public sealed class GameCodeTools
             }
         }
 
-        return McpToolResult.Json(new JsonObject
+        return new JsonObject
         {
             ["found"]               = true,
             ["root"]                = repo.Root,
@@ -575,7 +597,7 @@ public sealed class GameCodeTools
                 ["tests"]  = "dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj",
             },
             ["note"] = "Engine changes only take effect in the editor after rebuild_engine_and_restart; the standalone game picks them up on its next run_standalone.",
-        });
+        };
     }
 
     [McpTool("rebuild_engine_and_restart",
@@ -607,13 +629,6 @@ public sealed class GameCodeTools
         return result;
     }
 
-    [McpTool("set_auto_reload", "Turn automatic build + hot-reload on file save in Source/ on or off. Off by default; you normally call reload_game_code explicitly.")]
-    public McpToolResult SetAutoReload([McpParam("true to enable")] bool enabled)
-    {
-        _code.AutoReload = enabled;
-        return McpToolResult.Json(new JsonObject { ["enabled"] = enabled });
-    }
-
     // -------------------------------------------------------------------------
 
     private static async Task WaitFor(BuildJob job, int waitSeconds, CancellationToken cancellation)
@@ -625,7 +640,7 @@ public sealed class GameCodeTools
     private static string Headline(BuildJob job) => job.State switch
     {
         BuildJobState.Queued     => $"Build {job.Id} queued.",
-        BuildJobState.Running    => $"Build {job.Id} still running after {job.Elapsed.TotalSeconds:F0} s; poll get_build_status.",
+        BuildJobState.Running    => $"Build {job.Id} still running after {job.Elapsed.TotalSeconds:F0} s; poll build_project with action 'status'.",
         BuildJobState.Succeeded  => $"Build {job.Id} succeeded in {job.Result?.Duration.TotalSeconds ?? job.Elapsed.TotalSeconds:F1} s with {job.Result?.WarningCount ?? 0} warning(s).",
         BuildJobState.Failed     => $"Build {job.Id} failed with {job.Result?.ErrorCount ?? 0} error(s).",
         BuildJobState.Cancelled  => $"Build {job.Id} was cancelled.",

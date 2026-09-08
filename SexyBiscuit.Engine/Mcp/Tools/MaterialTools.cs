@@ -18,7 +18,7 @@ public sealed class MaterialTools
         Mutating = true, Label = "Set material on {actor}")]
     public McpToolResult SetMaterial(
         [McpParam("Actor id or name")] string actor,
-        [McpParam("'#RRGGBB', '#RRGGBBAA' or a colour name")] Color? albedoColor = null,
+        [McpParam("Albedo colour")] Color? albedoColor = null,
         [McpParam("0 = dielectric, 1 = metal")] float? metallic = null,
         [McpParam("0 = mirror, 1 = matte")] float? roughness = null,
         [McpParam("0 = none; above 1 glows")] float? emissiveIntensity = null,

@@ -16,6 +16,13 @@ public sealed class McpToolResult
     public bool             IsError           { get; set; }
     public JsonNode?        StructuredContent { get; set; }
 
+    /// <summary>
+    /// Set by a mutating tool that took no action after all — a merged tool called in its
+    /// reporting mode, such as <c>spawn_actor</c> with <c>list</c>. The host reads it to leave
+    /// the scene's dirty flag alone.
+    /// </summary>
+    public bool NoChange { get; set; }
+
     public static McpToolResult Text(string text) => new McpToolResult().WithText(text);
 
     /// <summary>

@@ -63,7 +63,7 @@ If instead you get **Claude Code is not signed in**: press **Open a terminal to 
 > Build a small arena: a 20 metre floor, four walls, a red cube in the middle, a warm point
 > light above it and a camera looking at the cube. Save it as Scenes/Arena.scene.
 
-The viewport fills in as Claude calls `spawn_primitive`, `set_material`, `place_actor` and
+The viewport fills in as Claude calls `spawn_actor`, `set_material` and
 `save_scene`; the outliner gains an actor per call; the viewport shows a purple **CLAUDE**
 banner the whole time. When it finishes, the reply summarises what it built and what it would
 add next.

@@ -24,22 +24,26 @@ public sealed class CookieTools
     [McpTool("search_cookies",
         "Search the CookieJar: the team's library of ready-made modules (a character controller, an input map, a HUD). " +
         "Call this before writing a common mechanic by hand. Returns one line per cookie with what it provides; " +
-        "install_cookie then copies one into the open project and tells you how to wire it up.",
+        "install_cookie then copies one into the open project and tells you how to wire it up. installed=true instead " +
+        "lists what this project has installed, and any file edited or deleted since.",
         MainThread = false, Label = "Search the CookieJar", ReadOnly = true)]
     public McpToolResult SearchCookies(
         [McpParam("Words to match against id, name, tags and summary", Example = "double jump")] string? query = null,
         [McpParam("Only cookies carrying every one of these tags")] string[]? tags = null,
         [McpParam("Only cookies that run on this engine: 'csharp' or 'js'")] string? engine = null,
         [McpParam("Include ones already installed")] bool includeInstalled = true,
-        [McpParam("Most results to return")] int limit = 20)
+        [McpParam("Most results to return")] int limit = 20,
+        [McpParam("List what the project has installed instead of searching")] bool installed = false)
     {
+        if (installed) return InstalledCookies();
+
         var catalogue = _host.Catalogue();
-        var installed = _host.Lock;
+        var lockFile  = _host.Lock;
 
         var rows = new JsonArray();
         foreach (var hit in catalogue.Search(query, tags, engine, limit))
         {
-            var record = installed.Find(hit.Cookie.Id);
+            var record = lockFile.Find(hit.Cookie.Id);
             if (record != null && !includeInstalled) continue;
             rows.Add(Row(hit.Cookie, record));
         }
@@ -86,11 +90,8 @@ public sealed class CookieTools
         return McpToolResult.Json(view);
     }
 
-    [McpTool("list_installed_cookies",
-        "What this project has installed, from CookieJar.lock.json, plus any file that has been edited or deleted " +
-        "since it was installed.",
-        MainThread = false, Label = "List installed cookies", ReadOnly = true)]
-    public McpToolResult ListInstalledCookies()
+    /// <summary>What CookieJar.lock.json records, and how the files on disk have drifted from it.</summary>
+    private McpToolResult InstalledCookies()
     {
         var project = RequireProject();
         var rows    = new JsonArray();
@@ -355,10 +356,22 @@ public sealed class CookieTools
     // Jars
     // -------------------------------------------------------------------------
 
-    [McpTool("list_cookie_jars", "The jars the catalogue is built from, and whether each may be installed from.",
-        MainThread = false, Label = "List cookie jars", ReadOnly = true)]
-    public McpToolResult ListCookieJars()
+    [McpTool("cookie_jars",
+        "The jars the catalogue is built from, and whether each may be installed from. add proposes a new jar at a git " +
+        "URL or folder \u2014 nothing is cloned and nothing is trusted: the person at the editor approves it in the Cookie " +
+        "Jar panel, so tell them what you proposed. refresh fetches a trusted git jar by name and reports what changed, " +
+        "including any cookie this project has installed.",
+        Label = "Cookie jars")]
+    public async Task<McpToolResult> CookieJars(
+        [McpParam("Propose a jar at this git URL or local folder", Example = "https://example.com/team-cookies.git")] string? add = null,
+        [McpParam("What to call the jar being added")] string? name = null,
+        [McpParam("Name of a trusted git jar to fetch")] string? refresh = null,
+        CancellationToken cancellation = default)
     {
+        if (add != null && refresh != null) throw new McpToolException("Give add or refresh, not both.");
+        if (add != null)     return AddJar(add, name);
+        if (refresh != null) return await RefreshJar(refresh, cancellation).ConfigureAwait(false);
+
         var catalogue = _host.Catalogue();
         var rows      = new JsonArray();
 
@@ -381,13 +394,7 @@ public sealed class CookieTools
         return McpToolResult.Json(new JsonObject { ["jars"] = rows, ["problems"] = Problems(catalogue.Problems) });
     }
 
-    [McpTool("add_cookie_jar",
-        "Propose a new jar. This never clones and never trusts anything: it records the address and returns, and the " +
-        "person at the editor decides. Tell the user what you proposed and ask them to approve it in the Cookie Jar panel.",
-        Label = "Propose cookie jar {urlOrPath}")]
-    public McpToolResult AddCookieJar(
-        [McpParam("A git URL or a local folder", Example = "https://example.com/team-cookies.git")] string urlOrPath,
-        [McpParam("What to call it")] string? name = null)
+    private McpToolResult AddJar(string urlOrPath, string? name)
     {
         CookieJarSource staged;
         try
@@ -414,12 +421,7 @@ public sealed class CookieTools
         });
     }
 
-    [McpTool("refresh_cookie_jar",
-        "Fetch a trusted git jar and report what changed, including any cookie this project has installed.",
-        Label = "Refresh jar {name}")]
-    public async Task<McpToolResult> RefreshCookieJar(
-        [McpParam("The jar's name")] string name,
-        CancellationToken cancellation = default)
+    private async Task<McpToolResult> RefreshJar(string name, CancellationToken cancellation)
     {
         CookieJarRefresh refresh;
         try

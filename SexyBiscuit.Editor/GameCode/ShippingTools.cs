@@ -35,8 +35,9 @@ public sealed class ShippingTools
     [McpTool("export_build",
         "Export the open project from disk: stage per target, publish self-contained desktop players (needs the engine " +
         "source and the .NET SDK), archive them, and optionally upload the native archives to DarksGames (needs " +
-        "DG_BUILD_TOKEN). Save the scene first. Returns one line per target; a longer run returns a job id for " +
-        "get_build_report.",
+        "DG_BUILD_TOKEN). Save the scene first. Returns one line per target with the archive, its size, and the upload " +
+        "URL or the first errors; a longer run returns a job id. report=true, or a jobId, reads an earlier run's report " +
+        "back instead of starting one.",
         MainThread = false, Label = "Export the build")]
     public async Task<McpToolResult> ExportBuild(
         [McpParam("Targets, e.g. [\"web\", \"osx-arm64\"]")] string[]? platforms = null,
@@ -45,12 +46,16 @@ public sealed class ShippingTools
         [McpParam("Upload the archives")] bool upload = false,
         [McpParam("Version override, e.g. 1.2.0")] string? version = null,
         [McpParam("Seconds to wait before returning a job id")] int waitSeconds = 120,
+        [McpParam("Read the latest run's report instead of exporting")] bool report = false,
+        [McpParam("Read this run's report, from an earlier result")] string? jobId = null,
         CancellationToken cancellation = default)
     {
+        if (report || jobId != null) return Report(report && jobId == null ? _latest : _jobs.GetValueOrDefault(jobId!), jobId);
+
         if (EditorState.CurrentProject == null)
-            throw new McpToolException("No project is open.", "Call open_project or create_project first.");
+            throw new McpToolException("No project is open.", "Call open_project first; create=true makes a new one.");
         if (_latest is { } running && !running.Completion.IsCompleted)
-            throw new McpToolException($"Export {running.Id} is still running.", "Call get_build_report to follow it.");
+            throw new McpToolException($"Export {running.Id} is still running.", "Call export_build with report=true to follow it.");
 
         string root    = EditorState.ProjectPath;
         var    targets = ResolveTargets(platforms);
@@ -229,13 +234,9 @@ public sealed class ShippingTools
         return null;
     }
 
-    [McpTool("get_build_report",
-        "The report of an export_build run — the latest when jobId is omitted: state, and one line per target with the " +
-        "archive, its size, and the upload URL or the first errors.",
-        MainThread = false, ReadOnly = true)]
-    public McpToolResult GetBuildReport([McpParam("A job id from export_build")] string? jobId = null)
+    /// <summary>An earlier run's report, or a clear miss. The reporting half of <c>export_build</c>.</summary>
+    private McpToolResult Report(ExportJob? job, string? jobId)
     {
-        var job = jobId == null ? _latest : _jobs.GetValueOrDefault(jobId);
         if (job == null)
         {
             return McpToolResult.Json(new JsonObject
@@ -260,7 +261,7 @@ public sealed class ShippingTools
             ["state"]   = "running",
             ["seconds"] = Math.Round((DateTime.UtcNow - job.StartedUtc).TotalSeconds),
             ["targets"] = new JsonArray(job.Targets.Select(t => (JsonNode)t.ToString()).ToArray()),
-            ["note"]    = "Still running; call get_build_report with this jobId.",
+            ["note"]    = "Still running; call export_build with this jobId.",
         };
         return McpToolResult.Json(view, $"export {job.Id} running for {string.Join(", ", job.Targets)}");
     }

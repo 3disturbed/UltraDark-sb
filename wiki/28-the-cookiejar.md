@@ -129,7 +129,7 @@ nothing prompts. So the gate is not in the assistant, it is in the shape of the 
 | a folder you added in the panel | you chose it |
 | a cloned git repository | **only when you press Trust and clone** |
 
-`add_cookie_jar` records an address and returns `awaiting_approval`. It has no code path that
+`cookie_jars` with `add` records an address and returns `awaiting_approval`. It has no code path that
 clones, enables or trusts anything, so there is no flag for a model to set. The clone happens in
 the panel, when a person presses the button. Installing from any jar that is not the builtin one
 also raises a question on the same board that backs `ask_user`, and a refusal is an error rather
@@ -150,11 +150,11 @@ editor on a prompt nobody can see.
 | `get_cookie` | One cookie in full, including its `AGENT.md` and every file it would install |
 | `install_cookie` | Plans, applies, builds and reloads; returns the instructions and the next steps |
 | `uninstall_cookie` | Removes what it installed, keeps what you edited |
-| `list_installed_cookies` | The lock file, plus any file that has drifted from it |
+| `search_cookies` with `installed=true` | The lock file, plus any file that has drifted from it |
 | `bake_cookie` | Writes a new cookie out of the open project |
-| `list_cookie_jars` | The jars, and whether each may be installed from |
-| `add_cookie_jar` | Records a jar for approval. Never clones |
-| `refresh_cookie_jar` | Fetches a trusted git jar and says what changed |
+| `cookie_jars` | The jars, and whether each may be installed from |
+| `cookie_jars` with `add` | Records a jar for approval. Never clones |
+| `cookie_jars` with `refresh` | Fetches a trusted git jar and says what changed |
 
 `install_cookie` returns the namespace and `using` line, what the cookie provides, every file
 written, the build outcome, the next steps, and the whole `AGENT.md`. That shape is deliberate: the
@@ -183,7 +183,7 @@ Keep it short. It is copied into a context window every time somebody installs t
 
 | Symptom | Cause and fix |
 |---|---|
-| A cookie is missing from the catalogue | Its manifest failed to parse or validate. `list_cookie_jars` reports the problem; a broken cookie never blanks the jar it sits in |
+| A cookie is missing from the catalogue | Its manifest failed to parse or validate. `cookie_jars` reports the problem; a broken cookie never blanks the jar it sits in |
 | "id does not match its folder name" | The folder name is how a jar addresses a cookie; rename one to match |
 | "AGENT.md is required" | Every cookie ships instructions. A cookie without them is not installable |
 | Install refused with `UntrustedJar` | Approve the jar in the Cookie Jar panel. No tool can do this |

@@ -17,7 +17,7 @@ internal static class SceneToolSupport
     public static void RefuseWhilePlaying(IMcpSceneHost host, string action)
     {
         if (host.IsPlaying)
-            throw new McpToolException($"Cannot {action} while the scene is in play mode.", "Call stop first.");
+            throw new McpToolException($"Cannot {action} while the scene is in play mode.", "Call play_mode with action 'stop' first.");
     }
 
     /// <summary>
@@ -84,7 +84,7 @@ internal static class SceneToolSupport
 
         string hint = ComponentReflection.Suggest(name, ReflectionUtil.FindComponentTypes().Select(t => t.Name));
         throw new McpToolException($"Unknown component type '{name}'.",
-            (hint.Length > 0 ? hint + " " : "") + "Call list_component_types for the full list.");
+            (hint.Length > 0 ? hint + " " : "") + "Call describe_components for the full list.");
     }
 
     /// <summary>The actor's component of a type named by short or full name, ignoring case.</summary>
@@ -170,6 +170,8 @@ internal static class SceneToolSupport
                     else
                     {
                         var component = FindComponent(actor, owner);
+                        if (component is MissingComponent)
+                            throw new McpToolException($"'{owner}' on '{actor.Name}' is a placeholder for an unresolved type; its properties cannot be edited until the type exists.");
                         target = component;
                         type   = component.GetType();
                     }

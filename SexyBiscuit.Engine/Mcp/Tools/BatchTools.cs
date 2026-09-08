@@ -18,18 +18,23 @@ namespace SexyBiscuit.Engine.Mcp.Tools;
 /// </remarks>
 public sealed class BatchTools
 {
+    /// <summary>
+    /// The batch vocabulary: the scene-editing tools, by the names they are served under. It is
+    /// the tool list, not a second one — when tools merged, the absorbed names went from here
+    /// too rather than living on as batch-only aliases, so an op name is always a tool an agent
+    /// can also call on its own.
+    /// </summary>
     private static readonly HashSet<string> Allowed = new(StringComparer.Ordinal)
     {
-        "spawn_actor", "spawn_primitive", "place_actor", "duplicate_actor",
-        "set_transform", "translate", "rotate", "look_at",
-        "set_properties", "set_property", "add_component", "remove_component", "set_material",
-        "rename_actor", "set_actor", "move_to_layer", "destroy_actor",
-        "attach_actor", "detach_actor",
+        "spawn_actor", "duplicate_actor", "destroy_actor",
+        "set_transform", "set_actor", "set_properties", "set_material",
+        "add_component", "remove_component", "attach_actor",
     };
 
-    // "parent" is attach_actor's second actor: without it here, attaching to something spawned
-    // earlier in the same batch could not be written as "$0".
-    private static readonly string[] ActorArguments = { "actor", "targetActor", "lookAtActor", "target", "parent" };
+    // "parent" is attach_actor's second actor and "lookAtActor" set_transform's: without them
+    // here, aiming at or attaching to something spawned earlier in the same batch could not be
+    // written as "$0".
+    private static readonly string[] ActorArguments = { "actor", "lookAtActor", "parent" };
 
     private readonly IMcpSceneHost   _host;
     private readonly McpToolRegistry _registry;
@@ -42,14 +47,13 @@ public sealed class BatchTools
 
     [McpTool("apply_scene_edits",
         "Run several scene edits in one call and one undo step. ops is a JSON array; each op is a tool's arguments plus " +
-        "\"op\": spawn_actor, spawn_primitive, place_actor, duplicate_actor, set_transform, translate, rotate, look_at, " +
-        "set_properties, set_property, add_component, remove_component, set_material, rename_actor, set_actor, " +
-        "move_to_layer, destroy_actor, attach_actor or detach_actor. An actor argument may be \"$n\": the id " +
+        "\"op\", one of: spawn_actor, duplicate_actor, destroy_actor, set_transform, set_actor, set_properties, " +
+        "set_material, add_component, remove_component, attach_actor. An actor argument may be \"$n\": the id " +
         "spawned by op n (0-based).",
         Mutating = true, Label = "Apply scene edits")]
     public McpToolResult ApplySceneEdits(
         McpCallContext context,
-        [McpParam("e.g. [{\"op\":\"spawn_primitive\",\"shape\":\"Cube\",\"position\":[0,0,0]},{\"op\":\"set_properties\",\"actor\":\"$0\",\"properties\":{\"Transform3D.Scale\":[2,1,2]}}]")] JsonElement ops,
+        [McpParam("e.g. [{\"op\":\"spawn_actor\",\"shape\":\"Cube\",\"position\":[0,0,0]},{\"op\":\"set_properties\",\"actor\":\"$0\",\"properties\":{\"Transform3D.Scale\":[2,1,2]}}]")] JsonElement ops,
         [McpParam("Stop at the first failure")] bool stopOnError = false)
     {
         RequireScene(_host);
@@ -107,7 +111,7 @@ public sealed class BatchTools
     }
 
     [McpTool("spawn_many",
-        "Spawn one primitive shape (Cube, Sphere, Plane, Quad, Cylinder, Cone) or one palette preset at several positions, " +
+        "Spawn one built-in shape (Cube, Sphere, Plane, Quad, Cylinder, Cone) or one palette preset at several positions, " +
         "or on a grid. Returns ids, names and positions only.",
         Mutating = true, Label = "Spawn many {what}")]
     public McpToolResult SpawnMany(
@@ -127,7 +131,7 @@ public sealed class BatchTools
 
         bool primitive = Enum.TryParse<MeshPrimitive>(what, ignoreCase: true, out var shape) && shape != MeshPrimitive.None;
         if (!primitive && ActorPresets.Find(what) == null)
-            throw new McpToolException($"'{what}' is neither a primitive shape nor a preset.", "Use Cube, Sphere, Plane, Quad, Cylinder, Cone, or call list_actor_presets.");
+            throw new McpToolException($"'{what}' is neither a primitive shape nor a preset.", "Use Cube, Sphere, Plane, Quad, Cylinder, Cone, or call spawn_actor with list=true.");
 
         var places = new List<float[]>();
         if (positions != null) places.AddRange(positions);
@@ -155,18 +159,15 @@ public sealed class BatchTools
             args[primitive ? "shape" : "preset"] = what;
             args["name"] = $"{prefix} {i + 1}";
             if (layer != null) args["layer"] = layer;
+            if (tag != null)   args["tag"]   = tag;
             if (primitive)
             {
                 if (scale != null) args["scale"] = new JsonArray(scale.Select(v => (JsonNode)v).ToArray());
                 if (color != null) args["color"] = color;
-                if (tag != null)   args["tag"]   = tag;
             }
 
-            var result = _registry.InvokeInline(primitive ? "spawn_primitive" : "place_actor", JsonSerializer.SerializeToElement(args), context);
+            var result = _registry.InvokeInline("spawn_actor", JsonSerializer.SerializeToElement(args), context);
             if (result.IsError) { errors.Add($"{i}: {result.FirstText}"); continue; }
-
-            if (!primitive && tag != null && ReadId(result) is { } placedId)
-                _registry.InvokeInline("set_actor", JsonSerializer.SerializeToElement(new JsonObject { ["actor"] = placedId.ToString(), ["tag"] = tag }), context);
 
             var stub = result.StructuredContent as JsonObject;
             spawned.Add(new JsonObject

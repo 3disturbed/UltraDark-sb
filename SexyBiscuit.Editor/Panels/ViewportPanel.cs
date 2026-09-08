@@ -490,7 +490,7 @@ public sealed class ViewportPanel
         if (EditorState.SelectedActor is { } selected) FrameActor(cameraTransform, selected);
     }
 
-    /// <summary>Moves the editor camera to look at an actor from a short distance. Shared with the focus_actor tool.</summary>
+    /// <summary>Moves the editor camera to look at an actor from a short distance. Shared with editor_camera's focus tool.</summary>
     public static void FrameActor(Transform3D cameraTransform, Actor actor)
     {
         var target = actor.GetComponent<Transform3D>();

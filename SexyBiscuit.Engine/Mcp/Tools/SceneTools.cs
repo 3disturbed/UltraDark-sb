@@ -18,54 +18,56 @@ public sealed class SceneTools
     }
 
     [McpTool("get_scene_summary",
-        "The scene at a glance: a header (layers, dirty flag, checks for camera, light, player start, game mode) then " +
-        "one line per actor — id, name, class, layer, tag, components, position. Page with offset and limit; " +
-        "compact=false gives the same as JSON. Ids change after undo, redo or load.",
+        "The open scene. format 'compact' (default): a header (layers, dirty flag, checks for camera, light, player " +
+        "start, game mode) then one text line per actor \u2014 id, name, class, layer, tag, components, position. 'json': " +
+        "the same as JSON. 'view': every actor's editable component properties (rotations in degrees, colours as hex). " +
+        "'file': the exact .scene JSON save_scene would write. Page with offset and limit. Ids change after undo, redo " +
+        "or load.",
         Label = "Read the scene summary", ReadOnly = true)]
     public McpToolResult GetSceneSummary(
-        [McpParam("One text line per actor (default) or JSON")] bool compact = true,
+        [McpParam("'compact', 'json', 'view' or 'file'")] string format = "compact",
         [McpParam("Only actors in this layer")] string? layer = null,
         [McpParam("Skip this many actors")] int offset = 0,
         [McpParam("Actors per page")] int limit = 100,
-        [McpParam("Include each actor's component type list (JSON form)")] bool includeComponents = true)
+        [McpParam("Include each actor's component type list (json format)")] bool includeComponents = true)
     {
         var scene = RequireScene(_host);
 
-        if (compact)
-            return McpToolResult.Text(SceneViews.SceneSummaryText(scene, _host, _undo, layer, offset, limit));
+        switch (format.ToLowerInvariant())
+        {
+            case "compact":
+                return McpToolResult.Text(SceneViews.SceneSummaryText(scene, _host, _undo, layer, offset, limit));
 
-        var summary = SceneViews.SceneSummary(scene, _host, _undo, includeComponents);
-        var actors  = summary["actors"]!.AsArray();
-        var kept    = actors.Where(a => layer == null || string.Equals(a?["layer"]?.GetValue<string>(), layer, StringComparison.OrdinalIgnoreCase)).ToList();
-        var page    = kept.Skip(Math.Max(0, offset)).Take(Math.Max(1, limit)).ToList();
+            case "file":
+                return McpToolResult.Text(JsonNode.Parse(SceneSerializer.Serialize(scene))!.ToJsonString());
 
-        foreach (var node in page) actors.Remove(node!);
-        summary["actors"] = new JsonArray(page.Select(n => (JsonNode)n!.DeepClone()).ToArray());
-        if (kept.Count > offset + limit) summary["nextOffset"] = offset + limit;
-        return McpToolResult.Json(summary);
+            case "json":
+            {
+                var summary = SceneViews.SceneSummary(scene, _host, _undo, includeComponents);
+                var actors  = summary["actors"]!.AsArray();
+                var kept    = actors.Where(a => layer == null || string.Equals(a?["layer"]?.GetValue<string>(), layer, StringComparison.OrdinalIgnoreCase)).ToList();
+                var page    = kept.Skip(Math.Max(0, offset)).Take(Math.Max(1, limit)).ToList();
+
+                foreach (var node in page) actors.Remove(node!);
+                summary["actors"] = new JsonArray(page.Select(n => (JsonNode)n!.DeepClone()).ToArray());
+                if (kept.Count > offset + limit) summary["nextOffset"] = offset + limit;
+                return McpToolResult.Json(summary);
+            }
+
+            case "view":
+                return SceneView(scene, layer, offset, limit);
+
+            default:
+                throw new McpToolException($"Unknown format '{format}'.", "Use 'compact', 'json', 'view' or 'file'.");
+        }
     }
 
-    [McpTool("get_scene_json",
-        "Full dump of the open scene. format 'view' gives readable actor views with editable component properties " +
-        "(rotations in degrees, colours as hex); 'file' gives the exact .scene JSON that save_scene would write.",
-        Label = "Dump the scene", ReadOnly = true)]
-    public McpToolResult GetSceneJson(
-        [McpParam("'view' or 'file'")] string format = "view",
-        [McpParam("Only actors in this layer")] string? layer = null,
-        [McpParam("Skip this many actors (view format)")] int offset = 0,
-        [McpParam("Cap on the actors returned in view format")] int maxActors = 50)
+    /// <summary>Readable actor views, layer by layer, capped so a big scene cannot flood a turn.</summary>
+    private McpToolResult SceneView(Core.Scene scene, string? layer, int offset, int limit)
     {
-        var scene = RequireScene(_host);
-
-        if (string.Equals(format, "file", StringComparison.OrdinalIgnoreCase))
-            return McpToolResult.Text(JsonNode.Parse(SceneSerializer.Serialize(scene))!.ToJsonString());
-
-        if (!string.Equals(format, "view", StringComparison.OrdinalIgnoreCase))
-            throw new McpToolException($"Unknown format '{format}'.", "Use 'view' or 'file'.");
-
-        var layers    = new JsonArray();
-        int seen      = 0;
-        int emitted   = 0;
+        var layers     = new JsonArray();
+        int seen       = 0;
+        int emitted    = 0;
         bool truncated = false;
 
         foreach (var l in scene.Layers)
@@ -76,7 +78,7 @@ public sealed class SceneTools
             foreach (var actor in l.Actors)
             {
                 if (seen++ < offset) continue;
-                if (emitted >= maxActors)
+                if (emitted >= limit)
                 {
                     truncated = true;
                     break;
@@ -137,7 +139,7 @@ public sealed class SceneTools
 
         string? full = FindSceneFile(path);
         if (full == null)
-            throw new McpToolException($"No scene file found for '{path}'.", "Call list_scenes to see what exists, or save_scene to create one.");
+            throw new McpToolException($"No scene file found for '{path}'.", "Call list_assets to see what exists, or save_scene to create one.");
 
         Core.Scene loaded;
         IReadOnlyList<string> warnings;
@@ -223,14 +225,18 @@ public sealed class SceneTools
     }
 
     [McpTool("get_actor",
-        "One actor. detail 'full' (default): transform in degrees, every component with its editable properties, bounds, " +
-        "selection; 'row': id, name, class, layer, tag, component types, position. actor is an id or an exact name.", ReadOnly = true)]
+        "One actor, by id or exact name. detail 'full' (default): transform in degrees, every component with its " +
+        "editable properties, bounds, selection; 'row': id, name, class, layer, tag, component types, position. " +
+        "property reads a single value instead, keyed 'Type.Property' such as 'Light3D.Intensity' or 'Actor.Tag'.", ReadOnly = true)]
     public McpToolResult GetActor(
         [McpParam("Actor id or name")] string actor,
-        [McpParam("'full' or 'row'")] string detail = "full")
+        [McpParam("'full' or 'row'")] string detail = "full",
+        [McpParam("Read one 'ComponentType.Property' (or 'Actor.Property')")] string? property = null)
     {
         var scene  = RequireScene(_host);
         var target = ActorRef.Resolve(scene, actor);
+
+        if (property != null) return ReadProperty(target, property);
 
         return detail.ToLowerInvariant() switch
         {
@@ -238,6 +244,31 @@ public sealed class SceneTools
             "full" => McpToolResult.Json(SceneViews.ActorView(target, _host)),
             _      => throw new McpToolException($"Unknown detail '{detail}'.", "Use 'full' or 'row'."),
         };
+    }
+
+    /// <summary>One editable property of a component, or of the actor itself with the 'Actor.' prefix.</summary>
+    private static McpToolResult ReadProperty(Actor target, string key)
+    {
+        int dot = key.LastIndexOf('.');
+        if (dot <= 0)
+            throw new McpToolException($"'{key}': use a 'ComponentType.Property' key, e.g. 'Light3D.Intensity'.");
+
+        string owner        = key[..dot];
+        string propertyName = key[(dot + 1)..];
+
+        object target_ = string.Equals(owner, "Actor", StringComparison.OrdinalIgnoreCase) ? target : FindComponent(target, owner);
+        var type = target_.GetType();
+
+        var info = ComponentReflection.FindProperty(type, propertyName)
+            ?? throw new McpToolException($"'{type.Name}' has no editable property '{propertyName}'.",
+                ComponentReflection.Suggest(propertyName, ComponentReflection.EditableProperties(type).Select(p => p.Name)));
+
+        return McpToolResult.Json(new JsonObject
+        {
+            ["property"] = $"{type.Name}.{info.Name}",
+            ["type"]     = ValueConverter.Describe(info.PropertyType),
+            ["value"]    = ValueConverter.ToJson(info.GetValue(target_)),
+        });
     }
 
     // -------------------------------------------------------------------------

@@ -28,7 +28,7 @@ public sealed class EditorTools
         => App.Engine?.SceneManager.ActiveScene ?? throw new McpToolException("No scene is open.", "Call new_scene or load_scene first.");
 
     private static ProjectFile RequireProject()
-        => EditorState.CurrentProject ?? throw new McpToolException("No project is open.", "Call open_project or create_project first; get_project_info lists templates and recent projects.");
+        => EditorState.CurrentProject ?? throw new McpToolException("No project is open.", "Call open_project (create=true makes a new one); get_project_info lists templates and recent projects.");
 
     // -------------------------------------------------------------------------
     // Context
@@ -49,7 +49,7 @@ public sealed class EditorTools
             context["project"]   = null;
             context["templates"] = new JsonArray(TemplateLocator.List().Select(t => (JsonNode)t.Name).ToArray());
             context["recent"]    = new JsonArray(EditorState.RecentProjects.Select(r => (JsonNode)new JsonObject { ["name"] = r.Name, ["path"] = r.Path }).ToArray());
-            context["hint"]      = "Call open_project or create_project; get_project_info describes the templates.";
+            context["hint"]      = "Call open_project (create=true makes a new one); get_project_info describes the templates.";
             return McpToolResult.Json(context);
         }
 
@@ -93,10 +93,19 @@ public sealed class EditorTools
 
     [McpTool("get_project_info",
         "Describe the open project and the editor: root folder, asset/script/scene folders, the open scene and whether it " +
-        "has unsaved changes, play mode, the MCP URL, and the templates create_project accepts with descriptions. " +
-        "get_context is the cheap version; use this for the folders and the template list.",
+        "has unsaved changes, play mode, the MCP URL, and the templates open_project accepts with descriptions. " +
+        "get_context is the cheap version; use this for the folders and the template list. engineRepo=true adds where " +
+        "the engine source is, its branch, and the dotnet commands that build it \u2014 read that before editing engine code.",
         Label = "Read project info", ReadOnly = true)]
-    public McpToolResult GetProjectInfo() => McpToolResult.Json(ProjectInfo());
+    public McpToolResult GetProjectInfo(
+        [McpParam("Add the engine source checkout and its build commands")] bool engineRepo = false)
+    {
+        var info = ProjectInfo();
+        if (engineRepo)
+            info["engineRepo"] = _host.EngineRepoInfo?.Invoke()
+                ?? new JsonObject { ["found"] = false, ["hint"] = "The editor is not running from a source checkout. Set SEXYBISCUIT_REPO to the repository root to enable engine rebuilds." };
+        return McpToolResult.Json(info);
+    }
 
     internal JsonObject ProjectInfo()
     {
@@ -115,7 +124,7 @@ public sealed class EditorTools
         var project = EditorState.CurrentProject;
         if (project == null)
         {
-            info["message"] = "No project is open. Call open_project with a .sbproject path (or a folder containing one), or create_project.";
+            info["message"] = "No project is open. Call open_project with a .sbproject path, or a folder containing one; create=true makes a new project.";
             var recent = new JsonArray();
             foreach (var r in EditorState.RecentProjects)
                 recent.Add(new JsonObject { ["name"] = r.Name, ["path"] = r.Path });
@@ -157,9 +166,18 @@ public sealed class EditorTools
         return info;
     }
 
-    [McpTool("open_project", "Open a project from its .sbproject file, or from a folder that contains one. Its default scene is loaded when the file exists.",
-             Label = "Open project {path}")]
-    public McpToolResult OpenProject([McpParam("Path to a .sbproject file or a project folder")] string path)
+    [McpTool("open_project",
+        "Open a project from its .sbproject file, or from a folder that contains one; its default scene is loaded when " +
+        "the file exists. create=true instead creates the project at that folder path (the last segment is its name) " +
+        "from a template \u2014 names come from get_project_info \u2014 and opens it.",
+        Label = "Open project {path}")]
+    public McpToolResult OpenProject(
+        [McpParam("Path to a .sbproject file or a project folder")] string path,
+        [McpParam("Create the project folder first")] bool create = false,
+        [McpParam("Template name, e.g. '3D Scene'; omit for an empty project")] string? template = null)
+        => create ? CreateProject(path, template) : Open(path);
+
+    private McpToolResult Open(string path)
     {
         string full = Path.GetFullPath(path);
         string? file = null;
@@ -176,27 +194,23 @@ public sealed class EditorTools
             file = full;
         }
 
-        if (file == null) throw new McpToolException($"'{path}' does not exist.");
+        if (file == null) throw new McpToolException($"'{path}' does not exist.", "Pass create=true to make a project there.");
 
         EditorState.OpenProject(file);
 
         if (!string.Equals(EditorState.CurrentProjectFile, Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase))
-            throw new McpToolException($"Could not open '{file}'.", "See the Output Log (read_console) for the reason.");
+            throw new McpToolException($"Could not open '{file}'.", "See the Output Log (console) for the reason.");
 
         return McpToolResult.Json(ProjectInfo(), $"Opened project '{EditorState.CurrentProject!.ProjectName}'.");
     }
 
-    [McpTool("create_project",
-        "Create a new project folder <directory>/<name> from a template (names from get_project_info; omit for an empty " +
-        "project) and open it.",
-        Label = "Create project {name}")]
-    public McpToolResult CreateProject(
-        [McpParam("Project name; also the folder name")] string name,
-        [McpParam("Parent directory the project folder is created in")] string directory,
-        [McpParam("Template name, e.g. '3D Scene'")] string? template = null)
+    private McpToolResult CreateProject(string path, string? template)
     {
+        string projectDir = Path.GetFullPath(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        string name       = Path.GetFileName(projectDir);
+
         if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-            throw new McpToolException("name must be a valid folder name.");
+            throw new McpToolException($"'{path}' does not end in a valid folder name.", "Pass the folder the project should live in, e.g. '/Users/me/Games/Asteroids'.");
 
         string? templatePath = null;
         if (!string.IsNullOrWhiteSpace(template))
@@ -206,10 +220,8 @@ public sealed class EditorTools
                     "Available: " + string.Join(", ", TemplateLocator.List().Select(t => t.Name)) + ".");
         }
 
-        string parent = Path.GetFullPath(directory);
-        string projectDir = Path.Combine(parent, name);
         if (Directory.Exists(projectDir) && Directory.EnumerateFileSystemEntries(projectDir).Any())
-            throw new McpToolException($"'{projectDir}' already exists and is not empty.", "Use open_project for an existing project.");
+            throw new McpToolException($"'{projectDir}' already exists and is not empty.", "Drop create for an existing project.");
 
         string projectFile;
         try
@@ -225,49 +237,30 @@ public sealed class EditorTools
         return McpToolResult.Json(ProjectInfo(), $"Created and opened '{name}' at {projectDir}.");
     }
 
-    [McpTool("list_scenes", "The .scene files in the project, as project-relative paths, marking the open one.", ReadOnly = true)]
-    public McpToolResult ListScenes()
-    {
-        RequireProject();
-        string root = EditorState.ProjectPath;
-        var list = new JsonArray();
-
-        foreach (var dir in new[] { Path.Combine(root, "Scenes"), Path.Combine(root, "Assets", "Scenes") })
-        {
-            if (!Directory.Exists(dir)) continue;
-
-            foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
-                                          .Where(f => f.EndsWith(".scene", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-                                          .OrderBy(f => f))
-            {
-                string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-                list.Add(new JsonObject
-                {
-                    ["path"]      = relative,
-                    ["name"]      = Path.GetFileNameWithoutExtension(file),
-                    ["sizeBytes"] = new FileInfo(file).Length,
-                    ["isCurrent"] = string.Equals(relative, EditorState.CurrentScenePath, StringComparison.OrdinalIgnoreCase),
-                });
-            }
-        }
-
-        return McpToolResult.Json(list, $"{list.Count} scene file(s).");
-    }
-
-    [McpTool("list_assets", "Files under the project's asset directories with a type: texture, audio, model, script, scene, font or other.", ReadOnly = true)]
+    [McpTool("list_assets",
+        "Files under the project's asset directories and its Scenes folders, each with a type: texture, audio, model, " +
+        "script, scene, font or other. The open scene is marked. type filters to one of those \u2014 type 'scene' is the " +
+        "list of .scene files.", ReadOnly = true)]
     public McpToolResult ListAssets(
-        [McpParam("Only this sub-folder of the asset directory")] string? subdirectory = null,
+        [McpParam("Only this sub-folder of an asset directory")] string? subdirectory = null,
         [McpParam("Only these extensions, e.g. ['.png', '.wav']")] string[]? extensions = null,
+        [McpParam("Only this type, e.g. 'scene' or 'texture'")] string? type = null,
         [McpParam("Maximum entries")] int limit = 100)
     {
         var project = RequireProject();
         string root = EditorState.ProjectPath;
         var list = new JsonArray();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         bool truncated = false;
 
         var wanted = extensions?.Select(e => e.StartsWith('.') ? e : "." + e).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var assetDir in project.AssetDirectories.DefaultIfEmpty("Assets"))
+        // The Scenes folders are listed alongside the asset directories: a scene is an asset a
+        // caller looks for by type, and a project keeps its scenes outside Assets/ as often as in.
+        var directories = project.AssetDirectories.DefaultIfEmpty("Assets")
+            .Concat(new[] { "Scenes", Path.Combine("Assets", "Scenes") });
+
+        foreach (var assetDir in directories)
         {
             string dir = Path.Combine(root, assetDir, subdirectory ?? "");
             if (!Directory.Exists(dir)) continue;
@@ -276,19 +269,26 @@ public sealed class EditorTools
             {
                 string ext = Path.GetExtension(file);
                 if (wanted != null && !wanted.Contains(ext)) continue;
+
+                string kind = ClassifyAsset(file);
+                if (type != null && !string.Equals(kind, type, StringComparison.OrdinalIgnoreCase)) continue;
+
+                string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
+                if (!seen.Add(relative)) continue;
                 if (list.Count >= limit) { truncated = true; break; }
 
-                list.Add(new JsonObject
+                var entry = new JsonObject
                 {
-                    ["path"]      = Path.GetRelativePath(root, file).Replace('\\', '/'),
-                    ["type"]      = ClassifyAsset(file),
+                    ["path"]      = relative,
+                    ["type"]      = kind,
                     ["sizeBytes"] = new FileInfo(file).Length,
-                });
+                };
+                if (string.Equals(relative, EditorState.CurrentScenePath, StringComparison.OrdinalIgnoreCase)) entry["isCurrent"] = true;
+                list.Add(entry);
             }
         }
 
-        var result = McpToolResult.Json(new JsonObject { ["assets"] = list, ["truncated"] = truncated }, $"{list.Count} asset(s).");
-        return result;
+        return McpToolResult.Json(new JsonObject { ["assets"] = list, ["truncated"] = truncated }, $"{list.Count} asset(s).");
     }
 
     private static string ClassifyAsset(string file)
@@ -311,15 +311,30 @@ public sealed class EditorTools
     // Selection and the editor camera
     // -------------------------------------------------------------------------
 
-    [McpTool("select_actor", "Select an actor in the editor so it shows in the Details panel and wears the gizmo. Omit actor to clear the selection.",
-             Label = "Select {actor}")]
-    public McpToolResult SelectActor([McpParam("Actor id or name; omit to deselect")] string? actor = null)
+    [McpTool("select_actor",
+        "Select an actor in the editor so it shows in the Details panel and wears the gizmo. Omit actor to read the " +
+        "current selection; clear=true deselects.",
+        Label = "Select {actor}")]
+    public McpToolResult SelectActor(
+        [McpParam("Actor id or name; omit to read the selection")] string? actor = null,
+        [McpParam("Deselect instead")] bool clear = false)
     {
         var scene = RequireScene();
-        if (actor == null)
+
+        if (clear)
         {
             EditorState.SelectActor(null);
             return McpToolResult.Json(new JsonObject { ["selected"] = null });
+        }
+
+        if (actor == null)
+        {
+            var selected = EditorState.SelectedActor;
+            return McpToolResult.Json(new JsonObject
+            {
+                ["actor"] = selected != null && !selected.IsDestroyed ? SceneViews.ActorRow(selected) : null,
+                ["layer"] = EditorState.SelectedLayer?.Name,
+            });
         }
 
         var target = ActorRef.Resolve(scene, actor);
@@ -328,78 +343,48 @@ public sealed class EditorTools
         return McpToolResult.Json(SceneViews.ActorRow(target));
     }
 
-    [McpTool("get_selection", "The actor and layer currently selected in the editor, if any.", ReadOnly = true)]
-    public McpToolResult GetSelection()
-    {
-        var selected = EditorState.SelectedActor;
-        return McpToolResult.Json(new JsonObject
-        {
-            ["actor"] = selected != null && !selected.IsDestroyed ? SceneViews.ActorRow(selected) : null,
-            ["layer"] = EditorState.SelectedLayer?.Name,
-        });
-    }
-
-    [McpTool("focus_actor", "Select an actor and move the editor camera to frame it.", Label = "Focus {actor}")]
-    public McpToolResult FocusActor([McpParam("Actor id or name")] string actor)
-    {
-        var scene  = RequireScene();
-        var target = ActorRef.Resolve(scene, actor);
-        var camera = App.EditorCameraTransform ?? throw new McpToolException("The editor camera is not ready.");
-
-        EditorState.SelectActor(target);
-        EditorState.SelectedLayer = target.Layer_;
-
-        if (target.GetComponent<Transform3D>() == null)
-            throw new McpToolException($"'{target.Name}' is a 2D actor; the 3D editor camera cannot frame it.");
-
-        ViewportPanel.FrameActor(camera, target);
-        return McpToolResult.Json(new JsonObject
-        {
-            ["actor"]  = SceneViews.ActorRow(target),
-            ["camera"] = CameraPose(camera),
-        });
-    }
-
-    [McpTool("get_editor_camera", "The editor camera's pose and which view mode the viewport is in.", ReadOnly = true)]
-    public McpToolResult GetEditorCamera()
-    {
-        var camera = App.EditorCameraTransform ?? throw new McpToolException("The editor camera is not ready.");
-        return McpToolResult.Json(CameraPose(camera));
-    }
-
-    [McpTool("set_editor_camera", "Move the editor camera (not any scene camera). Give lookAt or rotation [pitch, yaw, roll] degrees.",
-             Label = "Move the editor camera")]
-    public McpToolResult SetEditorCamera(
+    [McpTool("editor_camera",
+        "The editor camera and the viewport, read with no arguments. position, lookAt or rotation [pitch, yaw, roll] " +
+        "degrees move the editor camera (not any scene camera); focus selects an actor and frames it. view3d switches " +
+        "between the 3D pipeline and the 2D sprite pass, gameCamera looks through the scene's MainCamera3D instead, " +
+        "and fullscreen shows the game over the whole window while playing.",
+        Label = "Editor camera")]
+    public McpToolResult EditorCamera(
         [McpParam("[x, y, z]")] float[]? position = null,
         [McpParam("World point to look at [x, y, z]")] float[]? lookAt = null,
-        [McpParam("[pitch, yaw, roll] degrees")] float[]? rotation = null)
+        [McpParam("[pitch, yaw, roll] degrees")] float[]? rotation = null,
+        [McpParam("Actor id or name to select and frame")] string? focus = null,
+        [McpParam("Render the 3D pipeline (true) or the 2D sprite pass (false)")] bool? view3d = null,
+        [McpParam("Look through the scene's MainCamera3D instead of the editor camera")] bool? gameCamera = null,
+        [McpParam("Show the game over the whole window; only while playing")] bool? fullscreen = null)
     {
         var camera = App.EditorCameraTransform ?? throw new McpToolException("The editor camera is not ready.");
+
+        if (view3d.HasValue)     EditorState.Viewport3D         = view3d.Value;
+        if (gameCamera.HasValue) EditorState.UseGameCamera      = gameCamera.Value;
+        if (fullscreen.HasValue) EditorState.ViewportFullscreen = fullscreen.Value && EditorState.IsPlaying;
 
         if (position != null) camera.Position    = ToVector3(position, "position");
         if (rotation != null) camera.EulerAngles = ToVector3(rotation, "rotation");
         if (lookAt != null)   camera.LookAt(ToVector3(lookAt, "lookAt"));
 
-        return McpToolResult.Json(CameraPose(camera));
-    }
+        var result = CameraPose(camera);
 
-    [McpTool("set_viewport", "Switch the viewport between 3D and 2D rendering, between the editor camera and the scene's MainCamera3D, " +
-                             "or (while playing) between the docked viewport and the game over the whole window. Play always starts on the game camera.",
-             Label = "Change the viewport mode")]
-    public McpToolResult SetViewport(
-        [McpParam("Render the 3D pipeline (true) or the 2D sprite pass (false)")] bool? view3d = null,
-        [McpParam("Look through the scene's MainCamera3D instead of the editor camera")] bool? useGameCamera = null,
-        [McpParam("Show the game over the whole window; only while playing")] bool? fullscreen = null)
-    {
-        if (view3d.HasValue)        EditorState.Viewport3D         = view3d.Value;
-        if (useGameCamera.HasValue) EditorState.UseGameCamera      = useGameCamera.Value;
-        if (fullscreen.HasValue)    EditorState.ViewportFullscreen = fullscreen.Value && EditorState.IsPlaying;
-        return McpToolResult.Json(new JsonObject
+        if (focus != null)
         {
-            ["view3d"]        = EditorState.Viewport3D,
-            ["useGameCamera"] = EditorState.UseGameCamera,
-            ["fullscreen"]    = EditorState.ViewportFullscreen,
-        });
+            var target = ActorRef.Resolve(RequireScene(), focus);
+            EditorState.SelectActor(target);
+            EditorState.SelectedLayer = target.Layer_;
+
+            if (target.GetComponent<Transform3D>() == null)
+                throw new McpToolException($"'{target.Name}' is a 2D actor; the 3D editor camera cannot frame it.");
+
+            ViewportPanel.FrameActor(camera, target);
+            result = CameraPose(camera);
+            result["actor"] = SceneViews.ActorRow(target);
+        }
+
+        return McpToolResult.Json(result);
     }
 
     private static JsonObject CameraPose(Transform3D camera) => new()
@@ -409,6 +394,7 @@ public sealed class EditorTools
         ["forward"]       = ValueConverter.ToJson(camera.Forward),
         ["view3d"]        = EditorState.Viewport3D,
         ["useGameCamera"] = EditorState.UseGameCamera,
+        ["fullscreen"]    = EditorState.ViewportFullscreen,
     };
 
     // -------------------------------------------------------------------------
@@ -416,41 +402,36 @@ public sealed class EditorTools
     // -------------------------------------------------------------------------
 
     [McpTool("capture_viewport",
-        "A PNG screenshot of the editor viewport as it is rendered right now, downscaled to maxWidth. 640 px is enough " +
+        "A PNG screenshot of the editor viewport as it is rendered right now, its longest edge width px. 640 is enough " +
         "to judge a scene and costs about a third of 1024; use 1024 only to read text. includeUi captures the whole " +
-        "editor window with its panels instead.",
+        "editor window with its panels instead. Give position to render width x height from a camera pose of your " +
+        "choosing (with lookAt or rotation [pitch, yaw, roll] degrees) without moving any camera.",
         MainThread = false, Label = "Capture the viewport")]
     public async Task<McpToolResult> CaptureViewport(
-        [McpParam("Longest edge in pixels")] int maxWidth = 640,
+        [McpParam("Longest edge in pixels, or the width of a pose render")] int width = 640,
+        [McpParam("Height of a pose render")] int height = 360,
         [McpParam("Capture the whole editor window including panels")] bool includeUi = false,
-        CancellationToken cancellation = default)
-    {
-        var png = await AwaitFrame(_host.Capture.CaptureViewportAsync(maxWidth, includeUi, cancellation), cancellation);
-        string caption = await _host.Dispatcher.InvokeAsync(DescribeView, cancellation);
-        return McpToolResult.Image(png, caption);
-    }
-
-    [McpTool("capture_scene_from",
-        "Render the scene from a camera pose of your choosing, as a PNG, without moving any camera. Give lookAt or " +
-        "rotation [pitch, yaw, roll] degrees.",
-        MainThread = false, Label = "Render from a pose")]
-    public async Task<McpToolResult> CaptureSceneFrom(
-        [McpParam("[x, y, z]")] float[] position,
+        [McpParam("Render from this pose instead, [x, y, z]")] float[]? position = null,
         [McpParam("World point to look at [x, y, z]")] float[]? lookAt = null,
         [McpParam("[pitch, yaw, roll] degrees")] float[]? rotation = null,
         [McpParam("Vertical field of view in degrees")] float fov = 60f,
-        [McpParam("Image width")] int width = 640,
-        [McpParam("Image height")] int height = 360,
         CancellationToken cancellation = default)
     {
-        var pose = new ViewportCapture.CameraPose(
-            ToVector3(position, "position"),
-            lookAt != null ? ToVector3(lookAt, "lookAt") : null,
-            rotation != null ? ToVector3(rotation, "rotation") : null,
-            fov);
+        if (position != null)
+        {
+            var pose = new ViewportCapture.CameraPose(
+                ToVector3(position, "position"),
+                lookAt != null ? ToVector3(lookAt, "lookAt") : null,
+                rotation != null ? ToVector3(rotation, "rotation") : null,
+                fov);
 
-        var png = await AwaitFrame(_host.Capture.CaptureFromAsync(pose, width, height, cancellation), cancellation);
-        return McpToolResult.Image(png, $"{width}x{height} from {ValueConverter.ToJson(pose.Position)?.ToJsonString()}, fov {fov}.");
+            var rendered = await AwaitFrame(_host.Capture.CaptureFromAsync(pose, width, height, cancellation), cancellation);
+            return McpToolResult.Image(rendered, $"{width}x{height} from {ValueConverter.ToJson(pose.Position)?.ToJsonString()}, fov {fov}.");
+        }
+
+        var png = await AwaitFrame(_host.Capture.CaptureViewportAsync(width, includeUi, cancellation), cancellation);
+        string caption = await _host.Dispatcher.InvokeAsync(DescribeView, cancellation);
+        return McpToolResult.Image(png, caption);
     }
 
     private static async Task<byte[]> AwaitFrame(Task<byte[]> capture, CancellationToken cancellation)
@@ -487,42 +468,51 @@ public sealed class EditorTools
     // Play mode
     // -------------------------------------------------------------------------
 
-    [McpTool("play", "Start play mode (F5). The scene is snapshotted; changes made while playing are discarded on stop.", Label = "Play")]
-    public McpToolResult Play()
+    [McpTool("play_mode",
+        "Drive play mode and read its state: playing and paused flags, fps, frame count, time scale and the scene name. " +
+        "action 'play' starts it (F5; the scene is snapshotted and changes made while playing are discarded), 'stop' " +
+        "ends it and restores the scene (F7), 'pause', 'resume' and 'toggle' do the obvious, 'step' advances frames " +
+        "frames of 1/60 s while paused, and 'status' (the default) only reads.",
+        Label = "Play mode: {action}")]
+    public McpToolResult PlayMode(
+        [McpParam("status, play, stop, pause, resume, toggle or step")] string action = "status",
+        [McpParam("Frames to advance for 'step'")] int frames = 1)
     {
-        RequireScene();
-        App.EnterPlayMode();
+        switch (action.ToLowerInvariant())
+        {
+            case "status":
+                break;
+
+            case "play":
+                RequireScene();
+                App.EnterPlayMode();
+                break;
+
+            case "stop":
+                App.ExitPlayMode();
+                break;
+
+            case "pause":
+            case "resume":
+            case "toggle":
+                if (!EditorState.IsPlaying) throw new McpToolException("Not in play mode.", "Call play_mode with action 'play' first.");
+                if (action.Equals("toggle", StringComparison.OrdinalIgnoreCase)) App.TogglePause();
+                else App.SetPaused(action.Equals("pause", StringComparison.OrdinalIgnoreCase));
+                break;
+
+            case "step":
+                if (!EditorState.IsPlaying) throw new McpToolException("Not in play mode.", "Play, then pause, then step.");
+                if (!EditorState.IsPlayPaused) throw new McpToolException("Play mode is running, not paused.", "Pause first.");
+                if (frames < 1 || frames > 600) throw new McpToolException("frames must be between 1 and 600.");
+                App.StepFrames(frames);
+                break;
+
+            default:
+                throw new McpToolException($"Unknown action '{action}'.", "Use status, play, stop, pause, resume, toggle or step.");
+        }
+
         return McpToolResult.Json(PlayState());
     }
-
-    [McpTool("pause", "Pause or resume play mode. Omit paused to toggle.", Label = "Pause")]
-    public McpToolResult Pause([McpParam("true to pause, false to resume; omit to toggle")] bool? paused = null)
-    {
-        if (!EditorState.IsPlaying) throw new McpToolException("Not in play mode.", "Call play first.");
-        if (paused.HasValue) App.SetPaused(paused.Value); else App.TogglePause();
-        return McpToolResult.Json(PlayState());
-    }
-
-    [McpTool("stop", "Stop play mode (F7) and restore the scene as it was when play started.", Label = "Stop")]
-    public McpToolResult Stop()
-    {
-        App.ExitPlayMode();
-        return McpToolResult.Json(PlayState());
-    }
-
-    [McpTool("step_frame", "While paused, advance the simulation by N frames of 1/60 s.", Label = "Step {frames} frame(s)")]
-    public McpToolResult StepFrame([McpParam("Frames to advance")] int frames = 1)
-    {
-        if (!EditorState.IsPlaying) throw new McpToolException("Not in play mode.", "Call play, then pause, then step_frame.");
-        if (!EditorState.IsPlayPaused) throw new McpToolException("Play mode is running, not paused.", "Call pause first.");
-        if (frames < 1 || frames > 600) throw new McpToolException("frames must be between 1 and 600.");
-
-        App.StepFrames(frames);
-        return McpToolResult.Json(PlayState());
-    }
-
-    [McpTool("get_play_state", "Playing and paused flags, fps, frame count, time scale and the scene name.", ReadOnly = true)]
-    public McpToolResult GetPlayState() => McpToolResult.Json(PlayState());
 
     private static JsonObject PlayState() => new()
     {
@@ -541,7 +531,7 @@ public sealed class EditorTools
     [McpTool("run_scene_report",
         "Play the open scene for a few seconds and report what happened in about a hundred tokens: frames and fps, " +
         "script errors, console warnings and errors (deduplicated, newest last) and the actor count at the end. Play " +
-        "mode is exited and the scene restored afterwards. Use it in place of play, wait, read_console and stop.",
+        "mode is exited and the scene restored afterwards. Use it in place of play_mode, waiting and console.",
         MainThread = false, Label = "Play the scene and report")]
     public async Task<McpToolResult> RunSceneReport(
         [McpParam("Seconds to play, 0.5 to 60")] double seconds = 3,
@@ -563,7 +553,7 @@ public sealed class EditorTools
         var start = await _host.Dispatcher.InvokeAsync(() =>
         {
             RequireScene();
-            if (EditorState.IsPlaying) throw new McpToolException("Already in play mode.", "Call stop first.");
+            if (EditorState.IsPlaying) throw new McpToolException("Already in play mode.", "Stop play mode first.");
             long sinceSequence = ConsoleLog.NextSequence - 1;
             long frame0        = Time.FrameCount;
             App.EnterPlayMode();
@@ -651,22 +641,37 @@ public sealed class EditorTools
     // Output Log
     // -------------------------------------------------------------------------
 
-    [McpTool("read_console",
-        "Read the editor's Output Log. Pass the latestSequence from the previous result as sinceSequence to get only new " +
-        "entries. level filters to that severity and above: info, warning, error.",
-        MainThread = false, ReadOnly = true)]
-    public McpToolResult ReadConsole(
+    [McpTool("console",
+        "Read the editor's Output Log. Pass the latestSequence from the previous result as sinceSequence to get only " +
+        "new entries; level filters to that severity and above, info, warning or error. message instead writes a line, " +
+        "prefixed [Claude], at level. clear=true empties the log.",
+        MainThread = false, Label = "Output Log")]
+    public McpToolResult Console(
         [McpParam("Only entries after this sequence number")] long sinceSequence = 0,
-        [McpParam("Minimum level: info, warning or error")] string? level = null,
+        [McpParam("Minimum level to read, or the level to write at: info, warning or error")] string? level = null,
         [McpParam("Case-insensitive substring filter")] string? contains = null,
-        [McpParam("Maximum entries returned (the newest)")] int limit = 50)
+        [McpParam("Maximum entries returned (the newest)")] int limit = 50,
+        [McpParam("Write this line to the log instead of reading")] string? message = null,
+        [McpParam("Empty the log instead of reading")] bool clear = false)
     {
-        LogLevel minimum = LogLevel.Info;
-        if (level != null && !Enum.TryParse(level, ignoreCase: true, out minimum))
+        LogLevel parsed = LogLevel.Info;
+        if (level != null && !Enum.TryParse(level, ignoreCase: true, out parsed))
             throw new McpToolException($"Unknown level '{level}'.", "Use info, warning or error.");
 
+        if (message != null)
+        {
+            ConsoleLog.Add("[Claude] " + message, parsed);
+            return McpToolResult.Json(new JsonObject { ["seq"] = ConsoleLog.NextSequence - 1 });
+        }
+
+        if (clear)
+        {
+            ConsoleLog.Clear();
+            return McpToolResult.Json(new JsonObject { ["cleared"] = true });
+        }
+
         var all = ConsoleLog.EntriesSince(sinceSequence)
-            .Where(e => e.Level >= minimum)
+            .Where(e => e.Level >= parsed)
             .Where(e => contains == null || e.Message.Contains(contains, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
@@ -688,25 +693,6 @@ public sealed class EditorTools
             ["total"]          = all.Count,
             ["latestSequence"] = ConsoleLog.NextSequence - 1,
         });
-    }
-
-    [McpTool("clear_console", "Clear the Output Log.", MainThread = false)]
-    public McpToolResult ClearConsole()
-    {
-        ConsoleLog.Clear();
-        return McpToolResult.Json(new JsonObject { ["cleared"] = true });
-    }
-
-    [McpTool("log_message", "Write a line to the Output Log, prefixed [Claude].", MainThread = false)]
-    public McpToolResult LogMessage(
-        [McpParam("Text to log")] string message,
-        [McpParam("info, warning or error")] string level = "info")
-    {
-        if (!Enum.TryParse(level, ignoreCase: true, out LogLevel parsed))
-            throw new McpToolException($"Unknown level '{level}'.", "Use info, warning or error.");
-
-        ConsoleLog.Add("[Claude] " + message, parsed);
-        return McpToolResult.Json(new JsonObject { ["seq"] = ConsoleLog.NextSequence - 1 });
     }
 
     // -------------------------------------------------------------------------

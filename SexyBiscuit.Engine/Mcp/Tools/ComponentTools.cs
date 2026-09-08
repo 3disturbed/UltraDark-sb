@@ -81,14 +81,19 @@ public sealed class ComponentTools
         return result;
     }
 
-    [McpTool("list_component_types",
-        "The component types that can be added, grouped by category (Rendering, Physics, Gameplay, Audio, Animation, " +
-        "AI, UI, Scripting…). Names only by default; namesOnly=false adds a one-line description, required companions " +
-        "and whether each comes from the engine or the project.", ReadOnly = true)]
-    public McpToolResult ListComponentTypes(
+    [McpTool("describe_components",
+        "The component types that can be added. Without type: names grouped by category (Rendering, Physics, Gameplay, " +
+        "Audio, Animation, AI, UI, Scripting\u2026), or with namesOnly=false a one-line description, required companions and " +
+        "engine/project source for each. With type: that one type's editable properties \u2014 name, type, enum values, " +
+        "default, documentation, and whether it is saved in the scene file.", ReadOnly = true)]
+    public McpToolResult DescribeComponents(
+        [McpParam("One component type to describe in full")] string? type = null,
         [McpParam("Only this category")] string? category = null,
         [McpParam("Case-insensitive substring of the type name")] string? search = null,
         [McpParam("Names grouped by category (default) or full JSON")] bool namesOnly = true)
+        => type != null ? DescribeOne(type) : ListTypes(category, search, namesOnly);
+
+    private static McpToolResult ListTypes(string? category, string? search, bool namesOnly)
     {
         var types = ReflectionUtil.FindComponentTypes()
             .Where(t => category == null || string.Equals(ComponentReflection.Category(t), category, StringComparison.OrdinalIgnoreCase))
@@ -100,31 +105,28 @@ public sealed class ComponentTools
         {
             var lines = types.GroupBy(ComponentReflection.Category)
                              .Select(g => $"{g.Key}: {string.Join(", ", g.Select(t => ComponentReflection.Source(t) == "project" ? t.Name + "*" : t.Name))}");
-            return McpToolResult.Text($"{types.Count} component type(s); * = from the project. describe_component_type gives properties.\n"
+            return McpToolResult.Text($"{types.Count} component type(s); * = from the project. Pass type for one type's properties.\n"
                                       + string.Join('\n', lines));
         }
 
         var list = new JsonArray();
-        foreach (var type in types)
+        foreach (var t in types)
         {
-            string summary = XmlDocs.Summary(type) ?? string.Empty;
+            string summary = XmlDocs.Summary(t) ?? string.Empty;
             list.Add(new JsonObject
             {
-                ["type"]     = type.Name,
-                ["category"] = ComponentReflection.Category(type),
-                ["source"]   = ComponentReflection.Source(type),
-                ["summary"]  = summary.Length > 100 ? summary[..99] + "…" : summary,
-                ["requires"] = new JsonArray(ComponentReflection.RequiredComponents(type).Select(r => (JsonNode)r.Name).ToArray()),
+                ["type"]     = t.Name,
+                ["category"] = ComponentReflection.Category(t),
+                ["source"]   = ComponentReflection.Source(t),
+                ["summary"]  = summary.Length > 100 ? summary[..99] + "\u2026" : summary,
+                ["requires"] = new JsonArray(ComponentReflection.RequiredComponents(t).Select(r => (JsonNode)r.Name).ToArray()),
             });
         }
 
         return McpToolResult.Json(list, $"{list.Count} component type(s).");
     }
 
-    [McpTool("describe_component_type",
-        "The editable properties of a component type: name, type, enum values, default value, documentation, and whether " +
-        "the property is saved in the scene file.", ReadOnly = true)]
-    public McpToolResult DescribeComponentType([McpParam("Component type name")] string componentType)
+    private static McpToolResult DescribeOne(string componentType)
     {
         var type = ResolveComponentTypeOrThrow(componentType);
 
@@ -178,70 +180,6 @@ public sealed class ComponentTools
             ["summary"]    = XmlDocs.Summary(type),
             ["requires"]   = new JsonArray(ComponentReflection.RequiredComponents(type).Select(r => (JsonNode)r.Name).ToArray()),
             ["properties"] = properties,
-        });
-    }
-
-    [McpTool("set_property",
-        "Set one property on a component (or on the actor itself with componentType 'Actor'). Value formats: numbers, " +
-        "booleans, strings, enum names, vectors as [x, y, z], rotations as [pitch, yaw, roll] degrees, colours as " +
-        "'#RRGGBB', '#RRGGBBAA', a colour name or {r, g, b, a}. Use 'Transform3D' for Position/EulerAngles/Scale.",
-        Mutating = true, Label = "Set {componentType}.{property} on {actor}")]
-    public McpToolResult SetProperty(
-        [McpParam("Actor id or name")] string actor,
-        [McpParam("Component type name, or 'Actor'")] string componentType,
-        [McpParam("Property name")] string property,
-        [McpParam("New value")] JsonElement value)
-    {
-        var scene  = RequireScene(_host);
-        var target = ActorRef.Resolve(scene, actor);
-
-        object owner;
-        Type   type;
-        if (string.Equals(componentType, "Actor", StringComparison.OrdinalIgnoreCase))
-        {
-            owner = target;
-            type  = target.GetType();
-        }
-        else
-        {
-            var component = FindComponent(target, componentType);
-            if (component is MissingComponent)
-                throw new McpToolException($"'{componentType}' on '{target.Name}' is a placeholder for an unresolved type; its properties cannot be edited until the type exists.");
-            owner = component;
-            type  = component.GetType();
-        }
-
-        var applied = SceneToolSupport.SetProperty(owner, type, property, value);
-        return McpToolResult.Json(new JsonObject
-        {
-            ["actor"]     = target.Name,
-            ["component"] = type.Name,
-            ["property"]  = ComponentReflection.FindProperty(type, property)!.Name,
-            ["value"]     = applied,
-        });
-    }
-
-    [McpTool("get_property", "Read one property of a component (or of the actor itself with componentType 'Actor').", ReadOnly = true)]
-    public McpToolResult GetProperty(
-        [McpParam("Actor id or name")] string actor,
-        [McpParam("Component type name, or 'Actor'")] string componentType,
-        [McpParam("Property name")] string property)
-    {
-        var scene  = RequireScene(_host);
-        var target = ActorRef.Resolve(scene, actor);
-
-        object owner = string.Equals(componentType, "Actor", StringComparison.OrdinalIgnoreCase) ? target : FindComponent(target, componentType);
-        var type = owner.GetType();
-
-        var info = ComponentReflection.FindProperty(type, property)
-            ?? throw new McpToolException($"'{type.Name}' has no editable property '{property}'.",
-                ComponentReflection.Suggest(property, ComponentReflection.EditableProperties(type).Select(p => p.Name)));
-
-        return McpToolResult.Json(new JsonObject
-        {
-            ["property"] = info.Name,
-            ["type"]     = ValueConverter.Describe(info.PropertyType),
-            ["value"]    = ValueConverter.ToJson(info.GetValue(owner)),
         });
     }
 

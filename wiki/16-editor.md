@@ -208,7 +208,7 @@ with **View → Render Stats**.
 The palette on the left: every `ActorPresets` entry grouped by category (Basic,
 Geometry, Lights, Cameras, Gameplay, UI, 2D) plus a **Project** group for actor
 classes from the project's own C# assembly. Click to place on the selected layer.
-The same presets back the Create menu and the `place_actor` tool.
+The same presets back the Create menu and `spawn_actor`'s `preset` argument.
 
 ### C# Project
 
@@ -323,7 +323,7 @@ full standalone order — time, game instance, fixed steps with physics, `Update
 tweens, timers, coroutines, `LateUpdate`, audio — with input reaching the game
 only in play mode. A component that throws is disabled after three consecutive
 exceptions (the Output Log names it); anything that escapes ends play mode
-instead of the editor. While paused, the `step_frame` tool advances fixed frames
+instead of the editor. While paused, `play_mode` with `action: "step"` advances fixed frames
 one at a time.
 
 The 2D viewport draws with a plain `SpriteBatch.Begin()` / `End()` and **no
