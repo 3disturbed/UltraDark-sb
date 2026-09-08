@@ -21,6 +21,8 @@ import vm from 'node:vm';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { deserialize, ScriptComponent, EngineConfig, SCRIPT_HOOKS } from '../src/index.js';
+import { UiCanvas } from '../src/ui/UiCanvas.js';
+import { fromJson as uiFromJson } from '../src/ui/UiDocument.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const html5Root = path.join(here, '..');
@@ -113,6 +115,17 @@ export function validateProject(projectDir) {
                     error(rel, 0, `'${actor.name}' references a script that does not exist: ${script.scriptPath}`);
                 }
             }
+
+            // A canvas pointing at a document that is not there paints nothing and says
+            // nothing, on either engine, which reads exactly like a layout that went wrong.
+            for (const canvas of actor.getComponents(UiCanvas)) {
+                if (!canvas.document) continue;
+                if (!fs.existsSync(path.join(dir, canvas.document))) {
+                    error(rel, 0, `'${actor.name}' references a UI document that does not exist: ${canvas.document}`);
+                    continue;
+                }
+                checkUiDocument(path.join(dir, canvas.document), canvas.document, rel, error);
+            }
         }
         scene.destroy();
     }
@@ -137,6 +150,20 @@ export function validateProject(projectDir) {
 }
 
 /** Holds one script's source to the contract. Exported so a tool can lint a single file. */
+/**
+ * Parses a `.ui` document so a typo is caught here rather than at run time.
+ *
+ * The codec refuses an unknown key outright -- a mistyped `childern` would otherwise drop
+ * every node below it and leave no trace -- so simply loading the file is the whole check.
+ */
+function checkUiDocument(fullPath, shownPath, rel, error) {
+    try {
+        uiFromJson(fs.readFileSync(fullPath, 'utf8'));
+    } catch (err) {
+        error(rel, 0, `UI document '${shownPath}' is not valid: ${err.message}`);
+    }
+}
+
 export function checkScript(rel, source, error, warn) {
     if (/^\s*(export|import)\s/m.test(source)) {
         // An ES module exporting a Component subclass: compiled by the browser's loader,
