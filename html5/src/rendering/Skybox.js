@@ -2,7 +2,8 @@
 // Skybox — the background behind everything else.
 //
 // A gradient by default, so a fresh 3D scene has a horizon without needing six
-// cubemap faces. Supplying `facePaths` switches it to a textured cube.
+// cubemap faces. Setting `cubemapPath` — or calling loadCubemap with six paths
+// directly — switches it to a textured cube.
 // -----------------------------------------------------------------------------
 
 import { Component } from '../core/Component.js';
@@ -22,6 +23,25 @@ export class Skybox extends Component {
     /** The skybox the renderer draws. The last one to wake wins. */
     static active = null;
 
+    /** Face file names in the order a cubemap wants them: +X, -X, +Y, -Y, +Z, -Z. */
+    static faceNames = ['px', 'nx', 'py', 'ny', 'pz', 'nz'];
+
+    /**
+     * The six face paths a `cubemapPath` folder stands for.
+     *
+     * A scene stores one path rather than six, because six of them in a property bag is not
+     * something anyone edits by hand — so the folder stands for the convention, and both
+     * engines have to spell it the same way or a project loads a sky in one and not the
+     * other. C#'s Skybox.CubemapFacePaths is the twin.
+     *
+     * @param {string} folder
+     * @returns {string[]}
+     */
+    static facePathsFor(folder) {
+        const root = String(folder ?? '').replace(/[/\\]+$/, '');
+        return Skybox.faceNames.map((name) => `${root}/${name}.png`);
+    }
+
     constructor() {
         super();
         this.gradientTop = Color.from('#3A5CA8');
@@ -34,7 +54,10 @@ export class Skybox extends Component {
         this._facePaths = null;
     }
 
-    awake() { Skybox.active = this; }
+    awake() {
+        Skybox.active = this;
+        if (this.cubemapPath && !this._facePaths) this.loadCubemap(Skybox.facePathsFor(this.cubemapPath));
+    }
     onDestroy() { if (Skybox.active === this) Skybox.active = null; }
 
     /**

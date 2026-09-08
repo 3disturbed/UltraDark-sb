@@ -229,14 +229,25 @@ var sky = cameraActor.AddComponent<Skybox>();
 sky.GradientTop    = new Color(0.1f, 0.3f, 0.8f);
 sky.GradientBottom = new Color(0.6f, 0.7f, 0.9f);
 
-// Option 2 — a cubemap from six face images
+// Option 2 — a cubemap folder, which is what a scene file stores
+sky.CubemapPath = "Assets/Sky";     // px, nx, py, ny, pz, nz as .png
+
+// Option 3 — the six faces by hand, in +X,-X,+Y,-Y,+Z,-Z order
 sky.LoadCubemap(new[]
 {
     "Assets/Sky/px.png", "Assets/Sky/nx.png",
     "Assets/Sky/py.png", "Assets/Sky/ny.png",
     "Assets/Sky/pz.png", "Assets/Sky/nz.png",
 }, GraphicsDevice);
+
+sky.Exposure = 0.8f;                // scales whichever of the two is drawn
 ```
+
+`CubemapPath` is one path rather than six because six of them in a property bag
+is not something anyone edits by hand; `Skybox.CubemapFacePaths` spells out the
+convention it stands for, and the browser's `Skybox.facePathsFor` is its twin.
+The faces are loaded on the first `Draw`, the first moment there is a
+`GraphicsDevice` to build a `TextureCube` with.
 
 Draw it first, before opaque geometry:
 

@@ -28,9 +28,16 @@ public sealed class Rigidbody3D : Component
     private float   _linearDamping   = 0f;
     private float   _angularDamping  = 0f;
     private bool    _isKinematic     = false;
+    private bool    _useGravity      = true;
+    private bool    _freezeRotation  = false;
 
     private BodyHandle _handle;
     private bool       _hasHandle;
+
+    // The inertia in force when the rotation lock went on, so taking it off puts back what
+    // the shape computed rather than an approximation of it.
+    private BodyInertia _unlockedInertia;
+    private bool        _hasUnlockedInertia;
 
     // -----------------------------------------------------------------------
     // Properties
@@ -123,6 +130,45 @@ public sealed class Rigidbody3D : Component
     {
         get => _angularDamping;
         set => _angularDamping = value;
+    }
+
+    /// <summary>Whether world gravity pulls on this body. Default true.</summary>
+    /// <remarks>
+    /// Bepu applies gravity in the pose integrator, which sees a bundle of bodies at a time
+    /// and takes no per-body parameter, so the exemption is registered with
+    /// <see cref="PhysicsSystem3D.SetGravityEnabled"/> and the integrator zeroes this body's
+    /// share of the pull. Unlike <see cref="Rigidbody2D.GravityScale"/>, which Aether cannot
+    /// honour and which is therefore stored for game logic only, this one is real.
+    /// </remarks>
+    public bool UseGravity
+    {
+        get => _useGravity;
+        set
+        {
+            _useGravity = value;
+            if (_hasHandle) PhysicsSystem3D.Instance.SetGravityEnabled(_handle, value);
+        }
+    }
+
+    /// <summary>
+    /// When true the body keeps its orientation: neither torque nor a contact can spin it.
+    /// Default false.
+    /// </summary>
+    /// <remarks>
+    /// Bepu locks rotation through the inertia tensor — infinite angular inertia, which is a
+    /// zero inverse — so the solver has nothing to turn and <see cref="AddTorque"/> lands on
+    /// a body that cannot answer it. The tensor in force when the lock goes on is kept and
+    /// put back when it comes off, rather than falling back to the sphere approximation
+    /// <see cref="IsKinematic"/> uses.
+    /// </remarks>
+    public bool FreezeRotation
+    {
+        get => _freezeRotation;
+        set
+        {
+            _freezeRotation = value;
+            if (_hasHandle) ApplyRotationLock();
+        }
     }
 
     /// <summary>
@@ -264,6 +310,38 @@ public sealed class Rigidbody3D : Component
         if (_isKinematic)
             body.BecomeKinematic();
 
+        // The shape is registered by the collider, so the body only exists from here on:
+        // anything a scene set before Awake has been sitting in a field until now.
+        PhysicsSystem3D.Instance.SetGravityEnabled(_handle, _useGravity);
+        ApplyRotationLock();
+
         body.Awake = true;
+    }
+
+    /// <summary>Puts <see cref="FreezeRotation"/> into the body's inertia, or takes it out.</summary>
+    private void ApplyRotationLock()
+    {
+        var body = PhysicsSystem3D.Instance.Simulation.Bodies.GetBodyReference(_handle);
+
+        if (_freezeRotation)
+        {
+            if (!_hasUnlockedInertia)
+            {
+                _unlockedInertia    = body.LocalInertia;
+                _hasUnlockedInertia = true;
+            }
+
+            var locked = body.LocalInertia;
+            locked.InverseInertiaTensor = default;
+            body.LocalInertia = locked;
+
+            body.Velocity.Angular = NumVec3.Zero;
+            _angularVelocity      = XnaVec3.Zero;
+        }
+        else if (_hasUnlockedInertia)
+        {
+            body.LocalInertia   = _unlockedInertia;
+            _hasUnlockedInertia = false;
+        }
     }
 }

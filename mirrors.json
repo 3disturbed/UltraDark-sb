@@ -1059,27 +1059,6 @@
       "WorldStreamer"
     ],
     "jsOnly": [],
-    "knownGaps": {
-      "CapsuleCollider3D": [
-        "height"
-      ],
-      "CharacterController3D": [
-        "radius",
-        "height",
-        "gravity",
-        "airControl"
-      ],
-      "MeshCollider3D": [
-        "padding"
-      ],
-      "Rigidbody3D": [
-        "useGravity",
-        "freezeRotation"
-      ],
-      "Skybox": [
-        "cubemapPath",
-        "exposure"
-      ]
-    }
+    "knownGaps": {}
   }
 }

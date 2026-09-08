@@ -17,6 +17,7 @@ import { GraphicsCapabilities } from '../src/rendering/GraphicsCapabilities.js';
 import { PlayerPrefs } from '../src/save/PlayerPrefs.js';
 import presets from '../src/rendering/graphics-presets.json' with { type: 'json' };
 import { VERSION, statusLine } from '../src/core/EngineInfo.js';
+import { Skybox } from '../src/rendering/Skybox.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '..', '..');
@@ -247,3 +248,48 @@ function installFakeStorage() {
         removeItem: (k) => data.delete(k),
     };
 }
+
+// -----------------------------------------------------------------------------
+// Skybox — one cubemap convention, spelled the same way on both engines
+// -----------------------------------------------------------------------------
+
+test('a cubemap folder stands for the same six faces on both engines', () => {
+    assert.deepEqual(Skybox.facePathsFor('Assets/Sky'), [
+        'Assets/Sky/px.png', 'Assets/Sky/nx.png',
+        'Assets/Sky/py.png', 'Assets/Sky/ny.png',
+        'Assets/Sky/pz.png', 'Assets/Sky/nz.png',
+    ]);
+    assert.deepEqual(Skybox.facePathsFor('Assets/Sky/'), Skybox.facePathsFor('Assets/Sky'));
+
+    // A scene stores one folder, so the six names it stands for are the contract. Spelled
+    // differently on the two engines, a project would find a sky on one and a gradient on
+    // the other, which is the exact class of defect the mirror map exists to catch.
+    const source = csharp('SexyBiscuit.Engine', 'Rendering', 'Skybox.cs');
+    const names = source.match(/FaceNames\s*=\s*\{([^}]*)\}/)[1]
+        .split(',').map((name) => name.trim().replace(/"/g, '')).filter(Boolean);
+    assert.deepEqual(names, Skybox.faceNames);
+    assert.match(source, /public static string\[\] CubemapFacePaths/);
+});
+
+test('a skybox with a cubemap path hands the renderer six faces to upload', () => {
+    const sky = new Skybox();
+    sky.cubemapPath = 'Assets/Dusk';
+    try {
+        sky.awake();
+        assert.deepEqual(sky.pendingFaces, Skybox.facePathsFor('Assets/Dusk'));
+    } finally {
+        Skybox.active = null;
+    }
+});
+
+test('exposure starts at one on both engines and is drawn through, not merely stored', () => {
+    assert.equal(Skybox.schema.exposure.default, 1);
+    assert.equal(new Skybox().exposure, 1);
+
+    // The browser scales the sky in the fragment shader; C# rides it on the effect's diffuse
+    // colour. A property that parsed and changed nothing would be worse than no property.
+    const source = csharp('SexyBiscuit.Engine', 'Rendering', 'Skybox.cs');
+    assert.match(source, /public float Exposure \{ get; set; \} = 1f;/);
+    assert.equal(source.match(/DiffuseColor\s*=\s*Vector3\.One\s*\*\s*MathF\.Max\(0f, Exposure\)/g)?.length, 2,
+        'both the gradient and the cubemap draw should scale by Exposure');
+});
