@@ -200,7 +200,7 @@ public static class UiLayout
 
         if (!node.Visible)
         {
-            node.ClearDirty();
+            node.ClearDirtyTree();
             return;
         }
 
@@ -233,6 +233,13 @@ public static class UiLayout
         foreach (UiNode child in node.Children)
             if (child.Visible && child.Positioning == PositionMode.Absolute)
                 Arrange(child, AnchorRect(child, node.ContentRect), node.ClipRect);
+
+        // A child that is not visible is skipped by both passes above — FlowChildren
+        // filters it out and the absolute loop tests the same flag — so nothing has
+        // cleared its subtree. Leaving it dirty breaks the invariant InvalidateMeasure
+        // relies on, and the symptom is a whole panel that never appears.
+        foreach (UiNode child in node.Children)
+            if (!child.Visible) child.ClearDirtyTree();
 
         node.ClearDirty();
     }

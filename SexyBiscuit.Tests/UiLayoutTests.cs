@@ -257,6 +257,48 @@ public class UiLayoutTests
         Assert.NotSame(first, canvas.HitTest(new Vector2(10f, 10f)));
     }
 
+    [Fact]
+    public void APanelBuiltHiddenLaysOutWhenItIsShown()
+    {
+        // InvalidateMeasure stops at the first node already fully dirty, which is only
+        // sound while a dirty node implies dirty ancestors. Nothing cleared a subtree the
+        // layout pass never reached, so a node under a hidden one stayed dirty for ever;
+        // the next change inside it broke out of that walk at once, the root was never
+        // marked, and UiCanvas.Layout() skipped the pass. A panel built hidden and shown
+        // later therefore never laid out at all — zero rect, invisible, un-clickable —
+        // which is what a pause menu, a dialog and a card picker all are.
+        UiCanvas.ClearAll();
+        var canvas = new UiCanvas { ScaleMode = UiScaleMode.ConstantPixel };
+        canvas.SetViewport(1280, 720);
+
+        var title = new UiNode { Name = "title", Kind = UiKind.Label, Text = "x" };
+        var card = new UiNode
+        {
+            Name = "card", Visible = false, Layout = LayoutMode.Column,
+            WidthMode = SizeMode.Fixed, Width = 200f,
+            HeightMode = SizeMode.Fixed, Height = 100f,
+        };
+        card.Add(title);
+
+        var root = new UiNode { Name = "root", Layout = LayoutMode.Column };
+        root.Add(card);
+        canvas.Adopt(root);
+
+        canvas.Layout();
+
+        Assert.False(title.MeasureDirty,
+            "a node under a hidden one was left dirty, so nothing below it can ever mark the root");
+
+        // What opening a menu does: fill the labels in, then show it.
+        title.Text = "Dash Nova";
+        card.Visible = true;
+        Assert.True(canvas.Root.MeasureDirty, "showing a panel did not reach the root");
+
+        canvas.Layout();
+        Assert.Equal(200f, card.Rect.Width);
+        Assert.True(title.Rect.Width > 0f, "the label inside it was never measured");
+    }
+
     /// <summary>A box that takes part in its parent's layout.</summary>
     private static UiNode Row(string name, float w, float h) => new()
     {
