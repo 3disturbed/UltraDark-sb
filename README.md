@@ -943,7 +943,7 @@ Built with **ImGui.NET** — dockable panels, multi-window layout, dark theme by
 - **Move / Rotate / Scale gizmos** — click to select, drag to transform; W/E/R shortcuts
 - 3D centre handle supports camera-plane movement, uniform scale and screen-space rotation; snapping is configurable
 - Browser supports Ctrl/Cmd multi-select and Shift range selection in its Outliner; native remains single-actor.
-- **Current limitation:** box selection, selection pivots, multi-transform, world/local mode in native, plane handles and surface/vertex snapping are not implemented yet.
+- **Current limitation:** box selection, selection pivots/shared multi-transform modes, world/local mode in native, plane handles and surface/vertex snapping are not implemented yet.
 
 ### Hierarchy Panel
 - Full tree view of Scene → Layer → Actor → Component

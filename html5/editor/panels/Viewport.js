@@ -313,11 +313,19 @@ export class ViewportPanel {
 
     /** Draws the selection outline and editor gizmo over the finished frame. */
     drawOverlay() {
-        const actor = this.state.selectedActor;
         const ctx = this.engine?.ctx;
-        if (!actor || actor.isDestroyed || !ctx || !this._camera) return;
+        if (!ctx || !this._camera) return;
         if (!this.state.viewport3D) return;
 
+        for (const actor of this.state.selectedActors) this._drawSelectionBounds(ctx, actor);
+
+        const primary = this.state.selectedActor;
+        const transform = primary?.getComponent(Transform3D);
+        if (transform && !primary.isDestroyed) this._drawGizmo(ctx, transform);
+    }
+
+    _drawSelectionBounds(ctx, actor) {
+        if (!actor || actor.isDestroyed) return;
         const t3d = actor.getComponent(Transform3D);
         if (!t3d) return;
 
@@ -358,8 +366,6 @@ export class ViewportPanel {
             minX - padding, minY - padding,
             (maxX - minX) + padding * 2, (maxY - minY) + padding * 2);
         ctx.restore();
-
-        this._drawGizmo(ctx, t3d);
     }
 
     // -------------------------------------------------------------------------
@@ -472,12 +478,21 @@ export class ViewportPanel {
         const axis = this._pickGizmo(this._canvasPoint(event), geometry);
         if (axis == null) return false;
 
+        // The primary actor supplies the gizmo's origin and axes. Every selected
+        // 3D transform receives the same operation around its own origin; this
+        // keeps a multi-selection's relative layout intact until pivot modes
+        // (median/bounds) are introduced.
+        const transforms = this.state.selectedActors
+            .map((selected) => ({ actor: selected, transform: selected.getComponent(Transform3D) }))
+            .filter((entry) => entry.transform && !entry.actor.isDestroyed)
+            .map((entry) => ({ ...entry, start: snapshotTransform(entry.transform) }));
+
         this._gizmoDrag = {
             actor,
             transform,
+            transforms,
             axis,
             startPoint: this._canvasPoint(event),
-            start: snapshotTransform(transform),
         };
         return true;
     }
@@ -504,28 +519,34 @@ export class ViewportPanel {
                 const pixels = delta.x * axis.screen.x + delta.y * axis.screen.y;
                 move = Vector3.scale(axis.world, pixels * axis.worldPerPixel);
             }
-            let position = Vector3.add(drag.start.position, move);
-            if (this.state.snapEnabled) position = snapVector(position, this.state.translateSnap);
-            drag.transform.position = position;
+            for (const entry of drag.transforms) {
+                let position = Vector3.add(entry.start.position, move);
+                if (this.state.snapEnabled) position = snapVector(position, this.state.translateSnap);
+                entry.transform.position = position;
+            }
         } else if (mode === 'rotate') {
             const degrees = snapValue((delta.x - delta.y) * 0.45,
                 this.state.snapEnabled ? this.state.rotateSnap : 0);
-            const euler = drag.start.euler.clone();
-            if (drag.axis === 'free') euler.y += degrees;
-            else if (drag.axis === 0) euler.x += degrees;
-            else if (drag.axis === 1) euler.y += degrees;
-            else euler.z += degrees;
-            drag.transform.eulerAngles = euler;
+            for (const entry of drag.transforms) {
+                const euler = entry.start.euler.clone();
+                if (drag.axis === 'free') euler.y += degrees;
+                else if (drag.axis === 0) euler.x += degrees;
+                else if (drag.axis === 1) euler.y += degrees;
+                else euler.z += degrees;
+                entry.transform.eulerAngles = euler;
+            }
         } else {
             const amount = (delta.x - delta.y) / 100;
             const scaleFactor = Math.max(0.01, 1 + amount);
-            let scale = drag.start.scale.clone();
-            if (drag.axis === 'free') scale.scale(scaleFactor);
-            else if (drag.axis === 0) scale.x *= scaleFactor;
-            else if (drag.axis === 1) scale.y *= scaleFactor;
-            else scale.z *= scaleFactor;
-            if (this.state.snapEnabled) scale = snapVector(scale, this.state.scaleSnap);
-            drag.transform.localScale = scale;
+            for (const entry of drag.transforms) {
+                let scale = entry.start.scale.clone();
+                if (drag.axis === 'free') scale.scale(scaleFactor);
+                else if (drag.axis === 0) scale.x *= scaleFactor;
+                else if (drag.axis === 1) scale.y *= scaleFactor;
+                else scale.z *= scaleFactor;
+                if (this.state.snapEnabled) scale = snapVector(scale, this.state.scaleSnap);
+                entry.transform.localScale = scale;
+            }
         }
         this.state.markDirty();
     }
@@ -535,16 +556,23 @@ export class ViewportPanel {
         if (!drag) return;
         this._gizmoDrag = null;
 
-        const end = snapshotTransform(drag.transform);
+        const end = drag.transforms.map((entry) => ({ ...entry, end: snapshotTransform(entry.transform) }));
         if (cancel) {
-            applyTransform(drag.transform, drag.start);
+            for (const entry of drag.transforms) applyTransform(entry.transform, entry.start);
             return;
         }
-        if (sameTransform(drag.start, end)) return;
+        if (end.every((entry) => sameTransform(entry.start, entry.end))) return;
 
-        this.editor.history.push(`Transform ${drag.actor.name}`,
-            () => { applyTransform(drag.transform, drag.start); this.inspectorRefresh(); },
-            () => { applyTransform(drag.transform, end); this.inspectorRefresh(); });
+        const label = end.length === 1 ? `Transform ${drag.actor.name}` : `Transform ${end.length} actors`;
+        this.editor.history.push(label,
+            () => {
+                for (const entry of end) applyTransform(entry.transform, entry.start);
+                this.inspectorRefresh();
+            },
+            () => {
+                for (const entry of end) applyTransform(entry.transform, entry.end);
+                this.inspectorRefresh();
+            });
         this.inspectorRefresh();
     }
 
