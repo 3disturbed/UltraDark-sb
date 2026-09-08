@@ -1,0 +1,1508 @@
+{
+  "$comment": "MakeChibi's part table, read by html5/src/chibi/ChibiBuilder.js and, through an embedded resource, by SexyBiscuit.Engine/Chibi/ChibiParts.cs. One file so the two engines cannot build different characters. A joint or socket name ending in '*' is emitted twice, as 'L' and 'R', with pos.x and rot.y/rot.z negated on the right. 'widthScale' and 'lengthScale' name a recipe proportion that multiplies a piece's x/z and y respectively; 'posScale' does the same to a joint's offset. A Capsule is one unit wide and TWO tall, so a limb's y scale is half the length it wants. Hair is authored against the 'Round' head and scaled by 'headFit' onto the others, so one hairstyle fits all eight skulls; eyes use 'headEyeFit', which also carries how far forward that head's face is, because a cube's face does not fall away as a sphere's does.",
+  "version": 1,
+  "unitHeight": 1.0,
+  "colourSlots": [
+    "skin",
+    "hair",
+    "eyes",
+    "top",
+    "bottom",
+    "shoes",
+    "accent"
+  ],
+  "joints": [
+    {
+      "name": "Hips",
+      "parent": "",
+      "pos": [0, 0.36, 0],
+      "posScale": "legLength"
+    },
+    {
+      "name": "Torso",
+      "parent": "Hips",
+      "pos": [0, 0.09, 0]
+    },
+    {
+      "name": "Neck",
+      "parent": "Torso",
+      "pos": [0, 0.13, 0]
+    },
+    {
+      "name": "Head",
+      "parent": "Neck",
+      "pos": [0, 0.04, 0]
+    },
+    {
+      "name": "Arm*",
+      "parent": "Torso",
+      "pos": [0.155, 0.12, 0]
+    },
+    {
+      "name": "Forearm*",
+      "parent": "Arm*",
+      "pos": [0, -0.17, 0],
+      "posScale": "armLength"
+    },
+    {
+      "name": "Hand*",
+      "parent": "Forearm*",
+      "pos": [0, -0.15, 0],
+      "posScale": "armLength"
+    },
+    {
+      "name": "Thigh*",
+      "parent": "Hips",
+      "pos": [0.062, 0, 0]
+    },
+    {
+      "name": "Shin*",
+      "parent": "Thigh*",
+      "pos": [0, -0.17, 0],
+      "posScale": "legLength"
+    },
+    {
+      "name": "Foot*",
+      "parent": "Shin*",
+      "pos": [0, -0.16, 0],
+      "posScale": "legLength"
+    }
+  ],
+  "sockets": [
+    {
+      "name": "Head",
+      "joint": "Head",
+      "pos": [0, 0.38, 0]
+    },
+    {
+      "name": "Face",
+      "joint": "Head",
+      "pos": [0, 0.165, 0.17500000000000002]
+    },
+    {
+      "name": "Hand_*",
+      "joint": "Hand*",
+      "pos": [0, -0.05, 0]
+    },
+    {
+      "name": "Back",
+      "joint": "Torso",
+      "pos": [0, 0.09, -0.1]
+    }
+  ],
+  "slots": [
+    "head",
+    "hair",
+    "eyes",
+    "body",
+    "legs",
+    "feet"
+  ],
+  "headFit": {
+    "Round": [1.02, 1.02, 1.02],
+    "Square": [0.8992, 0.9179, 0.9132],
+    "Oval": [0.918, 1.02, 0.9648],
+    "Wide": [1.173, 0.9126, 1.0752],
+    "Tall": [0.867, 1.1811, 0.9373],
+    "Bean": [1.02, 0.9126, 1.02],
+    "Chubby": [1.122, 1.0737, 1.1578],
+    "Slim": [0.867, 1.02, 0.9097]
+  },
+  "headEyeFit": {
+    "Round": [1.0, 1.0, 1.0041],
+    "Square": [0.825, 0.8421, 0.9879],
+    "Oval": [0.9, 1.0, 0.9601],
+    "Wide": [1.15, 0.8947, 1.0584],
+    "Tall": [0.85, 1.1579, 0.9227],
+    "Bean": [1.0, 0.8947, 1.0149],
+    "Chubby": [1.1, 1.0526, 1.1398],
+    "Slim": [0.85, 1.0, 0.8956]
+  },
+  "parts": {
+    "head": {
+      "Round": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.19, 0],
+          "scale": [0.4, 0.38, 0.37],
+          "colour": "skin",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Neck",
+          "pos": [0, 0.02, 0],
+          "scale": [0.115, 0.055, 0.115],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        }
+      ],
+      "Square": [
+        {
+          "mesh": "Cube",
+          "joint": "Head",
+          "pos": [0, 0.16, 0],
+          "scale": [0.33, 0.32, 0.31],
+          "colour": "skin",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Neck",
+          "pos": [0, 0.02, 0],
+          "scale": [0.115, 0.055, 0.115],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        }
+      ],
+      "Oval": [
+        {
+          "mesh": "Capsule",
+          "joint": "Head",
+          "pos": [0, 0.19, 0],
+          "scale": [0.36, 0.19, 0.35],
+          "colour": "skin",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Neck",
+          "pos": [0, 0.02, 0],
+          "scale": [0.115, 0.055, 0.115],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        }
+      ],
+      "Wide": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.17, 0],
+          "scale": [0.46, 0.34, 0.39],
+          "colour": "skin",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Neck",
+          "pos": [0, 0.02, 0],
+          "scale": [0.115, 0.055, 0.115],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        }
+      ],
+      "Tall": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.22, 0],
+          "scale": [0.34, 0.44, 0.34],
+          "colour": "skin",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Neck",
+          "pos": [0, 0.02, 0],
+          "scale": [0.115, 0.055, 0.115],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        }
+      ],
+      "Bean": [
+        {
+          "mesh": "Capsule",
+          "joint": "Head",
+          "pos": [0, 0.17, 0],
+          "scale": [0.4, 0.17, 0.37],
+          "colour": "skin",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Neck",
+          "pos": [0, 0.02, 0],
+          "scale": [0.115, 0.055, 0.115],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        }
+      ],
+      "Chubby": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.2, 0],
+          "scale": [0.44, 0.4, 0.42],
+          "colour": "skin",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Neck",
+          "pos": [0, 0.02, 0],
+          "scale": [0.115, 0.055, 0.115],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        }
+      ],
+      "Slim": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.19, 0],
+          "scale": [0.34, 0.38, 0.33],
+          "colour": "skin",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Neck",
+          "pos": [0, 0.02, 0],
+          "scale": [0.115, 0.055, 0.115],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        }
+      ]
+    },
+    "hair": {
+      "Bald": [],
+      "Bob": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.24, -0.045],
+          "scale": [0.43, 0.33, 0.42],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Spiky": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.32, -0.02],
+          "scale": [0.42, 0.24, 0.41],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cone",
+          "joint": "Head",
+          "pos": [0, 0.44, 0.02],
+          "scale": [0.15, 0.17, 0.15],
+          "colour": "hair",
+          "rot": [-14, 0, 0],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cone",
+          "joint": "Head",
+          "pos": [-0.12, 0.42, -0.08],
+          "scale": [0.14, 0.18, 0.14],
+          "colour": "hair",
+          "rot": [10, 0, 24],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cone",
+          "joint": "Head",
+          "pos": [0.12, 0.42, -0.08],
+          "scale": [0.14, 0.18, 0.14],
+          "colour": "hair",
+          "rot": [10, 0, -24],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Ponytail": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.24, -0.045],
+          "scale": [0.43, 0.33, 0.42],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.3, -0.2],
+          "scale": [0.13, 0.12, 0.13],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Head",
+          "pos": [0, 0.17, -0.27],
+          "scale": [0.1, 0.11, 0.1],
+          "colour": "hair",
+          "rot": [24, 0, 0],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Bun": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.24, -0.045],
+          "scale": [0.43, 0.33, 0.42],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.48, -0.05],
+          "scale": [0.19, 0.18, 0.19],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Long": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.24, -0.045],
+          "scale": [0.43, 0.33, 0.42],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Head",
+          "pos": [0, -0.02, -0.13],
+          "scale": [0.3, 0.17, 0.17],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Mohawk": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.32, -0.02],
+          "scale": [0.4, 0.2, 0.4],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Head",
+          "pos": [0, 0.44, -0.01],
+          "scale": [0.07, 0.15, 0.38],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Braids": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0, 0.24, -0.045],
+          "scale": [0.43, 0.33, 0.42],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Head",
+          "pos": [-0.2, 0.1, -0.06],
+          "scale": [0.09, 0.11, 0.09],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Head",
+          "pos": [0.2, 0.1, -0.06],
+          "scale": [0.09, 0.11, 0.09],
+          "colour": "hair",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ]
+    },
+    "eyes": {
+      "Dot": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [-0.085, 0.165, 0.165],
+          "scale": [0.055, 0.065, 0.05],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0.085, 0.165, 0.165],
+          "scale": [0.055, 0.065, 0.05],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Wide": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [-0.095, 0.165, 0.165],
+          "scale": [0.095, 0.105, 0.06],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0.095, 0.165, 0.165],
+          "scale": [0.095, 0.105, 0.06],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Sleepy": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [-0.088, 0.17500000000000002, 0.165],
+          "scale": [0.085, 0.028, 0.05],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0.088, 0.17500000000000002, 0.165],
+          "scale": [0.085, 0.028, 0.05],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Happy": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [-0.09, 0.17500000000000002, 0.165],
+          "scale": [0.095, 0.028, 0.05],
+          "colour": "eyes",
+          "rot": [0, 0, 20],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0.09, 0.17500000000000002, 0.165],
+          "scale": [0.095, 0.028, 0.05],
+          "colour": "eyes",
+          "rot": [0, 0, -20],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Angry": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [-0.088, 0.165, 0.165],
+          "scale": [0.085, 0.045, 0.05],
+          "colour": "eyes",
+          "rot": [0, 0, -24],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0.088, 0.165, 0.165],
+          "scale": [0.085, 0.045, 0.05],
+          "colour": "eyes",
+          "rot": [0, 0, 24],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Star": [
+        {
+          "mesh": "Cube",
+          "joint": "Head",
+          "pos": [-0.09, 0.165, 0.165],
+          "scale": [0.075, 0.075, 0.06],
+          "colour": "eyes",
+          "rot": [0, 0, 45],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Head",
+          "pos": [0.09, 0.165, 0.165],
+          "scale": [0.075, 0.075, 0.06],
+          "colour": "eyes",
+          "rot": [0, 0, -45],
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Wink": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [-0.085, 0.165, 0.165],
+          "scale": [0.055, 0.065, 0.05],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0.088, 0.17500000000000002, 0.165],
+          "scale": [0.085, 0.028, 0.05],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ],
+      "Round": [
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [-0.092, 0.165, 0.165],
+          "scale": [0.105, 0.105, 0.07],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Head",
+          "pos": [0.092, 0.165, 0.165],
+          "scale": [0.105, 0.105, 0.07],
+          "colour": "eyes",
+          "widthScale": "headSize",
+          "lengthScale": "headSize"
+        }
+      ]
+    },
+    "body": {
+      "Tunic": [
+        {
+          "mesh": "Capsule",
+          "joint": "Torso",
+          "pos": [0, 0.07, 0],
+          "scale": [0.27, 0.13, 0.19],
+          "colour": "top",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Arm*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.062, 0.0952, 0.062],
+          "colour": "top",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Forearm*",
+          "pos": [0, -0.075, 0],
+          "scale": [0.058, 0.084, 0.058],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Hand*",
+          "pos": [0, -0.02, 0],
+          "scale": [0.075, 0.075, 0.075],
+          "colour": "skin",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Jacket": [
+        {
+          "mesh": "Cube",
+          "joint": "Torso",
+          "pos": [0, 0.07, 0],
+          "scale": [0.29, 0.26, 0.2],
+          "colour": "top",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Torso",
+          "pos": [0, 0.07, 0.005],
+          "scale": [0.1, 0.25, 0.21],
+          "colour": "accent",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Arm*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.07, 0.0952, 0.07],
+          "colour": "top",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Forearm*",
+          "pos": [0, -0.075, 0],
+          "scale": [0.066, 0.084, 0.066],
+          "colour": "top",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Hand*",
+          "pos": [0, -0.02, 0],
+          "scale": [0.075, 0.075, 0.075],
+          "colour": "skin",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Dress": [
+        {
+          "mesh": "Capsule",
+          "joint": "Torso",
+          "pos": [0, 0.07, 0],
+          "scale": [0.26, 0.12, 0.18],
+          "colour": "top",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Hips",
+          "pos": [0, -0.09, 0],
+          "scale": [0.34, 0.2, 0.34],
+          "colour": "top",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Arm*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.058, 0.0952, 0.058],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Forearm*",
+          "pos": [0, -0.075, 0],
+          "scale": [0.058, 0.084, 0.058],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Hand*",
+          "pos": [0, -0.02, 0],
+          "scale": [0.075, 0.075, 0.075],
+          "colour": "skin",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Overalls": [
+        {
+          "mesh": "Cube",
+          "joint": "Torso",
+          "pos": [0, 0.07, 0],
+          "scale": [0.26, 0.24, 0.18],
+          "colour": "top",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Torso",
+          "pos": [-0.07, 0.08, 0.005],
+          "scale": [0.06, 0.28, 0.19],
+          "colour": "bottom",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Torso",
+          "pos": [0.07, 0.08, 0.005],
+          "scale": [0.06, 0.28, 0.19],
+          "colour": "bottom",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Arm*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.058, 0.0952, 0.058],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Forearm*",
+          "pos": [0, -0.075, 0],
+          "scale": [0.058, 0.084, 0.058],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Hand*",
+          "pos": [0, -0.02, 0],
+          "scale": [0.075, 0.075, 0.075],
+          "colour": "skin",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Robe": [
+        {
+          "mesh": "Capsule",
+          "joint": "Torso",
+          "pos": [0, 0.07, 0],
+          "scale": [0.29, 0.15, 0.21],
+          "colour": "top",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Cylinder",
+          "joint": "Hips",
+          "pos": [0, -0.13, 0],
+          "scale": [0.38, 0.28, 0.38],
+          "colour": "top",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Arm*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.086, 0.0952, 0.086],
+          "colour": "top",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Forearm*",
+          "pos": [0, -0.075, 0],
+          "scale": [0.08, 0.084, 0.08],
+          "colour": "top",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Hand*",
+          "pos": [0, -0.02, 0],
+          "scale": [0.075, 0.075, 0.075],
+          "colour": "skin",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Vest": [
+        {
+          "mesh": "Capsule",
+          "joint": "Torso",
+          "pos": [0, 0.07, 0],
+          "scale": [0.25, 0.12, 0.18],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Torso",
+          "pos": [0, 0.08, 0],
+          "scale": [0.28, 0.2, 0.2],
+          "colour": "top",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Arm*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.058, 0.0952, 0.058],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Forearm*",
+          "pos": [0, -0.075, 0],
+          "scale": [0.058, 0.084, 0.058],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Hand*",
+          "pos": [0, -0.02, 0],
+          "scale": [0.075, 0.075, 0.075],
+          "colour": "skin",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Armour": [
+        {
+          "mesh": "Cube",
+          "joint": "Torso",
+          "pos": [0, 0.07, 0],
+          "scale": [0.31, 0.26, 0.22],
+          "colour": "top",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Torso",
+          "pos": [0, 0.18, 0],
+          "scale": [0.33, 0.07, 0.24],
+          "colour": "accent",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Arm*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.078, 0.0952, 0.078],
+          "colour": "top",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Forearm*",
+          "pos": [0, -0.075, 0],
+          "scale": [0.07, 0.084, 0.07],
+          "colour": "accent",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Hand*",
+          "pos": [0, -0.02, 0],
+          "scale": [0.075, 0.075, 0.075],
+          "colour": "skin",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Bare": [
+        {
+          "mesh": "Capsule",
+          "joint": "Torso",
+          "pos": [0, 0.07, 0],
+          "scale": [0.25, 0.12, 0.18],
+          "colour": "skin",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Arm*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.058, 0.0952, 0.058],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Forearm*",
+          "pos": [0, -0.075, 0],
+          "scale": [0.058, 0.084, 0.058],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "armLength"
+        },
+        {
+          "mesh": "Sphere",
+          "joint": "Hand*",
+          "pos": [0, -0.02, 0],
+          "scale": [0.075, 0.075, 0.075],
+          "colour": "skin",
+          "widthScale": "limbThickness"
+        }
+      ]
+    },
+    "legs": {
+      "Trousers": [
+        {
+          "mesh": "Capsule",
+          "joint": "Thigh*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.072, 0.0952, 0.072],
+          "colour": "bottom",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Shin*",
+          "pos": [0, -0.08, 0],
+          "scale": [0.065, 0.0896, 0.065],
+          "colour": "bottom",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        }
+      ],
+      "Shorts": [
+        {
+          "mesh": "Capsule",
+          "joint": "Thigh*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.072, 0.0952, 0.072],
+          "colour": "bottom",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Shin*",
+          "pos": [0, -0.08, 0],
+          "scale": [0.065, 0.0896, 0.065],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        }
+      ],
+      "Bare": [
+        {
+          "mesh": "Capsule",
+          "joint": "Thigh*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.072, 0.0952, 0.072],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Shin*",
+          "pos": [0, -0.08, 0],
+          "scale": [0.065, 0.0896, 0.065],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        }
+      ],
+      "Skirt": [
+        {
+          "mesh": "Cylinder",
+          "joint": "Hips",
+          "pos": [0, -0.07, 0],
+          "scale": [0.32, 0.16, 0.32],
+          "colour": "bottom",
+          "widthScale": "bodyWidth"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Thigh*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.072, 0.0952, 0.072],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Shin*",
+          "pos": [0, -0.08, 0],
+          "scale": [0.065, 0.0896, 0.065],
+          "colour": "skin",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        }
+      ],
+      "Baggy": [
+        {
+          "mesh": "Capsule",
+          "joint": "Thigh*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.098, 0.0952, 0.098],
+          "colour": "bottom",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Shin*",
+          "pos": [0, -0.08, 0],
+          "scale": [0.09, 0.0896, 0.09],
+          "colour": "bottom",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        }
+      ],
+      "Striped": [
+        {
+          "mesh": "Capsule",
+          "joint": "Thigh*",
+          "pos": [0, -0.085, 0],
+          "scale": [0.072, 0.0952, 0.072],
+          "colour": "bottom",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Shin*",
+          "pos": [0, -0.08, 0],
+          "scale": [0.065, 0.0896, 0.065],
+          "colour": "accent",
+          "widthScale": "limbThickness",
+          "lengthScale": "legLength"
+        }
+      ]
+    },
+    "feet": {
+      "Shoes": [
+        {
+          "mesh": "Cube",
+          "joint": "Foot*",
+          "pos": [0, -0.022, 0.032],
+          "scale": [0.088, 0.045, 0.145],
+          "colour": "shoes",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Boots": [
+        {
+          "mesh": "Cube",
+          "joint": "Foot*",
+          "pos": [0, -0.022, 0.03],
+          "scale": [0.096, 0.052, 0.15],
+          "colour": "shoes",
+          "widthScale": "limbThickness"
+        },
+        {
+          "mesh": "Capsule",
+          "joint": "Shin*",
+          "pos": [0, -0.115, 0],
+          "scale": [0.094, 0.045, 0.094],
+          "colour": "shoes",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Sandals": [
+        {
+          "mesh": "Cube",
+          "joint": "Foot*",
+          "pos": [0, -0.032, 0.026],
+          "scale": [0.088, 0.018, 0.14],
+          "colour": "shoes",
+          "widthScale": "limbThickness"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Foot*",
+          "pos": [0, -0.012, 0.01],
+          "scale": [0.09, 0.014, 0.06],
+          "colour": "accent",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Barefoot": [
+        {
+          "mesh": "Capsule",
+          "joint": "Foot*",
+          "pos": [0, -0.022, 0.022],
+          "scale": [0.08, 0.055, 0.062],
+          "colour": "skin",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Heels": [
+        {
+          "mesh": "Cube",
+          "joint": "Foot*",
+          "pos": [0, -0.014, 0.032],
+          "scale": [0.08, 0.036, 0.14],
+          "colour": "shoes",
+          "widthScale": "limbThickness"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Foot*",
+          "pos": [0, -0.042, -0.034],
+          "scale": [0.028, 0.046, 0.028],
+          "colour": "shoes",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Paws": [
+        {
+          "mesh": "Sphere",
+          "joint": "Foot*",
+          "pos": [0, -0.02, 0.03],
+          "scale": [0.105, 0.062, 0.135],
+          "colour": "accent",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Skates": [
+        {
+          "mesh": "Cube",
+          "joint": "Foot*",
+          "pos": [0, -0.014, 0.03],
+          "scale": [0.088, 0.046, 0.145],
+          "colour": "shoes",
+          "widthScale": "limbThickness"
+        },
+        {
+          "mesh": "Cube",
+          "joint": "Foot*",
+          "pos": [0, -0.05, 0.024],
+          "scale": [0.024, 0.038, 0.175],
+          "colour": "accent",
+          "widthScale": "limbThickness"
+        }
+      ],
+      "Slippers": [
+        {
+          "mesh": "Capsule",
+          "joint": "Foot*",
+          "pos": [0, -0.02, 0.03],
+          "scale": [0.098, 0.06, 0.082],
+          "colour": "accent",
+          "widthScale": "limbThickness"
+        }
+      ]
+    }
+  },
+  "accessories": {
+    "StrawHat": [
+      {
+        "mesh": "Cylinder",
+        "socket": "Head",
+        "pos": [0, 0.005, 0],
+        "scale": [0.6, 0.026, 0.6],
+        "colour": "accent"
+      },
+      {
+        "mesh": "Cylinder",
+        "socket": "Head",
+        "pos": [0, 0.062, 0],
+        "scale": [0.33, 0.12, 0.33],
+        "colour": "accent"
+      }
+    ],
+    "Cap": [
+      {
+        "mesh": "Sphere",
+        "socket": "Head",
+        "pos": [0, -0.03, -0.01],
+        "scale": [0.42, 0.24, 0.42],
+        "colour": "accent"
+      },
+      {
+        "mesh": "Cube",
+        "socket": "Head",
+        "pos": [0, -0.055, 0.2],
+        "scale": [0.28, 0.026, 0.19],
+        "colour": "accent"
+      }
+    ],
+    "TopHat": [
+      {
+        "mesh": "Cylinder",
+        "socket": "Head",
+        "pos": [0, 0.005, 0],
+        "scale": [0.46, 0.026, 0.46],
+        "colour": "accent"
+      },
+      {
+        "mesh": "Cylinder",
+        "socket": "Head",
+        "pos": [0, 0.13, 0],
+        "scale": [0.3, 0.25, 0.3],
+        "colour": "accent"
+      }
+    ],
+    "Horns": [
+      {
+        "mesh": "Cone",
+        "socket": "Head",
+        "pos": [-0.13, 0.02, -0.02],
+        "scale": [0.09, 0.17, 0.09],
+        "colour": "accent",
+        "rot": [0, 0, 24]
+      },
+      {
+        "mesh": "Cone",
+        "socket": "Head",
+        "pos": [0.13, 0.02, -0.02],
+        "scale": [0.09, 0.17, 0.09],
+        "colour": "accent",
+        "rot": [0, 0, -24]
+      }
+    ],
+    "Ears": [
+      {
+        "mesh": "Cone",
+        "socket": "Head",
+        "pos": [-0.14, -0.01, -0.02],
+        "scale": [0.12, 0.19, 0.12],
+        "colour": "accent",
+        "rot": [0, 0, 15]
+      },
+      {
+        "mesh": "Cone",
+        "socket": "Head",
+        "pos": [0.14, -0.01, -0.02],
+        "scale": [0.12, 0.19, 0.12],
+        "colour": "accent",
+        "rot": [0, 0, -15]
+      }
+    ],
+    "Halo": [
+      {
+        "mesh": "Torus",
+        "socket": "Head",
+        "pos": [0, 0.13, 0],
+        "scale": [0.1, 0.1, 0.1],
+        "colour": "accent"
+      }
+    ],
+    "Glasses": [
+      {
+        "mesh": "Torus",
+        "socket": "Face",
+        "pos": [-0.072, 0, 0.006],
+        "scale": [0.042, 0.042, 0.042],
+        "colour": "accent",
+        "rot": [90, 0, 0]
+      },
+      {
+        "mesh": "Torus",
+        "socket": "Face",
+        "pos": [0.072, 0, 0.006],
+        "scale": [0.042, 0.042, 0.042],
+        "colour": "accent",
+        "rot": [90, 0, 0]
+      },
+      {
+        "mesh": "Cube",
+        "socket": "Face",
+        "pos": [0, 0, 0.006],
+        "scale": [0.055, 0.01, 0.01],
+        "colour": "accent"
+      }
+    ],
+    "Backpack": [
+      {
+        "mesh": "Cube",
+        "socket": "Back",
+        "pos": [0, -0.02, -0.05],
+        "scale": [0.2, 0.22, 0.1],
+        "colour": "accent"
+      },
+      {
+        "mesh": "Cube",
+        "socket": "Back",
+        "pos": [0, 0.03, -0.11],
+        "scale": [0.14, 0.05, 0.03],
+        "colour": "accent"
+      }
+    ],
+    "Cape": [
+      {
+        "mesh": "Cube",
+        "socket": "Back",
+        "pos": [0, -0.16, -0.035],
+        "scale": [0.28, 0.4, 0.025],
+        "colour": "accent"
+      },
+      {
+        "mesh": "Cube",
+        "socket": "Back",
+        "pos": [0, 0.04, -0.025],
+        "scale": [0.3, 0.05, 0.045],
+        "colour": "accent"
+      }
+    ],
+    "Wings": [
+      {
+        "mesh": "Cube",
+        "socket": "Back",
+        "pos": [-0.17, -0.02, -0.05],
+        "scale": [0.28, 0.24, 0.025],
+        "colour": "accent",
+        "rot": [0, -24, 18]
+      },
+      {
+        "mesh": "Cube",
+        "socket": "Back",
+        "pos": [0.17, -0.02, -0.05],
+        "scale": [0.28, 0.24, 0.025],
+        "colour": "accent",
+        "rot": [0, 24, -18]
+      }
+    ],
+    "Sword": [
+      {
+        "mesh": "Cube",
+        "socket": "Hand_R",
+        "pos": [0, -0.16, 0],
+        "scale": [0.03, 0.3, 0.01],
+        "colour": "accent"
+      },
+      {
+        "mesh": "Cube",
+        "socket": "Hand_R",
+        "pos": [0, 0.005, 0],
+        "scale": [0.12, 0.022, 0.034],
+        "colour": "accent"
+      },
+      {
+        "mesh": "Capsule",
+        "socket": "Hand_R",
+        "pos": [0, 0.05, 0],
+        "scale": [0.03, 0.04, 0.03],
+        "colour": "accent"
+      }
+    ],
+    "Wand": [
+      {
+        "mesh": "Capsule",
+        "socket": "Hand_R",
+        "pos": [0, -0.09, 0],
+        "scale": [0.022, 0.1, 0.022],
+        "colour": "accent"
+      },
+      {
+        "mesh": "Sphere",
+        "socket": "Hand_R",
+        "pos": [0, -0.2, 0],
+        "scale": [0.062, 0.062, 0.062],
+        "colour": "accent"
+      }
+    ]
+  },
+  "palettes": {
+    "skin": [
+      "#F6D5B8",
+      "#F2C6A0",
+      "#E0AC85",
+      "#C68A63",
+      "#A2694A",
+      "#7A4A32",
+      "#5A3524",
+      "#F7E0CB"
+    ],
+    "hair": [
+      "#2B211C",
+      "#4A2E1E",
+      "#7A4B2A",
+      "#B37A3F",
+      "#D9B679",
+      "#E8E3D9",
+      "#8A3B3B",
+      "#3F5E8C",
+      "#5C7A4A",
+      "#7A4A7A"
+    ],
+    "eyes": [
+      "#241C18",
+      "#2F3E52",
+      "#3E5C3A",
+      "#5A3A2A",
+      "#1A1A1A"
+    ],
+    "outfit": [
+      [
+        "#5B8C5A",
+        "#3A4A6B"
+      ],
+      [
+        "#8C5A5B",
+        "#2E2A28"
+      ],
+      [
+        "#3A6B6B",
+        "#4A3A2E"
+      ],
+      [
+        "#D9A441",
+        "#5B4A3A"
+      ],
+      [
+        "#6B5A8C",
+        "#2E3A4A"
+      ],
+      [
+        "#C96F4A",
+        "#3A3A3A"
+      ],
+      [
+        "#4A6B8C",
+        "#8C7A5A"
+      ],
+      [
+        "#7A8C4A",
+        "#3A2E2E"
+      ],
+      [
+        "#8C4A6B",
+        "#2E2E3A"
+      ],
+      [
+        "#4A8C7A",
+        "#5A4A3A"
+      ]
+    ],
+    "shoes": [
+      "#2E2A28",
+      "#4A3A2E",
+      "#8C3A3A",
+      "#3A3A4A",
+      "#6B5A4A"
+    ],
+    "accent": [
+      "#D9A441",
+      "#C96F4A",
+      "#5B8C5A",
+      "#4A6B8C",
+      "#8C4A6B",
+      "#E8E3D9",
+      "#7A4A7A",
+      "#D9D24A"
+    ]
+  }
+}

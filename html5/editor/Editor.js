@@ -15,6 +15,7 @@ import { InspectorPanel } from './panels/Inspector.js';
 import { ViewportPanel } from './panels/Viewport.js';
 import { ConsolePanel } from './panels/Console.js';
 import { PalettePanel } from './panels/Palette.js';
+import { ChibiPanel } from './panels/Chibi.js';
 import { AssetsPanel } from './panels/Assets.js';
 
 import * as SB from '../src/index.js';
@@ -103,6 +104,7 @@ export class Editor {
         this.inspector = new InspectorPanel(this.state, this);
         this.console = new ConsolePanel(this.state, this);
         this.palette = new PalettePanel(this.state, this);
+        this.chibi = new ChibiPanel(this.state, this);
         this.assets = new AssetsPanel(this.state, this);
 
         this._status = el('span.sb-status-text');
@@ -113,6 +115,7 @@ export class Editor {
                 this._dock('left', [
                     ['Place actors', this.palette.root],
                     ['Hierarchy', this.hierarchy.root],
+                    ['MakeChibi', this.chibi.root],
                 ]),
                 el('div.sb-centre', {},
                     this.viewport.root,
@@ -335,6 +338,39 @@ export class Editor {
      * writable handle; otherwise downloads the file, which is the only way a page
      * can put bytes on disk.
      */
+    /**
+     * Writes a file into the open project.
+     *
+     * Straight to disk when the project was opened through a folder picker, and a
+     * download otherwise -- the same bargain saveScene makes, and the reason a
+     * browser editor can write a project at all.
+     */
+    async writeProjectFile(path, text) {
+        const parts = path.split('/').filter(Boolean);
+        const name = parts.pop();
+
+        if (this._directoryHandle) {
+            try {
+                let dir = this._directoryHandle;
+                for (const segment of parts) dir = await dir.getDirectoryHandle(segment, { create: true });
+
+                const file = await dir.getFileHandle(name, { create: true });
+                const writable = await file.createWritable();
+                await writable.write(text);
+                await writable.close();
+                return path;
+            } catch (err) {
+                this.state.warn(`Could not write ${path} (${err.message}); downloading instead.`);
+            }
+        }
+
+        const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        const link = el('a', { href: url, download: name });
+        link.click();
+        URL.revokeObjectURL(url);
+        return path;
+    }
+
     async saveScene() {
         const scene = this.scene;
         if (!scene) return;

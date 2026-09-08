@@ -1,0 +1,75 @@
+{
+  "$comment": "Golden directional-navigation cases, read by BOTH engines: SexyBiscuit.Tests/UiNavigationTests.cs and html5/tests/uiNavigation.test.js. Navigation is what makes a gamepad, a D-pad and a TV remote work, and it is decided entirely by numbers -- so a scoring constant that differs between the engines would make the same menu feel right on one and arbitrary on the other, and no regular expression over the other side's source could see it. Rectangles are [x, y, width, height]; an expectation of -1 means the direction leads nowhere.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "a grid steps to its neighbour in every direction",
+      "from": [110, 60, 100, 50],
+      "candidates": [
+        [0, 0, 100, 50], [110, 0, 100, 50], [220, 0, 100, 50],
+        [0, 60, 100, 50], [220, 60, 100, 50],
+        [0, 120, 100, 50], [110, 120, 100, 50], [220, 120, 100, 50]
+      ],
+      "expect": { "Up": 1, "Down": 6, "Left": 3, "Right": 4 }
+    },
+    {
+      "name": "a vertical menu moves down and up, and sideways leads nowhere",
+      "why": "A pause menu is the commonest UI in any game, and Left on it must do nothing rather than something surprising.",
+      "from": [0, 48, 200, 40],
+      "candidates": [ [0, 0, 200, 40], [0, 96, 200, 40] ],
+      "expect": { "Up": 0, "Down": 1, "Left": -1, "Right": -1 }
+    },
+    {
+      "name": "right from a label finds its own field, not the one two rows down",
+      "why": "Perpendicular distance costs double and overlap earns a bonus, precisely so a ragged two-column form steps across its own row.",
+      "from": [0, 40, 80, 30],
+      "candidates": [
+        [90, 0, 200, 30],
+        [0, 0, 80, 30],
+        [90, 40, 200, 30],
+        [0, 80, 80, 30],
+        [90, 80, 200, 30]
+      ],
+      "expect": { "Right": 2, "Up": 1, "Down": 3 }
+    },
+    {
+      "name": "a slightly off-axis neighbour still beats a far better aligned one behind it",
+      "from": [100, 100, 40, 40],
+      "candidates": [
+        [200, 110, 40, 40],
+        [110, 20, 40, 40],
+        [110, 200, 40, 40],
+        [20, 110, 40, 40]
+      ],
+      "expect": { "Right": 0, "Up": 1, "Down": 2, "Left": 3 }
+    },
+    {
+      "name": "nothing in that direction is nothing, not the nearest thing anywhere",
+      "from": [0, 0, 100, 50],
+      "candidates": [ [0, 100, 100, 50] ],
+      "expect": { "Up": -1, "Left": -1, "Right": -1, "Down": 0 }
+    },
+    {
+      "name": "a scattered layout still moves, through the widening fallback",
+      "why": "A radial or diamond menu overlaps nothing in any direction, so the strict pass rejects everything and the menu would be unusable on a pad. Anything within 45 degrees is accepted instead, scored by plain distance.",
+      "from": [0, 0, 400, 10],
+      "candidates": [ [500, 150, 400, 10] ],
+      "expect": { "Right": 0 }
+    },
+    {
+      "name": "an empty set of candidates leads nowhere in every direction",
+      "from": [0, 0, 100, 50],
+      "candidates": [],
+      "expect": { "Up": -1, "Down": -1, "Left": -1, "Right": -1 }
+    },
+    {
+      "name": "up from the bottom row lands in the same column",
+      "why": "The Up direction is the one nobody checks by hand, which is why all four are mirrored onto a single code path and all four are in the fixture.",
+      "from": [220, 120, 100, 50],
+      "candidates": [
+        [0, 60, 100, 50], [110, 60, 100, 50], [220, 60, 100, 50]
+      ],
+      "expect": { "Up": 2 }
+    }
+  ]
+}

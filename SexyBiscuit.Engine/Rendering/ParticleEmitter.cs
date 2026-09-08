@@ -90,6 +90,12 @@ public class ParticleEmitter : Component
     /// <summary>Particles spawned per second in continuous mode.</summary>
     public float EmitRate { get; set; } = 20f;
 
+    /// <summary>
+    /// Multiplies every emitter's rate, so a quality preset thins particles rather than
+    /// overwriting the numbers an author chose. 1 is the author's rate; 0 emits nothing.
+    /// </summary>
+    public static float DensityScale { get; set; } = 1f;
+
     /// <summary>Whether the emitter loops continuously.</summary>
     public bool Loop { get; set; } = true;
 
@@ -211,7 +217,7 @@ public class ParticleEmitter : Component
         // Continuous emission
         if (IsPlaying && !BurstMode && Loop)
         {
-            _emitAccumulator += EmitRate * dt;
+            _emitAccumulator += EmitRate * MathHelper.Clamp(DensityScale, 0f, 1f) * dt;
             int toSpawn = (int)_emitAccumulator;
             _emitAccumulator -= toSpawn;
 

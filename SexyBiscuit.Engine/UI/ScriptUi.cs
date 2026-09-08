@@ -5,17 +5,6 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace SexyBiscuit.Engine.UI;
 
-/// <summary>What an element is. The browser engine knows the same five kinds.</summary>
-public enum UiKind { Panel, Label, Bar, Button, Image }
-
-/// <summary>Where an element hangs from, and which of its own corners hangs there.</summary>
-public enum UiAnchor
-{
-    TopLeft, Top, TopRight,
-    Left, Center, Right,
-    BottomLeft, Bottom, BottomRight,
-}
-
 /// <summary>One screen-space element. Plain data; the bridge hands a script a proxy over it.</summary>
 public sealed class UiElement
 {
@@ -280,5 +269,3 @@ public sealed class ScriptUi
     }
 }
 
-/// <summary>A rectangle with float edges. XNA's Rectangle is integral and UI is not.</summary>
-public readonly record struct RectangleF(float X, float Y, float Width, float Height);

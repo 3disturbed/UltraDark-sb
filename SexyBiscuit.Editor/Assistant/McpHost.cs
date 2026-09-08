@@ -101,8 +101,8 @@ public sealed class McpHost : IDisposable
     /// <summary>Other subsystems (the C# code host) add their own sections to get_project_info here.</summary>
     public List<Action<JsonObject>> ProjectInfoContributors { get; } = new();
 
-    public static string EngineVersion
-        => typeof(Actor).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+    /// <summary>The engine version, from the one place it is stated.</summary>
+    public static string EngineVersion => SexyBiscuit.Engine.EngineInfo.Version;
 
     // -------------------------------------------------------------------------
     // Lifecycle

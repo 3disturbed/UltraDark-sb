@@ -1,0 +1,249 @@
+// -----------------------------------------------------------------------------
+// Graphics settings, presets and capabilities.
+//
+// Part of this file is ordinary behaviour; the rest reads the C# sources, in the
+// idiom interop.test.js already uses, because the preset table is shared data and a
+// field that exists on one engine only is the defect this repository keeps finding.
+// -----------------------------------------------------------------------------
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+import { GraphicsSettings, ShadowQuality, TextureFiltering, Lighting2DQuality } from '../src/rendering/GraphicsSettings.js';
+import { GraphicsCapabilities } from '../src/rendering/GraphicsCapabilities.js';
+import { PlayerPrefs } from '../src/save/PlayerPrefs.js';
+import presets from '../src/rendering/graphics-presets.json' with { type: 'json' };
+import { VERSION, statusLine } from '../src/core/EngineInfo.js';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repo = join(here, '..', '..');
+const csharp = (...parts) => readFileSync(join(repo, ...parts), 'utf8');
+
+// -----------------------------------------------------------------------------
+// The table
+// -----------------------------------------------------------------------------
+
+test('every preset states every field, so switching preset never leaves a stale value', () => {
+    // A preset that omitted a field would inherit whatever the last one set, which is
+    // the bug where going Ultra then Battery leaves the shadow map at 4096.
+    const groups = ['shared', 'native', 'web'];
+    for (const group of groups) {
+        const first = Object.keys(presets.presets[0][group]).sort();
+        for (const preset of presets.presets) {
+            assert.deepEqual(Object.keys(preset[group]).sort(), first,
+                `preset "${preset.id}" has a different set of ${group} fields`);
+        }
+    }
+});
+
+test('preset ids are unique and the named default is one of them', () => {
+    const ids = presets.presets.map((p) => p.id);
+    assert.equal(new Set(ids).size, ids.length, 'two presets share an id');
+    assert.ok(ids.includes(presets.default), `the default "${presets.default}" is not a preset`);
+});
+
+test('the thresholds run downwards and the last one catches everything', () => {
+    // Read top-down with the first match winning, so an out-of-order table would send
+    // a fast machine to a low preset and never reach the entry meant for it.
+    const mins = presets.thresholds.map((t) => t.minFps);
+    for (let i = 1; i < mins.length; i++) {
+        assert.ok(mins[i] < mins[i - 1], `threshold ${i} is not below the one before it`);
+    }
+    assert.equal(mins.at(-1), 0, 'the last threshold must accept any frame rate');
+
+    const ids = new Set(presets.presets.map((p) => p.id));
+    for (const t of presets.thresholds) assert.ok(ids.has(t.preset), `threshold names "${t.preset}"`);
+});
+
+test('a measured frame rate maps onto the preset the table names', () => {
+    assert.equal(GraphicsSettings.suggest(240), 'ultra');
+    assert.equal(GraphicsSettings.suggest(90), 'high');
+    assert.equal(GraphicsSettings.suggest(60), 'medium');
+    assert.equal(GraphicsSettings.suggest(30), 'low');
+    assert.equal(GraphicsSettings.suggest(8), 'battery');
+});
+
+test('battery saver costs less than ultra on every axis that has a direction', () => {
+    // The presets are a ladder. One rung that climbed the wrong way would make a
+    // low-spec choice slower than the high-spec one, which no other test would notice.
+    const battery = GraphicsSettings.findPreset('battery').shared;
+    const ultra = GraphicsSettings.findPreset('ultra').shared;
+
+    for (const key of ['renderScale', 'maxLightsPerObject', 'tessellationRadial',
+                       'tessellationRings', 'drawDistance', 'particleDensity',
+                       'anisotropy', 'streamingRadius']) {
+        assert.ok(battery[key] <= ultra[key], `battery.${key} (${battery[key]}) exceeds ultra's (${ultra[key]})`);
+    }
+    assert.equal(battery.postProcessing, false);
+    assert.equal(battery.shadows, 'Off');
+});
+
+// -----------------------------------------------------------------------------
+// The settings object
+// -----------------------------------------------------------------------------
+
+test('applying a preset writes every one of its fields onto the settings', () => {
+    const settings = new GraphicsSettings();
+    assert.ok(settings.applyPreset('ultra'));
+    assert.equal(settings.preset, 'ultra');
+
+    const preset = GraphicsSettings.findPreset('ultra');
+    for (const [key, value] of Object.entries({ ...preset.shared, ...preset.native, ...preset.web })) {
+        assert.deepEqual(settings[key], value, `${key} did not come across`);
+    }
+});
+
+test('an unknown preset changes nothing and says so', () => {
+    const settings = new GraphicsSettings();
+    settings.applyPreset('high');
+    assert.equal(settings.applyPreset('nonsense'), false);
+    assert.equal(settings.preset, 'high');
+});
+
+test('a settings object round-trips through PlayerPrefs', () => {
+    // The gap this closes: html5/src/save/ was empty and nothing in the browser engine
+    // touched localStorage, so nothing a player chose survived a reload.
+    installFakeStorage();
+    PlayerPrefs.reset();
+
+    const settings = new GraphicsSettings();
+    settings.applyPreset('battery');
+    settings.renderScale = 0.42;
+
+    PlayerPrefs.setString('Graphics', JSON.stringify(settings));
+    PlayerPrefs.save();
+    PlayerPrefs.reset();
+
+    const back = JSON.parse(PlayerPrefs.getString('Graphics'));
+    assert.equal(back.preset, 'battery');
+    assert.equal(back.renderScale, 0.42);
+});
+
+test('a probe with no WebGL context still answers, and answers conservatively', () => {
+    const caps = GraphicsCapabilities.probe(null);
+    assert.equal(caps.webgl2, false);
+    assert.equal(caps.shadows, false, 'this renderer has no shadow pass to offer');
+    assert.equal(caps.postProcessing, false);
+    assert.equal(caps.lighting2D, false);
+    assert.equal(caps.suggestPreset(), 'low');
+});
+
+test('a machine on battery is offered the battery preset whatever else it can do', () => {
+    const caps = new GraphicsCapabilities({
+        webgl2: true, hardwareConcurrency: 16, deviceMemory: 32, maxTextureSize: 16384,
+    });
+    assert.equal(caps.suggestPreset(), 'high');
+    caps.onBattery = true;
+    assert.equal(caps.suggestPreset(), 'battery');
+});
+
+// -----------------------------------------------------------------------------
+// Parity with the C# engine
+// -----------------------------------------------------------------------------
+
+/**
+ * Fields whose C# spelling is not just the JSON key with a capital first letter.
+ *
+ * One entry, and it is the repository's established spelling either side of the
+ * seam -- html5/src/EngineHost.js has `vsync` and EngineConfig.cs has `VSync` -- so
+ * this is written down rather than renamed. A second entry appearing here is a
+ * reason to argue about it, not to extend the list quietly.
+ */
+const CSHARP_NAMES = { vsync: 'VSync' };
+
+test('every field in the shared preset table exists on both engines', () => {
+    const source = csharp('SexyBiscuit.Engine', 'Rendering', 'GraphicsSettings.cs');
+    const settings = new GraphicsSettings();
+
+    for (const preset of presets.presets) {
+        for (const key of Object.keys({ ...preset.shared, ...preset.native, ...preset.web })) {
+            assert.ok(key in settings, `the browser GraphicsSettings has no "${key}"`);
+
+            const pascal = CSHARP_NAMES[key] ?? key[0].toUpperCase() + key.slice(1);
+            assert.match(source, new RegExp(`\\b${pascal}\\b\\s*\\{\\s*get`),
+                `SexyBiscuit.Engine/Rendering/GraphicsSettings.cs has no "${pascal}" property`);
+        }
+    }
+});
+
+test('the quality enums list the same members in the same order on both engines', () => {
+    const source = csharp('SexyBiscuit.Engine', 'Rendering', 'GraphicsSettings.cs');
+
+    const pairs = [
+        ['ShadowQuality', ShadowQuality],
+        ['TextureFiltering', TextureFiltering],
+        ['Lighting2DQuality', Lighting2DQuality],
+    ];
+
+    for (const [name, table] of pairs) {
+        const match = new RegExp(`enum ${name}\\s*\\{([^}]*)\\}`).exec(source);
+        assert.ok(match, `SexyBiscuit.Engine has no enum ${name}`);
+
+        const members = match[1].split(',').map((m) => m.trim()).filter(Boolean);
+        assert.deepEqual(Object.keys(table), members, `${name} differs between the engines`);
+        // The string values are what the JSON carries, so they must equal ToString().
+        assert.deepEqual(Object.values(table), members, `${name}'s values must equal its names`);
+    }
+});
+
+test('PlayerPrefs offers the same members the C# one does', () => {
+    // Named the same so a game's save code reads identically on both engines, and so
+    // the graphics blob one writes is the blob the other reads.
+    const source = csharp('SexyBiscuit.Engine', 'Save', 'PlayerPrefs.cs');
+    const methods = [...source.matchAll(/public static [\w<>?]+ (\w+)\(/g)].map((m) => m[1]);
+
+    for (const method of methods) {
+        const camel = method[0].toLowerCase() + method.slice(1);
+        assert.equal(typeof PlayerPrefs[camel], 'function',
+            `the browser PlayerPrefs has no ${camel}(), which C# has as ${method}()`);
+    }
+});
+
+test('the two engines report the same version, from one place each', () => {
+    // Four sources used to agree by accident: the editor derived one from an assembly
+    // with no <Version> at all, the CookieJar and the editor's project file each hard-
+    // coded "1.0.0", and the browser exported its own constant. A drift between them
+    // would make a cookie's engineVersion range refuse, or accept, for a wrong reason.
+    const csproj = csharp('SexyBiscuit.Engine', 'SexyBiscuit.Engine.csproj');
+    const declared = /<Version>([^<]+)<\/Version>/.exec(csproj);
+    assert.ok(declared, 'SexyBiscuit.Engine.csproj states no <Version>');
+    assert.equal(VERSION, declared[1],
+        'html5/src/core/EngineInfo.js and SexyBiscuit.Engine.csproj disagree on the version');
+
+    // And nothing hard-codes it any more.
+    for (const file of [
+        ['SexyBiscuit.Editor', 'Assistant', 'McpHost.cs'],
+        ['SexyBiscuit.Editor', 'ProjectFile.cs'],
+        ['SexyBiscuit.Engine', 'CookieJar', 'CookieProjectContext.cs'],
+    ]) {
+        assert.doesNotMatch(csharp(...file), /=\s*"\d+\.\d+\.\d+"/,
+            `${file.join('/')} still hard-codes a version instead of reading EngineInfo`);
+    }
+});
+
+test('the status line carries the engine version, which is what the menu shows', () => {
+    const line = statusLine(null);
+    assert.match(line, new RegExp(`SexyBiscuit ${VERSION.replaceAll('.', '\\.')}`));
+    assert.match(line, /Canvas 2D/);
+});
+
+test('the C# engine embeds the same preset file the browser imports', () => {
+    // Both engines must read one file, not two copies that drift.
+    const csproj = csharp('SexyBiscuit.Engine', 'SexyBiscuit.Engine.csproj');
+    assert.match(csproj, /html5\/src\/rendering\/graphics-presets\.json/,
+        'the engine csproj does not embed the shared preset table');
+});
+
+// -----------------------------------------------------------------------------
+
+function installFakeStorage() {
+    const data = new Map();
+    globalThis.localStorage = {
+        getItem: (k) => (data.has(k) ? data.get(k) : null),
+        setItem: (k, v) => data.set(k, String(v)),
+        removeItem: (k) => data.delete(k),
+    };
+}

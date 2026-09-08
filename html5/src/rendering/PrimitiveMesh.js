@@ -66,8 +66,11 @@ export function getPrimitive(type) {
 export function getPrimitiveBounds(type) {
     switch (type) {
         case MeshPrimitive.Plane:
-        case MeshPrimitive.Quad:
             return new Bounds(new Vector3(0, 0, 0), new Vector3(1, 0.001, 1));
+        // A quad stands up in XY, so its thin axis is Z. Saying otherwise gave every
+        // billboard a bounding box lying flat on the floor, which culls it from the side.
+        case MeshPrimitive.Quad:
+            return new Bounds(new Vector3(0, 0, 0), new Vector3(1, 1, 0.001));
         case MeshPrimitive.Sphere:
         case MeshPrimitive.Cube:
         case MeshPrimitive.Cylinder:

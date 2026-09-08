@@ -1,5 +1,6 @@
 using SexyBiscuit.Engine.AI;
 using SexyBiscuit.Engine.Animation;
+using SexyBiscuit.Engine.Chibi;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.Gameplay;
 using SexyBiscuit.Engine.Rendering;
@@ -46,6 +47,28 @@ public static class ActorPresets
 
         new("Geometry", "Skybox", "Cubemap or gradient sky, drawn before opaque geometry.",
             () => { var a = new Actor("Skybox"); a.AddComponent<Transform3D>(); a.AddComponent<Skybox>(); return a; }),
+
+        new("Characters", "Chibi", "A chibi character built from primitives, already playing an idle.",
+            () =>
+            {
+                var a = new Actor("Chibi");
+                a.AddComponent<Transform3D>();
+                a.AddComponent<ChibiCharacter>();
+                a.AddComponent<ChibiAnimator>();
+                return a;
+            }),
+
+        new("Characters", "Chibi (random)", "A different coordinated character every time you place one.",
+            () =>
+            {
+                var a = new Actor("Chibi");
+                a.AddComponent<Transform3D>();
+                // A fresh seed per placement: a crowd wants forty villagers, not forty of
+                // the same villager, and the seed is what the scene file remembers.
+                a.AddComponent<ChibiCharacter>().Seed = System.Random.Shared.Next(1, 1_000_000);
+                a.AddComponent<ChibiAnimator>();
+                return a;
+            }),
 
         new("Lights", "Directional Light", "Sunlight. Direction comes from the transform's forward axis.",
             () => BuildLight(LightType.Directional, "Sun")),

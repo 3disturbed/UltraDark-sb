@@ -16,8 +16,18 @@ public sealed record CookieProjectContext(
     string AssetDirectory  = "Assets",
     string ConfigDirectory = "Config",
     bool   HasCodeProject  = false,
-    string EngineVersion   = "1.0.0")
+    string? EngineVersion  = null)
 {
+    /// <summary>
+    /// The engine version a cookie's compatibility range is checked against.
+    /// </summary>
+    /// <remarks>
+    /// Falls back to <see cref="EngineInfo.Version"/> rather than to a literal, which is
+    /// what it used to be: a hard-coded "1.0.0" here would keep accepting cookies that
+    /// declared support only up to 1.0.0 long after the engine had moved on.
+    /// </remarks>
+    public string ResolvedEngineVersion => EngineVersion ?? EngineInfo.Version;
+
     /// <summary>Probes <paramref name="root"/> for a C# project and takes the conventional folders.</summary>
     public static CookieProjectContext ForRoot(string root)
     {

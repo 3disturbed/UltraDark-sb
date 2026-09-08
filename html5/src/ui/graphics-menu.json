@@ -1,0 +1,105 @@
+{
+  "$comment": "The graphics menu, described once and built by both engines: SexyBiscuit.Engine/UI/GraphicsMenu.cs and html5/src/ui/GraphicsMenu.js. Data rather than two hand-built trees, because a menu written twice is a menu where one engine grows a row the other never gets -- and the whole point of this screen is that a player recognises it whichever build they are running. Every row names a field on GraphicsSettings; a row with `requires` is dropped entirely when the capability probe says the running platform cannot honour it, which is what makes the Advanced tab platform-specific without either engine hard-coding a list.",
+  "version": 1,
+  "title": "Graphics",
+  "tabs": [
+    {
+      "id": "presets",
+      "label": "Presets",
+      "rows": [
+        { "kind": "presetList" }
+      ]
+    },
+    {
+      "id": "display",
+      "label": "Display",
+      "rows": [
+        { "kind": "toggle",   "field": "vsync",         "label": "V-Sync" },
+        { "kind": "dropdown", "field": "frameCap",      "label": "Frame cap",
+          "options": [["Uncapped", 0], ["30 fps", 30], ["60 fps", 60], ["120 fps", 120], ["144 fps", 144]] },
+        { "kind": "toggle",   "field": "fullscreen",    "label": "Fullscreen",   "requires": "displayControl" },
+        { "kind": "slider",   "field": "renderScale",   "label": "Render scale", "min": 0.25, "max": 2, "step": 0.05,
+          "format": "percent" },
+        { "kind": "slider",   "field": "maxPixelRatio", "label": "Pixel ratio cap", "min": 1, "max": 4, "step": 0.5,
+          "requires": "pixelRatio" },
+        { "kind": "toggle",   "field": "highDpi",       "label": "High DPI",     "requires": "pixelRatio" }
+      ]
+    },
+    {
+      "id": "quality",
+      "label": "Quality",
+      "rows": [
+        { "kind": "dropdown", "field": "shadows",          "label": "Shadows", "requires": "shadows",
+          "enum": ["Off", "Low", "Medium", "High", "Ultra"] },
+        { "kind": "dropdown", "field": "textureFiltering", "label": "Texture filtering",
+          "enum": ["Point", "Bilinear", "Trilinear", "Anisotropic"] },
+        { "kind": "dropdown", "field": "lighting2D",       "label": "2D lighting", "requires": "lighting2D",
+          "enum": ["Off", "Low", "Medium", "High"] },
+        { "kind": "toggle",   "field": "skybox",           "label": "Sky" },
+        { "kind": "toggle",   "field": "postProcessing",   "label": "Post-processing", "requires": "postProcessing" },
+        { "kind": "slider",   "field": "particleDensity",  "label": "Particles", "min": 0, "max": 1, "step": 0.05,
+          "format": "percent" },
+        { "kind": "slider",   "field": "drawDistance",     "label": "Draw distance", "min": 100, "max": 8000, "step": 100 }
+      ]
+    },
+    {
+      "id": "advanced",
+      "label": "Advanced",
+      "rows": [
+        { "kind": "slider",   "field": "maxLightsPerObject", "label": "Lights per object", "min": 1, "max": 8, "step": 1 },
+        { "kind": "slider",   "field": "tessellationRadial", "label": "Mesh segments",     "min": 6, "max": 64, "step": 2 },
+        { "kind": "slider",   "field": "anisotropy",         "label": "Anisotropy",        "min": 1, "max": 16, "step": 1,
+          "requires": "anisotropy" },
+        { "kind": "toggle",   "field": "frustumCulling",     "label": "Frustum culling" },
+        { "kind": "toggle",   "field": "sortOpaqueFrontToBack", "label": "Depth pre-sort" },
+        { "kind": "slider",   "field": "streamingRadius",    "label": "Streaming radius",  "min": 1, "max": 6, "step": 1 },
+        { "kind": "slider",   "field": "shadowDistance",     "label": "Shadow distance",   "min": 10, "max": 200, "step": 10,
+          "requires": "shadows" },
+        { "kind": "dropdown", "field": "shadowMapSize",      "label": "Shadow map",        "requires": "shadows",
+          "options": [["256", 256], ["512", 512], ["1024", 1024], ["2048", 2048], ["4096", 4096]] },
+        { "kind": "dropdown", "field": "msaa",               "label": "Anti-aliasing",     "requires": "displayControl",
+          "options": [["Off", 1], ["2x", 2], ["4x", 4], ["8x", 8]] },
+        { "kind": "dropdown", "field": "shaderPrecision",    "label": "Shader precision",  "requires": "pixelRatio",
+          "options": [["Medium (faster)", "mediump"], ["High", "highp"]] },
+        { "kind": "dropdown", "field": "powerPreference",    "label": "GPU preference",    "requires": "pixelRatio",
+          "note": "needs a reload",
+          "options": [["Low power", "low-power"], ["Default", "default"], ["High performance", "high-performance"]] },
+        { "kind": "toggle",   "field": "antialias",          "label": "Context anti-aliasing", "requires": "pixelRatio",
+          "note": "needs a reload" },
+        { "kind": "toggle",   "field": "throttleWhenHidden", "label": "Pause when hidden", "requires": "pixelRatio" }
+      ]
+    },
+    {
+      "id": "benchmark",
+      "label": "Benchmark",
+      "rows": [
+        { "kind": "benchmark" }
+      ]
+    }
+  ],
+  "$layoutComment": "Canvas units, at the reference resolution the menu is authored against. The menu scales to fit rather than stretching, so these stay square on any window.",
+  "layout": {
+    "referenceWidth": 1280,
+    "referenceHeight": 720,
+    "panelWidth": 760,
+    "panelHeight": 560,
+    "rowHeight": 34,
+    "labelWidth": 260,
+    "gap": 6,
+    "padding": 20,
+    "titleScale": 3,
+    "tabHeight": 34,
+    "statusHeight": 16
+  },
+  "$themeComment": "Deliberately one dark theme rather than a theme system: the menu has to be legible over whatever the game is drawing behind it, and a game that wants its own look overrides the colours on the canvas root.",
+  "theme": {
+    "scrim":      "#0b0d12cc",
+    "panel":      "#161920",
+    "border":     "#2a2f3a",
+    "control":    "#232833",
+    "accent":     "#7fa650",
+    "text":       "#e8e6e1",
+    "textDim":    "#9a978f",
+    "track":      "#11141a"
+  }
+}

@@ -27,6 +27,12 @@ public enum MeshPrimitive
 
     /// <summary>A cone of base radius 0.5 and height 1, along Y.</summary>
     Cone,
+
+    /// <summary>A capsule of radius 0.5 with a 1-unit cylinder between its caps, along Y — so two units tall.</summary>
+    Capsule,
+
+    /// <summary>A torus of major radius 0.75 and minor radius 0.25, lying in the XZ plane.</summary>
+    Torus,
 }
 
 /// <summary>
@@ -87,10 +93,12 @@ public static class PrimitiveMesh
     /// </remarks>
     public static Bounds GetBounds(MeshPrimitive shape) => shape switch
     {
-        MeshPrimitive.Plane => new Bounds(Vector3.Zero, new Vector3(1f, 0f, 1f)),
-        MeshPrimitive.Quad  => new Bounds(Vector3.Zero, new Vector3(1f, 1f, 0f)),
-        MeshPrimitive.None  => new Bounds(Vector3.Zero, Vector3.One),
-        _                   => new Bounds(Vector3.Zero, Vector3.One),
+        MeshPrimitive.Plane   => new Bounds(Vector3.Zero, new Vector3(1f, 0f, 1f)),
+        MeshPrimitive.Quad    => new Bounds(Vector3.Zero, new Vector3(1f, 1f, 0f)),
+        MeshPrimitive.Capsule => new Bounds(Vector3.Zero, new Vector3(1f, 2f, 1f)),
+        MeshPrimitive.Torus   => new Bounds(Vector3.Zero, new Vector3(2f, 0.5f, 2f)),
+        MeshPrimitive.None    => new Bounds(Vector3.Zero, Vector3.One),
+        _                     => new Bounds(Vector3.Zero, Vector3.One),
     };
 
     /// <summary>Releases every cached buffer. Call when tearing down a graphics device.</summary>
@@ -119,6 +127,8 @@ public static class PrimitiveMesh
             MeshPrimitive.Quad     => BuildQuad(),
             MeshPrimitive.Cylinder => BuildCylinder(),
             MeshPrimitive.Cone     => BuildCone(),
+            MeshPrimitive.Capsule  => BuildCapsule(),
+            MeshPrimitive.Torus    => BuildTorus(),
             _                      => BuildCube(),
         };
 
@@ -322,6 +332,136 @@ public static class PrimitiveMesh
         }
 
         AddCap(vertices, indices, radials, y: -0.5f, normal: Vector3.Down, clockwise: true);
+        return (vertices.ToArray(), indices.ToArray());
+    }
+
+    /// <summary>
+    /// A capsule: a 1-unit cylinder of radius 0.5 with a hemisphere on each end.
+    /// </summary>
+    /// <remarks>
+    /// Built as a single vertex grid rather than three pieces. The last row of the top
+    /// hemisphere and the first row of the bottom one both sit on the radius at
+    /// y = ±0.5, so the strip between them <em>is</em> the cylinder wall — no seam to
+    /// weld, and the normals run continuously from pole to pole.
+    /// </remarks>
+    private static (VertexPositionNormalTexture[], short[]) BuildCapsule()
+    {
+        const float radius         = 0.5f;
+        const float cylinderHeight = 1f;
+        const float halfHeight     = cylinderHeight / 2f;
+
+        int radials  = Math.Max(3, RadialSegments);
+        int capRings = Math.Max(2, RingSegments / 2);
+
+        // (y, ring radius, y component of the normal) for every row, top pole downwards.
+        var rows = new List<(float Y, float R, float NormalY)>((capRings + 1) * 2);
+
+        for (int ring = 0; ring <= capRings; ring++)
+        {
+            float phi = ring / (float)capRings * (MathF.PI / 2f);
+            rows.Add((halfHeight + MathF.Cos(phi) * radius, MathF.Sin(phi) * radius, MathF.Cos(phi)));
+        }
+
+        for (int ring = 0; ring <= capRings; ring++)
+        {
+            float phi = MathF.PI / 2f + ring / (float)capRings * (MathF.PI / 2f);
+            rows.Add((-halfHeight + MathF.Cos(phi) * radius, MathF.Sin(phi) * radius, MathF.Cos(phi)));
+        }
+
+        var vertices = new List<VertexPositionNormalTexture>(rows.Count * (radials + 1));
+        var indices  = new List<short>((rows.Count - 1) * radials * 6);
+
+        for (int row = 0; row < rows.Count; row++)
+        {
+            var (y, r, normalY) = rows[row];
+            float v = row / (float)(rows.Count - 1);
+
+            for (int radial = 0; radial <= radials; radial++)
+            {
+                float u     = radial / (float)radials;
+                float theta = u * MathF.Tau;
+                float cos   = MathF.Cos(theta);
+                float sin   = MathF.Sin(theta);
+
+                // r / radius is the ring's radius as a fraction of the sphere's, which is
+                // what turns the position into a unit normal on the caps and leaves the
+                // wall's normal horizontal.
+                var normal = Vector3.Normalize(new Vector3(cos * (r / radius), normalY, sin * (r / radius)));
+
+                vertices.Add(new VertexPositionNormalTexture(
+                    new Vector3(cos * r, y, sin * r), normal, new Vector2(u, v)));
+            }
+        }
+
+        int stride = radials + 1;
+        for (int row = 0; row < rows.Count - 1; row++)
+        {
+            for (int radial = 0; radial < radials; radial++)
+            {
+                int a = row * stride + radial;
+                int b = a + stride;
+
+                indices.AddRange(new[] { (short)a, (short)b, (short)(a + 1) });
+                indices.AddRange(new[] { (short)(a + 1), (short)b, (short)(b + 1) });
+            }
+        }
+
+        return (vertices.ToArray(), indices.ToArray());
+    }
+
+    /// <summary>A torus of major radius 0.75 and minor radius 0.25, lying in the XZ plane.</summary>
+    /// <remarks>
+    /// The major sweep uses <see cref="RadialSegments"/> and the tube's own ring uses
+    /// <see cref="RingSegments"/>, so the two knobs mean the same thing here as they do on
+    /// a sphere. The normal is the direction from the tube's centre line, which falls out
+    /// of the same angles as the position.
+    /// </remarks>
+    private static (VertexPositionNormalTexture[], short[]) BuildTorus()
+    {
+        const float majorRadius = 0.75f;
+        const float minorRadius = 0.25f;
+
+        int majors = Math.Max(3, RadialSegments);
+        int minors = Math.Max(3, RingSegments);
+
+        var vertices = new List<VertexPositionNormalTexture>((majors + 1) * (minors + 1));
+        var indices  = new List<short>(majors * minors * 6);
+
+        for (int major = 0; major <= majors; major++)
+        {
+            float u    = major / (float)majors;
+            float cosU = MathF.Cos(u * MathF.Tau);
+            float sinU = MathF.Sin(u * MathF.Tau);
+
+            for (int minor = 0; minor <= minors; minor++)
+            {
+                float v    = minor / (float)minors;
+                float cosV = MathF.Cos(v * MathF.Tau);
+                float sinV = MathF.Sin(v * MathF.Tau);
+
+                var normal = new Vector3(cosV * cosU, sinV, cosV * sinU);
+                var position = new Vector3(
+                    (majorRadius + minorRadius * cosV) * cosU,
+                    minorRadius * sinV,
+                    (majorRadius + minorRadius * cosV) * sinU);
+
+                vertices.Add(new VertexPositionNormalTexture(position, normal, new Vector2(u, v)));
+            }
+        }
+
+        int stride = minors + 1;
+        for (int major = 0; major < majors; major++)
+        {
+            for (int minor = 0; minor < minors; minor++)
+            {
+                int a = major * stride + minor;
+                int b = a + stride;
+
+                indices.AddRange(new[] { (short)a, (short)b, (short)(a + 1) });
+                indices.AddRange(new[] { (short)(a + 1), (short)b, (short)(b + 1) });
+            }
+        }
+
         return (vertices.ToArray(), indices.ToArray());
     }
 

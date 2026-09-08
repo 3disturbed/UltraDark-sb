@@ -239,6 +239,7 @@ public sealed class JintRuntime
         _engine.SetValue("Network",   Bridge.NetworkProxy);
         _engine.SetValue("DG",        Bridge.DarksGamesProxy);
         _engine.SetValue("UI",        Bridge.UiProxy);
+        _engine.SetValue("Chibi",     Bridge.ChibiProxy);
 
         // The bundled scripts call log() with no namespace.
         _engine.SetValue("log",   Bridge.DebugProxy.Get("log"));

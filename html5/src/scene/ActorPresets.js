@@ -20,6 +20,8 @@ import { BoxCollider2D, CircleCollider2D } from '../physics/Collider2D.js';
 import { BoxCollider3D, SphereCollider3D } from '../physics/Collider3D.js';
 import { Rigidbody3D } from '../physics/Rigidbody3D.js';
 import { PlayerStart } from '../gameplay/PlayerStart.js';
+import { ChibiCharacter } from '../chibi/ChibiCharacter.js';
+import { ChibiAnimator } from '../chibi/ChibiAnimator.js';
 import { GameMode } from '../gameplay/GameMode.js';
 
 /** One entry in the Place Actors palette. */
@@ -87,6 +89,26 @@ export const ActorPresets = [
         }),
 
     // ---- Lights -------------------------------------------------------------
+    new ActorPreset('Characters', 'Chibi', 'A chibi character built from primitives, already playing an idle.',
+        () => {
+            const a = new Actor('Chibi');
+            a.addComponent(Transform3D);
+            a.addComponent(ChibiCharacter);
+            a.addComponent(ChibiAnimator);
+            return a;
+        }),
+
+    new ActorPreset('Characters', 'Chibi (random)', 'A different coordinated character every time you place one.',
+        () => {
+            const a = new Actor('Chibi');
+            a.addComponent(Transform3D);
+            // A fresh seed per placement: a crowd wants forty villagers, not forty of
+            // the same villager, and the seed is what the scene file remembers.
+            a.addComponent(ChibiCharacter).seed = 1 + Math.floor(Math.random() * 1000000);
+            a.addComponent(ChibiAnimator);
+            return a;
+        }),
+
     new ActorPreset('Lights', 'Directional Light', 'A sun, angled to cast readable shadows.',
         () => {
             const actor = new Actor('Directional Light');

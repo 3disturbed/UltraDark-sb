@@ -20,6 +20,7 @@ import './rendering/Camera3D.js';
 import './rendering/SpriteRenderer.js';
 import './rendering/MeshRenderer.js';
 import './rendering/Light3D.js';
+import './rendering/TimeOfDay.js';
 import './rendering/Skybox.js';
 
 import './physics/Rigidbody2D.js';
@@ -38,6 +39,9 @@ import './gameplay/GameMode.js';
 import './gameplay/GameState.js';
 import './gameplay/PlayerState.js';
 import './gameplay/PlayerStart.js';
+
+import './chibi/ChibiCharacter.js';
+import './chibi/ChibiAnimator.js';
 
 /** True once the built-ins have registered. Importing this module is what does it. */
 export const BUILTINS_REGISTERED = true;

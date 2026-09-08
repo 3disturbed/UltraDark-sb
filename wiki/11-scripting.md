@@ -238,6 +238,33 @@ Text is a 5x7 bitmap font defined in `html5/src/ui/font5x7.json`, which the brow
 the C# engine embeds — one file, so the two cannot render different text. `scale` is a whole
 multiple of that cell and is rounded; the font has no half pixels.
 
+### `Chibi` — MakeChibi's characters
+
+Spawns and drives a character built from primitives. Nothing here takes or returns an object;
+every argument is a scalar or an actor proxy. See [29. MakeChibi](29-makechibi.md).
+
+```js
+var v = Chibi.spawn("Assets/Characters/Villager.chibi", 0, 0, 0);
+var w = Chibi.random(1001, 2, 0, 0);        // the same seed is the same character
+
+Chibi.play(v, "walk", 0.2);                 // false for a clip name that does not exist
+Chibi.stop(v);
+
+Chibi.setColour(v, "top", "#8C3A3A");       // repaints; no rebuild
+Chibi.setStyle(v, "hair", "Mohawk");        // rebuilds the body
+
+Chibi.attach(v, "Hand_R", torch);           // Head, Face, Hand_L, Hand_R, Back
+Chibi.socket(v, "Head");                    // the socket's actor, or null
+```
+
+These are namespace functions rather than members of the actor you get back because an actor
+proxy from `Scene.createActor` carries only `id`, `name`, `tag`, `active`, `transform`,
+`transform3d`, `getComponent` and `destroy` — the `attachTo` and `addComponent` above belong to
+the running script's own `actor` global, not to every proxy.
+
+Clips: `idle`, `walk`, `run` are procedural and scale with the animator's `intensity`; `wave`,
+`hit`, `jump`, `cheer`, `sit`, `die` are keyed.
+
 ### `Debug`, `log`, `warn`, `error`, `Vector2`
 
 ```js
@@ -492,4 +519,5 @@ callbacks; the script decides *when* to call them.
 ## Next
 
 - [12. Scenes & Prefabs](12-scenes-prefabs.md)
+- [29. MakeChibi](29-makechibi.md) — the `Chibi` global, and what a namespace addition looks like.
 - [Tutorial 5: JavaScript Scripting](../tutorials/05-javascript-scripting.md)

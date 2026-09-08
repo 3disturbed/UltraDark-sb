@@ -105,15 +105,15 @@ public static class CookiePlanner
         var range = cookie.Manifest.EngineVersion;
         if (range == null) return;
 
-        var engine = CookieVersion.Parse(project.EngineVersion);
+        var engine = CookieVersion.Parse(project.ResolvedEngineVersion);
 
         if (range.Min is { } min && CookieVersion.TryParse(min, out var minimum) && engine.CompareTo(minimum) < 0)
             conflicts.Add(new CookieConflict(CookieConflictKind.EngineVersion, cookie.Id,
-                                             $"needs engine {min} or newer; this is {project.EngineVersion}."));
+                                             $"needs engine {min} or newer; this is {project.ResolvedEngineVersion}."));
 
         if (range.Max is { } max && CookieVersion.TryParse(max, out var maximum) && engine.CompareTo(maximum) > 0)
             conflicts.Add(new CookieConflict(CookieConflictKind.EngineVersion, cookie.Id,
-                                             $"declares support up to engine {max}; this is {project.EngineVersion}.",
+                                             $"declares support up to engine {max}; this is {project.ResolvedEngineVersion}.",
                                              Blocking: false));
     }
 

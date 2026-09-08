@@ -195,11 +195,16 @@ public sealed class RenderSystem3D : IDisposable
         GatherVisible(camera, view, proj, camPos);
 
         bool usePostProcess = PostProcess.Any(p => p.Enabled && p.Shader != null);
-        var  previousTargets = usePostProcess ? _gd.GetRenderTargets() : Array.Empty<RenderTargetBinding>();
+
+        // The off-screen target is also what makes RenderScale work, so it is needed
+        // whenever the world is not being drawn at back-buffer size — not only when
+        // there is a post-processing chain to run through it.
+        bool offScreen = usePostProcess || MathF.Abs(_renderScale - 1f) > 0.001f;
+        var  previousTargets = offScreen ? _gd.GetRenderTargets() : Array.Empty<RenderTargetBinding>();
 
         if (EnableShadows) RenderShadowPass(camPos);
 
-        if (usePostProcess)
+        if (offScreen)
         {
             EnsureSceneTarget();
             _gd.SetRenderTarget(_sceneTarget);
@@ -208,9 +213,9 @@ public sealed class RenderSystem3D : IDisposable
 
         DrawScene(scene, camera, view, proj, camPos);
 
-        if (usePostProcess)
+        if (offScreen)
         {
-            var result = RunPostProcess(_sceneTarget!);
+            Texture2D result = usePostProcess ? RunPostProcess(_sceneTarget!) : _sceneTarget!;
             _gd.SetRenderTargets(previousTargets.Length > 0 ? previousTargets : null);
             Blit(result);
         }
@@ -674,18 +679,40 @@ public sealed class RenderSystem3D : IDisposable
     // Post-processing
     // -------------------------------------------------------------------------
 
+    /// <summary>
+    /// Fraction of the back buffer the world is rendered at before being upscaled to it.
+    /// </summary>
+    /// <remarks>
+    /// The cheapest quality knob there is, and the one that makes an old laptop playable:
+    /// cost falls with the square of it. The UI is unaffected, because it is painted onto
+    /// the back buffer after the blit rather than into the scene target.
+    /// </remarks>
+    public float RenderScale
+    {
+        get => _renderScale;
+        set => _renderScale = MathHelper.Clamp(value, 0.25f, 2f);
+    }
+
+    private float _renderScale = 1f;
+
     private void EnsureSceneTarget()
     {
         var pp = _gd.PresentationParameters;
-        if (_sceneTarget != null && _sceneTarget.Width == pp.BackBufferWidth
-                                 && _sceneTarget.Height == pp.BackBufferHeight) return;
+
+        // At least one pixel each way: a window dragged to nothing must not ask the
+        // device for a zero-sized target.
+        int width  = Math.Max(1, (int)MathF.Round(pp.BackBufferWidth  * _renderScale));
+        int height = Math.Max(1, (int)MathF.Round(pp.BackBufferHeight * _renderScale));
+
+        if (_sceneTarget != null && _sceneTarget.Width == width
+                                 && _sceneTarget.Height == height) return;
 
         _sceneTarget?.Dispose();
         _ppPing?.Dispose();
 
-        _sceneTarget = new RenderTarget2D(_gd, pp.BackBufferWidth, pp.BackBufferHeight,
+        _sceneTarget = new RenderTarget2D(_gd, width, height,
             false, SurfaceFormat.Color, DepthFormat.Depth24);
-        _ppPing = new RenderTarget2D(_gd, pp.BackBufferWidth, pp.BackBufferHeight,
+        _ppPing = new RenderTarget2D(_gd, width, height,
             false, SurfaceFormat.Color, DepthFormat.None);
     }
 
@@ -712,11 +739,22 @@ public sealed class RenderSystem3D : IDisposable
         return from;
     }
 
+    /// <summary>
+    /// Puts the off-screen result back on the back buffer, stretched to fill it.
+    /// </summary>
+    /// <remarks>
+    /// Stretched rather than drawn at 1:1, because under a render scale below one the
+    /// target is smaller than the window: a straight blit would paint the world into a
+    /// corner and leave the rest of the screen on whatever was behind it.
+    /// </remarks>
     private void Blit(Texture2D texture)
     {
+        var pp = _gd.PresentationParameters;
+
         _compositeBatch!.Begin(SpriteSortMode.Deferred, BlendState.Opaque,
             SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
-        _compositeBatch.Draw(texture, Vector2.Zero, Color.White);
+        _compositeBatch.Draw(texture, new Rectangle(0, 0, pp.BackBufferWidth, pp.BackBufferHeight),
+                             Color.White);
         _compositeBatch.End();
     }
 

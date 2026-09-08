@@ -119,10 +119,58 @@ export { Easing, getEasing, EASE_TYPES } from './animation/TweenEasing.js';
 
 // ---- Scripting --------------------------------------------------------------
 export { ScriptComponent } from './scripting/ScriptComponent.js';
+// ---- MakeChibi ------------------------------------------------------------
+export {
+    ChibiParts, JOINTS, JOINT_NAMES, SOCKETS, SOCKET_NAMES, SLOTS, COLOUR_SLOTS,
+    ROOT_NAME, variantsFor, accessoryNames, isMirrored, expand,
+} from './chibi/ChibiRig.js';
+export {
+    defaultRecipe, normalise as normaliseRecipe, parse as parseRecipe,
+    stringify as stringifyRecipe, random as randomRecipe, seededRandom, PROPORTIONS,
+} from './chibi/ChibiRecipe.js';
+export { build as buildChibi, ChibiBuild } from './chibi/ChibiBuilder.js';
+export { Pose, PROCEDURAL, KEYED, findClip, clipNames } from './chibi/ChibiClips.js';
+export { ChibiCharacter } from './chibi/ChibiCharacter.js';
+export { ChibiAnimator } from './chibi/ChibiAnimator.js';
+
 export { createScriptGlobals, wrapActor, unwrapActor, wrapCollisionData, wrapComponent, SCRIPT_HOOKS } from './scripting/ScriptBridge.js';
+
+// ---- UI ---------------------------------------------------------------------
+// The retained tree. ScriptUi is the flat five-kind surface the `UI` script global
+// builds on top of; UiCanvas is the tree UiLayout, UiFocus and UiDocument work on.
+export { ScriptUi, ANCHORS, widestLine } from './ui/ScriptUi.js';
+export { UiCanvas } from './ui/UiCanvas.js';
+export { UiNode } from './ui/UiNode.js';
+export { UiFocus, UiInputModeTracker } from './ui/UiFocus.js';
+export { UiInput, EMPTY_FRAME as UI_EMPTY_FRAME } from './ui/UiInput.js';
+export { paint as paintUi, paintAll as paintUiCanvases } from './ui/UiPainter.js';
+export {
+    UiKind, SizeMode, LayoutMode, AlignMode, PositionMode, ScrollMode,
+    UiAnchor, Focusability, UiInputMode, UiScaleMode, SafeAreaMode, UiDocumentError,
+} from './ui/UiEnums.js';
+export { fromJson as uiFromJson, fromObject as uiFromObject } from './ui/UiDocument.js';
+export { NavDirection } from './ui/UiNavigation.js';
+
+// ---- Graphics settings ------------------------------------------------------
+export {
+    GraphicsSettings, ShadowQuality, TextureFiltering, Lighting2DQuality,
+    PREFS_KEY as GRAPHICS_PREFS_KEY, saveGraphicsSettings, loadGraphicsSettings, applyGlobals as applyGraphicsGlobals,
+} from './rendering/GraphicsSettings.js';
+export { GraphicsCapabilities } from './rendering/GraphicsCapabilities.js';
+export { GraphicsBenchmark, summarise as summariseBenchmark, describe as describeBenchmark } from './debug/GraphicsBenchmark.js';
+export { GraphicsMenu } from './ui/GraphicsMenu.js';
+
+// ---- Day and night ----------------------------------------------------------
+export { TimeOfDay, DayPhase, TWILIGHT_DEGREES } from './rendering/TimeOfDay.js';
+export { sample as sampleSky, wrap01 as wrapDay, mixHex, KEY_NAMES as SKY_KEY_NAMES } from './rendering/SkyGradient.js';
+
+// ---- Save -------------------------------------------------------------------
+export { PlayerPrefs } from './save/PlayerPrefs.js';
 
 // ---- Compatibility ----------------------------------------------------------
 export { installCSharpAliases, aliasInstanceFields, areCSharpAliasesInstalled } from './compat/CSharpNaming.js';
 
-/** The engine's version, reported by the runtime and the editor. */
-export const VERSION = '1.0.0';
+// ---- Identity ---------------------------------------------------------------
+// Re-exported rather than restated: EngineInfo.js is the one place the browser
+// engine's version lives, and it is pinned equal to <Version> in the engine csproj.
+export { VERSION, NAME as ENGINE_NAME, rendererName, platformName, statusLine } from './core/EngineInfo.js';

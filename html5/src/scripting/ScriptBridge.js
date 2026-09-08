@@ -15,9 +15,12 @@ import { Actor } from '../core/Actor.js';
 import { schemaOf } from '../core/TypeRegistry.js';
 import { coerce } from '../core/PropertyTypes.js';
 import { applyProperties } from '../scene/SceneSerializer.js';
-import { widestLine } from '../ui/UiCanvas.js';
+import { widestLine } from '../ui/ScriptUi.js';
 import { NetworkManager as NetworkManagerClass } from '../net/NetworkManager.js';
 import { DarksGames as DarksGamesClass } from '../dg/DarksGames.js';
+import { Transform3D } from '../core/Transform3D.js';
+import { ChibiCharacter } from '../chibi/ChibiCharacter.js';
+import { ChibiAnimator } from '../chibi/ChibiAnimator.js';
 
 /** The events `Network.on` accepts. The Jint bridge accepts exactly these. */
 const NETWORK_EVENTS = ['message', 'playerJoined', 'playerLeft', 'connected', 'disconnected'];
@@ -550,9 +553,105 @@ export function createScriptGlobals(actor, services = {}) {
         measure(text, scale) { return measureText(String(text ?? ''), Number(scale) || 1); },
     };
 
+    // ---- Chibi ---------------------------------------------------------------
+    // Everything here is a namespace function rather than a member of the actor a
+    // script holds, because the proxy `Scene.createActor` hands back has no
+    // `attachTo`, `addComponent` or `children` -- only the running script's own
+    // `actor` global gained those. Building the body natively also keeps forty
+    // actors' worth of construction on this side of the boundary.
+
+    /** The character component behind an actor proxy, or null. */
+    const character = (value) => unwrapActor(value)?.getComponent(ChibiCharacter) ?? null;
+
+    function spawnChibi(recipePath, seed, x, y, z) {
+        const target = scene();
+        if (!target) return null;
+
+        const created = new Actor(recipePath ? 'Chibi' : `Chibi ${seed}`);
+        created.addComponent(Transform3D).localPosition =
+            new Vec3Class(Number(x) || 0, Number(y) || 0, Number(z) || 0);
+
+        const component = created.addComponent(ChibiCharacter);
+        component.recipePath = recipePath;
+        component.seed = seed;
+        created.addComponent(ChibiAnimator);
+
+        target.addActor(created);
+        return wrapActor(created);
+    }
+
+    const chibiProxy = {
+        /**
+         * Spawns a character from a `.chibi` under Assets/.
+         *
+         * The recipe is read from disk, so the body appears a frame or two after
+         * this returns -- the same bargain `MeshRenderer.modelPath` makes. The
+         * actor is real immediately, so it can be moved and animated at once.
+         */
+        spawn(recipePath, x = 0, y = 0, z = 0) {
+            return spawnChibi(String(recipePath ?? ''), 0, x, y, z);
+        },
+
+        /** A coordinated random character. The same seed is the same character. */
+        random(seed, x = 0, y = 0, z = 0) {
+            return spawnChibi('', Math.trunc(Number(seed) || 0), x, y, z);
+        },
+
+        /** Plays a clip, cross-fading over `blend` seconds. */
+        play(chibi, clip, blend) {
+            const animator = unwrapActor(chibi)?.getComponent(ChibiAnimator);
+            if (!animator) return false;
+            return animator.play(String(clip), blend === undefined ? null : Number(blend));
+        },
+
+        /** Stops whatever is playing, returning the character to rest. */
+        stop(chibi) {
+            unwrapActor(chibi)?.getComponent(ChibiAnimator)?.stop();
+        },
+
+        /** Repaints one colour slot: skin, hair, eyes, top, bottom, shoes, accent. */
+        setColour(chibi, slot, hex) {
+            return character(chibi)?.chibi?.setColour(String(slot), String(hex)) ?? false;
+        },
+
+        /** Swaps one style slot and rebuilds the body around it. */
+        setStyle(chibi, slot, variant) {
+            const component = character(chibi);
+            if (!component?.chibi) return false;
+
+            const recipe = component.chibi.recipe;
+            if (!(String(slot) in recipe.style)) return false;
+
+            recipe.style[String(slot)] = String(variant);
+            component.rebuild(recipe);
+            // The animator cached transforms that have just been destroyed.
+            unwrapActor(chibi)?.getComponent(ChibiAnimator)?.resolve();
+            return true;
+        },
+
+        /** Hangs an actor off a named socket: Head, Face, Hand_L, Hand_R, Back. */
+        attach(chibi, socket, target) {
+            const point = character(chibi)?.chibi?.sockets.get(String(socket));
+            const actor = unwrapActor(target);
+            if (!point || !actor) return false;
+
+            if (!actor.getComponent(Transform3D)) actor.addComponent(Transform3D);
+            // false: a sword's offset means "in the hand", not "where it was standing".
+            actor.attachTo(point, false);
+            return true;
+        },
+
+        /** The socket's own actor, for reading where it is. Null when there is no such socket. */
+        socket(chibi, socket) {
+            const point = character(chibi)?.chibi?.sockets.get(String(socket));
+            return point ? wrapActor(point) : null;
+        },
+    };
+
     const globals = {
         actor: actorProxy,
         UI: uiProxy,
+        Chibi: chibiProxy,
         transform: transformProxy,
         get transform3d() { return transform3DProxy(); },
         Input: inputProxy,

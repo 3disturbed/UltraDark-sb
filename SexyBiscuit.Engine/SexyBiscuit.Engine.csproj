@@ -32,6 +32,11 @@
          treated as a warning: much of the engine's surface is self-describing
          properties, and failing the build over them would drown the warnings that
          matter. Malformed XML and broken crefs still warn. -->
+    <!-- The one place the engine version is stated. EngineInfo.Version reads it back
+         off the assembly, and html5/src/core/EngineInfo.js is pinned equal to it by
+         html5/tests/graphics.test.js. Without this the assembly carried MSBuild's
+         default and four unrelated sources agreed on 1.0.0 by accident. -->
+    <Version>1.0.0</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
@@ -132,6 +137,16 @@
        different text. -->
   <ItemGroup>
     <EmbeddedResource Include="../html5/src/ui/font5x7.json" LogicalName="SexyBiscuit.Engine.font5x7.json" />
+    <EmbeddedResource Include="../html5/src/rendering/graphics-presets.json" LogicalName="SexyBiscuit.Engine.graphics-presets.json" />
+    <EmbeddedResource Include="../html5/src/ui/graphics-menu.json" LogicalName="SexyBiscuit.Engine.graphics-menu.json" />
+    <EmbeddedResource Include="../html5/src/rendering/sky-gradient.json" LogicalName="SexyBiscuit.Engine.sky-gradient.json" />
+  </ItemGroup>
+
+  <!-- MakeChibi's parts and clips, for the same reason: one table, so a recipe cannot
+       describe a different character on each engine. -->
+  <ItemGroup>
+    <EmbeddedResource Include="../html5/src/chibi/chibi-parts.json" LogicalName="SexyBiscuit.Engine.chibi-parts.json" />
+    <EmbeddedResource Include="../html5/src/chibi/chibi-clips.json" LogicalName="SexyBiscuit.Engine.chibi-clips.json" />
   </ItemGroup>
 
 </Project>

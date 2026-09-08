@@ -535,6 +535,40 @@
         "kind": "fn",
         "shared": true
       }
+    },
+    "Chibi": {
+      "spawn": {
+        "kind": "fn",
+        "shared": true
+      },
+      "random": {
+        "kind": "fn",
+        "shared": true
+      },
+      "play": {
+        "kind": "fn",
+        "shared": true
+      },
+      "stop": {
+        "kind": "fn",
+        "shared": true
+      },
+      "setColour": {
+        "kind": "fn",
+        "shared": true
+      },
+      "setStyle": {
+        "kind": "fn",
+        "shared": true
+      },
+      "attach": {
+        "kind": "fn",
+        "shared": true
+      },
+      "socket": {
+        "kind": "fn",
+        "shared": true
+      }
     }
   },
   "bare": {

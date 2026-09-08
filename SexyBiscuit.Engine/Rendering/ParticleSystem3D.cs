@@ -122,6 +122,12 @@ public sealed class ParticleSystem3D : Component
     /// <summary>Particles spawned per second while playing.</summary>
     public float EmissionRate { get; set; } = 20f;
 
+    /// <summary>
+    /// Multiplies every system's rate, so a quality preset thins particles rather than
+    /// overwriting the numbers an author chose. 1 is the author's rate; 0 emits nothing.
+    /// </summary>
+    public static float DensityScale { get; set; } = 1f;
+
     /// <summary>Volume new particles spawn inside.</summary>
     public EmitterShape3D Shape { get; set; } = EmitterShape3D.Point;
 
@@ -269,7 +275,7 @@ public sealed class ParticleSystem3D : Component
 
             if (IsPlaying && EmissionRate > 0f)
             {
-                _emitAccumulator += EmissionRate * dt;
+                _emitAccumulator += EmissionRate * MathHelper.Clamp(DensityScale, 0f, 1f) * dt;
                 while (_emitAccumulator >= 1f)
                 {
                     SpawnOne();
