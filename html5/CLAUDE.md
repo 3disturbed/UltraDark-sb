@@ -24,6 +24,10 @@ on both sides (`tests/interop.test.js`, `tests/bridge.test.js`, `SexyBiscuit.Tes
 until it is. The six JSON tables under `src/` (font5x7, graphics-presets, graphics-menu,
 sky-gradient, chibi-parts, chibi-clips) are embedded into the C# assembly by its csproj, so editing
 one is a both-engines change with no C# edit. Tests that read C# source pin; never skip them.
+`/mirrors.json` names every twin: `node tools/mirror-check.js --of <file>` prints yours, `npm run mirror`
+fails a one-sided change (excuse one on purpose with the commit trailer `Mirror-only: cs|js <name>`).
+The scripting API is edited in `src/scripting/bridge-api.json` first, then `npm run gen` rewrites
+`sb-engine.d.ts`, then both bridges; never edit the `.d.ts` by hand.
 
 ## Rules that apply here only
 

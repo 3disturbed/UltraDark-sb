@@ -10,9 +10,10 @@ paths:
 `ScriptBridge.cs` (Jint) and `ScriptBridge.js` (browser) implement it member for member, and
 `ScriptBridgeParityTests` and `bridge.test.js` fail when either drifts.
 
-- Add the member to the JSON first, then to both bridges, in one commit. Never widen one side.
-- `TypeScriptDefinitions.cs` describes the same contract for editors and for the MCP scripting
-  resource; a member without a declaration is a member an agent cannot see. Keep it in step.
-- Gate: `cd html5 && npm test`, then
+- Add the member to the JSON first (kind, shared, params/returns or type, a line of doc), run
+  `cd html5 && npm run gen`, then implement it in both bridges, in one commit. Never widen one side.
+- `sb-engine.d.ts` is generated from the JSON and embedded by the C# build; never edit it or
+  `TypeScriptDefinitions.cs` by hand. `npm run lint` fails on a stale file.
+- Gate: `cd html5 && npm test && npm run lint && npm run mirror`, then
   `dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj --filter "FullyQualifiedName~Parity"`.
 - Then `wiki/11-scripting.md`, which is what game sessions read instead of the source.

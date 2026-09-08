@@ -47,6 +47,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # mirror-check compares against the previous commit
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -63,6 +65,13 @@ jobs:
 
       - name: Validate templates
         run: npm run validate
+        working-directory: html5
+
+      # Every engine feature exists twice; a change to one twin and not the other fails here
+      # unless a commit trailer excuses it (see /mirrors.json).
+      - name: Mirror check
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        run: node tools/mirror-check.js --base "${{ github.event.pull_request.base.sha || github.event.before }}"
         working-directory: html5
 
       # The web exporter is what the prototype phase ships with; stage one template.

@@ -23,8 +23,10 @@ there, with that folder's gate and rules; `.claude/rules/` names the files that 
 ## Rules that cross folders
 
 - **One contract, two engines.** A scripting member, a serialised property, a hook, a wire frame
-  or a shared table changes on both sides in the same commit, and the parity tests on both sides
-  hold them together. Never widen one bridge for one game.
+  or a shared table changes on both sides in the same commit; `/mirrors.json` names the twins,
+  `npm run mirror` fails a one-sided change, and the parity tests on both sides hold them
+  together. The scripting API is edited in `bridge-api.json` first, then `npm run gen`, then both
+  bridges. Never widen one bridge for one game.
 - **One commit per concern.** A commit touches one folder's area, or one mirror pair with its
   parity test. No consolidate commits; split with `git add -p`.
 - **Run the folder's gate before every commit.** After a push,

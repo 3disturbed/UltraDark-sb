@@ -25,8 +25,11 @@
 `<Area>/X.cs` mirrors `html5/src/<area>/X.js`. The change lands on both sides in one commit, and
 the parity tests (`SexyBiscuit.Tests/*Parity*`, `html5/tests/interop.test.js`) hold them together.
 Shared data lives as JSON under `html5/src` and is embedded by this csproj; do not restate it in
-C#. `Scripting/TypeScriptDefinitions.cs` describes the contract in
-`html5/src/scripting/bridge-api.json` and must follow it.
+C#. `/mirrors.json` names every twin (`node html5/tools/mirror-check.js --of <file>` prints
+yours) and a one-sided change fails CI. The scripting API is edited in
+`html5/src/scripting/bridge-api.json` first, then `npm run gen`, then both bridges; the hooks
+`JintRuntime` dispatches and the `.d.ts` `TypeScriptDefinitions` serves are read from the
+embedded contract, never written by hand.
 
 ## Rules that apply here only
 

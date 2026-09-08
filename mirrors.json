@@ -1,0 +1,1059 @@
+{
+  "$comment": "Every engine feature exists twice, in C# under SexyBiscuit.Engine and in JavaScript under html5/src. This map names each twin. mirror-check.js fails a change that touches one side of a strict pair and not the other; the parity tests on both sides walk the pairs whose check is 'schema' (every JS static-schema key is a C# property) or 'names' (an enum's member set). 'tables' are the JSON files both engines read; the C# csproj embeds them. components.csOnly and jsOnly list what exists on one engine on purpose; the sweep tests fail on anything registered that is in neither the pairs nor those lists. Look a twin up with: node html5/tools/mirror-check.js --of <file>.",
+  "pairs": [
+    {
+      "name": "ScriptBridge",
+      "kind": "contract",
+      "check": "contract",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Scripting/ScriptBridge.cs",
+      "js": "html5/src/scripting/ScriptBridge.js"
+    },
+    {
+      "name": "BoxCollider2D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Collider2D.cs",
+      "js": "html5/src/physics/Collider2D.js"
+    },
+    {
+      "name": "BoxCollider3D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Collider3D.cs",
+      "js": "html5/src/physics/Collider3D.js"
+    },
+    {
+      "name": "Camera2D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/Camera2D.cs",
+      "js": "html5/src/rendering/Camera2D.js"
+    },
+    {
+      "name": "Camera3D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/Camera3D.cs",
+      "js": "html5/src/rendering/Camera3D.js"
+    },
+    {
+      "name": "CapsuleCollider3D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Collider3D.cs",
+      "js": "html5/src/physics/Collider3D.js"
+    },
+    {
+      "name": "CharacterController3D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/CharacterController3D.cs",
+      "js": "html5/src/physics/CharacterController3D.js"
+    },
+    {
+      "name": "ChibiAnimator",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Chibi/ChibiAnimator.cs",
+      "js": "html5/src/chibi/ChibiAnimator.js"
+    },
+    {
+      "name": "ChibiCharacter",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Chibi/ChibiCharacter.cs",
+      "js": "html5/src/chibi/ChibiCharacter.js"
+    },
+    {
+      "name": "CircleCollider2D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Collider2D.cs",
+      "js": "html5/src/physics/Collider2D.js"
+    },
+    {
+      "name": "Component",
+      "kind": "component",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/Component.cs",
+      "js": "html5/src/core/Component.js"
+    },
+    {
+      "name": "Light3D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/Light3D.cs",
+      "js": "html5/src/rendering/Light3D.js"
+    },
+    {
+      "name": "MeshCollider3D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Collider3D.cs",
+      "js": "html5/src/physics/Collider3D.js"
+    },
+    {
+      "name": "MeshRenderer",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/MeshRenderer.cs",
+      "js": "html5/src/rendering/MeshRenderer.js"
+    },
+    {
+      "name": "MissingComponent",
+      "kind": "component",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/MissingComponent.cs",
+      "js": "html5/src/core/MissingComponent.js"
+    },
+    {
+      "name": "NetworkObject",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Networking/NetworkObject.cs",
+      "js": "html5/src/net/NetworkObject.js"
+    },
+    {
+      "name": "PlayerStart",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Gameplay/GameMode.cs",
+      "js": "html5/src/gameplay/PlayerStart.js"
+    },
+    {
+      "name": "PolygonCollider2D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Collider2D.cs",
+      "js": "html5/src/physics/Collider2D.js"
+    },
+    {
+      "name": "Rigidbody2D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Rigidbody2D.cs",
+      "js": "html5/src/physics/Rigidbody2D.js"
+    },
+    {
+      "name": "Rigidbody3D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Rigidbody3D.cs",
+      "js": "html5/src/physics/Rigidbody3D.js"
+    },
+    {
+      "name": "ScriptComponent",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Scripting/ScriptComponent.cs",
+      "js": "html5/src/scripting/ScriptComponent.js"
+    },
+    {
+      "name": "SkyLight",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/SceneComponents.cs",
+      "js": "html5/src/rendering/Light3D.js"
+    },
+    {
+      "name": "Skybox",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/Skybox.cs",
+      "js": "html5/src/rendering/Skybox.js"
+    },
+    {
+      "name": "SphereCollider3D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Collider3D.cs",
+      "js": "html5/src/physics/Collider3D.js"
+    },
+    {
+      "name": "SpriteRenderer",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/SpriteRenderer.cs",
+      "js": "html5/src/rendering/SpriteRenderer.js"
+    },
+    {
+      "name": "TimeOfDay",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/TimeOfDay.cs",
+      "js": "html5/src/rendering/TimeOfDay.js"
+    },
+    {
+      "name": "Transform",
+      "kind": "component",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/Transform.cs",
+      "js": "html5/src/core/Transform.js"
+    },
+    {
+      "name": "Transform3D",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Core/Transform3D.cs",
+      "js": "html5/src/core/Transform3D.js"
+    },
+    {
+      "name": "UiCanvas",
+      "kind": "component",
+      "check": "schema",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/UiCanvas.cs",
+      "js": "html5/src/ui/UiCanvas.js"
+    },
+    {
+      "name": "AlignMode",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "AlignMode",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "DayPhase",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "DayPhase",
+      "cs": "SexyBiscuit.Engine/Rendering/TimeOfDay.cs",
+      "js": "html5/src/rendering/TimeOfDay.js"
+    },
+    {
+      "name": "Focusability",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "Focusability",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "LayoutMode",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "LayoutMode",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "LightType",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "LightType",
+      "cs": "SexyBiscuit.Engine/Rendering/Light3D.cs",
+      "js": "html5/src/rendering/Light3D.js"
+    },
+    {
+      "name": "Lighting2DQuality",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "Lighting2DQuality",
+      "cs": "SexyBiscuit.Engine/Rendering/GraphicsSettings.cs",
+      "js": "html5/src/rendering/GraphicsSettings.js"
+    },
+    {
+      "name": "MatchState",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "MatchState",
+      "cs": "SexyBiscuit.Engine/Gameplay/GameState.cs",
+      "js": "html5/src/gameplay/GameState.js"
+    },
+    {
+      "name": "MeshPrimitive",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "MeshPrimitive",
+      "cs": "SexyBiscuit.Engine/Rendering/PrimitiveMesh.cs",
+      "js": "html5/src/rendering/PrimitiveMesh.js"
+    },
+    {
+      "name": "NavDirection",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "NavDirection",
+      "cs": "SexyBiscuit.Engine/UI/Focus/UiNavigation.cs",
+      "js": "html5/src/ui/UiNavigation.js"
+    },
+    {
+      "name": "NetTransportKind",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "NetTransportKind",
+      "cs": "SexyBiscuit.Engine/Networking/NetworkManager.cs",
+      "js": "html5/src/net/NetworkManager.js",
+      "allowCsOnly": [
+        "Udp"
+      ],
+      "note": "LiteNetLib UDP is desktop-only by design; WebSocket is the shared wire (wiki/15)."
+    },
+    {
+      "name": "PositionMode",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "PositionMode",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "SafeAreaMode",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "SafeAreaMode",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "ScrollMode",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "ScrollMode",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "ShadowQuality",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "ShadowQuality",
+      "cs": "SexyBiscuit.Engine/Rendering/GraphicsSettings.cs",
+      "js": "html5/src/rendering/GraphicsSettings.js"
+    },
+    {
+      "name": "SizeMode",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "SizeMode",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "TextureFiltering",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "TextureFiltering",
+      "cs": "SexyBiscuit.Engine/Rendering/GraphicsSettings.cs",
+      "js": "html5/src/rendering/GraphicsSettings.js"
+    },
+    {
+      "name": "TouchPhase",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "TouchPhase",
+      "cs": "SexyBiscuit.Engine/Input/TouchState.cs",
+      "js": "html5/src/input/TouchState.js"
+    },
+    {
+      "name": "UiAnchor",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "UiAnchor",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "UiInputMode",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "UiInputMode",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "UiKind",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "UiKind",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "UiScaleMode",
+      "kind": "enum",
+      "check": "names",
+      "strict": true,
+      "symbol": "UiScaleMode",
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "ActionMap",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Input/ActionMap.cs",
+      "js": "html5/src/input/ActionMap.js"
+    },
+    {
+      "name": "Actor",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/Actor.cs",
+      "js": "html5/src/core/Actor.js"
+    },
+    {
+      "name": "ActorPresets",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Scene/ActorPresets.cs",
+      "js": "html5/src/scene/ActorPresets.js"
+    },
+    {
+      "name": "AssetManager",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Assets/AssetManager.cs",
+      "js": "html5/src/assets/AssetManager.js"
+    },
+    {
+      "name": "AudioManager",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Audio/AudioManager.cs",
+      "js": "html5/src/audio/AudioManager.js"
+    },
+    {
+      "name": "BitmapFont",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/UI/BitmapFont.cs",
+      "js": "html5/src/ui/BitmapFont.js"
+    },
+    {
+      "name": "Bounds",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Core/Bounds.cs",
+      "js": "html5/src/math/Bounds.js"
+    },
+    {
+      "name": "Character",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Gameplay/Character.cs",
+      "js": "html5/src/gameplay/Character.js"
+    },
+    {
+      "name": "ChibiBuilder",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Chibi/ChibiBuilder.cs",
+      "js": "html5/src/chibi/ChibiBuilder.js"
+    },
+    {
+      "name": "ChibiClips",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Chibi/ChibiClips.cs",
+      "js": "html5/src/chibi/ChibiClips.js"
+    },
+    {
+      "name": "ChibiParts",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Chibi/ChibiParts.cs",
+      "js": "html5/src/chibi/ChibiRecipe.js"
+    },
+    {
+      "name": "ChibiRecipe",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Chibi/ChibiRecipe.cs",
+      "js": "html5/src/chibi/ChibiRecipe.js"
+    },
+    {
+      "name": "Collider2D",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Collider2D.cs",
+      "js": "html5/src/physics/Collider2D.js"
+    },
+    {
+      "name": "Collider3D",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Physics/Collider3D.cs",
+      "js": "html5/src/physics/Collider3D.js"
+    },
+    {
+      "name": "Controller",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Gameplay/Controller.cs",
+      "js": "html5/src/gameplay/Controller.js"
+    },
+    {
+      "name": "CoroutineRunner",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/CoroutineRunner.cs",
+      "js": "html5/src/core/CoroutineRunner.js"
+    },
+    {
+      "name": "EngineHost",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/EngineHost.cs",
+      "js": "html5/src/EngineHost.js"
+    },
+    {
+      "name": "EngineInfo",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/EngineInfo.cs",
+      "js": "html5/src/core/EngineInfo.js"
+    },
+    {
+      "name": "ExceptionIsolation",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/ExceptionIsolation.cs",
+      "js": "html5/src/core/ExceptionIsolation.js"
+    },
+    {
+      "name": "GameInstance",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Gameplay/GameInstance.cs",
+      "js": "html5/src/gameplay/GameInstance.js"
+    },
+    {
+      "name": "GameMode",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Gameplay/GameMode.cs",
+      "js": "html5/src/gameplay/GameMode.js"
+    },
+    {
+      "name": "GameState",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Gameplay/GameState.cs",
+      "js": "html5/src/gameplay/GameState.js"
+    },
+    {
+      "name": "GamepadState",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Input/GamepadState.cs",
+      "js": "html5/src/input/GamepadState.js"
+    },
+    {
+      "name": "GraphicsBenchmark",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Debug/GraphicsBenchmark.cs",
+      "js": "html5/src/debug/GraphicsBenchmark.js"
+    },
+    {
+      "name": "GraphicsCapabilities",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/GraphicsCapabilities.cs",
+      "js": "html5/src/rendering/GraphicsCapabilities.js"
+    },
+    {
+      "name": "GraphicsMenu",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/GraphicsMenu.cs",
+      "js": "html5/src/ui/GraphicsMenu.js"
+    },
+    {
+      "name": "GraphicsSettings",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/GraphicsSettings.cs",
+      "js": "html5/src/rendering/GraphicsSettings.js"
+    },
+    {
+      "name": "InputManager",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Input/InputManager.cs",
+      "js": "html5/src/input/InputManager.js"
+    },
+    {
+      "name": "KeyNames",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Input/KeyNames.cs",
+      "js": "html5/src/input/Keys.js"
+    },
+    {
+      "name": "Layer",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/Layer.cs",
+      "js": "html5/src/core/Layer.js"
+    },
+    {
+      "name": "LoopbackTransport",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Networking/LoopbackTransport.cs",
+      "js": "html5/src/net/LoopbackTransport.js"
+    },
+    {
+      "name": "Material3D",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Rendering/Material3D.cs",
+      "js": "html5/src/rendering/Material3D.js"
+    },
+    {
+      "name": "NetProtocol",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Networking/NetProtocol.cs",
+      "js": "html5/src/net/protocol.js"
+    },
+    {
+      "name": "NetworkManager",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Networking/NetworkManager.cs",
+      "js": "html5/src/net/NetworkManager.js"
+    },
+    {
+      "name": "Pawn",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Gameplay/Pawn.cs",
+      "js": "html5/src/gameplay/Pawn.js"
+    },
+    {
+      "name": "PhysicsSystem2D",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Physics/PhysicsSystem2D.cs",
+      "js": "html5/src/physics/PhysicsSystem2D.js"
+    },
+    {
+      "name": "PhysicsSystem3D",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Physics/PhysicsSystem3D.cs",
+      "js": "html5/src/physics/PhysicsSystem3D.js"
+    },
+    {
+      "name": "PlayMode",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/PlayMode.cs",
+      "js": "html5/src/core/PlayMode.js"
+    },
+    {
+      "name": "PlayerController",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Gameplay/PlayerController.cs",
+      "js": "html5/src/gameplay/PlayerController.js"
+    },
+    {
+      "name": "PlayerPrefs",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Save/PlayerPrefs.cs",
+      "js": "html5/src/save/PlayerPrefs.js"
+    },
+    {
+      "name": "PlayerState",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Gameplay/PlayerState.cs",
+      "js": "html5/src/gameplay/PlayerState.js"
+    },
+    {
+      "name": "PrimitiveMesh",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/PrimitiveMesh.cs",
+      "js": "html5/src/rendering/PrimitiveMesh.js"
+    },
+    {
+      "name": "RenderSystem3D",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Rendering/RenderSystem3D.cs",
+      "js": "html5/src/rendering/RenderSystem3D.js"
+    },
+    {
+      "name": "SBEvent",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/SBEvent.cs",
+      "js": "html5/src/core/SBEvent.js"
+    },
+    {
+      "name": "SBMath",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Core/SBMath.cs",
+      "js": "html5/src/math/SBMath.js"
+    },
+    {
+      "name": "Scene",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/Scene.cs",
+      "js": "html5/src/core/Scene.js"
+    },
+    {
+      "name": "SceneManager",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/SceneManager.cs",
+      "js": "html5/src/core/SceneManager.js"
+    },
+    {
+      "name": "SceneSerializer",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Scene/SceneSerializer.cs",
+      "js": "html5/src/scene/SceneSerializer.js"
+    },
+    {
+      "name": "SceneTemplates",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Scene/SceneTemplates.cs",
+      "js": "html5/src/scene/SceneTemplates.js"
+    },
+    {
+      "name": "SkyGradient",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Rendering/SkyGradient.cs",
+      "js": "html5/src/rendering/SkyGradient.js"
+    },
+    {
+      "name": "Time",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/Time.cs",
+      "js": "html5/src/core/Time.js"
+    },
+    {
+      "name": "TimerManager",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Core/TimerManager.cs",
+      "js": "html5/src/core/TimerManager.js"
+    },
+    {
+      "name": "TouchState",
+      "kind": "system",
+      "check": "none",
+      "strict": false,
+      "cs": "SexyBiscuit.Engine/Input/TouchState.cs",
+      "js": "html5/src/input/TouchState.js"
+    },
+    {
+      "name": "Tween",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Animation/Tween.cs",
+      "js": "html5/src/animation/Tween.js"
+    },
+    {
+      "name": "TweenEasing",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/Animation/TweenEasing.cs",
+      "js": "html5/src/animation/TweenEasing.js"
+    },
+    {
+      "name": "UiDocument",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/UiDocument.cs",
+      "js": "html5/src/ui/UiDocument.js"
+    },
+    {
+      "name": "UiEnums",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/UiEnums.cs",
+      "js": "html5/src/ui/UiEnums.js"
+    },
+    {
+      "name": "UiFocus",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/Focus/UiFocus.cs",
+      "js": "html5/src/ui/UiFocus.js"
+    },
+    {
+      "name": "UiInput",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/UiInput.cs",
+      "js": "html5/src/ui/UiInput.js"
+    },
+    {
+      "name": "UiLayout",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/Layout/UiLayout.cs",
+      "js": "html5/src/ui/UiLayout.js"
+    },
+    {
+      "name": "UiNavigation",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/Focus/UiNavigation.cs",
+      "js": "html5/src/ui/UiNavigation.js"
+    },
+    {
+      "name": "UiNode",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/UiNode.cs",
+      "js": "html5/src/ui/UiNode.js"
+    },
+    {
+      "name": "UiPainter",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/UiPainter.cs",
+      "js": "html5/src/ui/UiPainter.js"
+    },
+    {
+      "name": "UiTextMeasure",
+      "kind": "system",
+      "check": "none",
+      "strict": true,
+      "cs": "SexyBiscuit.Engine/UI/UiTextMeasure.cs",
+      "js": "html5/src/ui/UiTextMeasure.js"
+    }
+  ],
+  "tables": [
+    {
+      "name": "font5x7",
+      "path": "html5/src/ui/font5x7.json",
+      "cs": "SexyBiscuit.Engine/UI/BitmapFont.cs",
+      "js": "html5/src/ui/BitmapFont.js"
+    },
+    {
+      "name": "graphics-presets",
+      "path": "html5/src/rendering/graphics-presets.json",
+      "cs": "SexyBiscuit.Engine/Rendering/GraphicsSettings.cs",
+      "js": "html5/src/rendering/GraphicsSettings.js"
+    },
+    {
+      "name": "graphics-menu",
+      "path": "html5/src/ui/graphics-menu.json",
+      "cs": "SexyBiscuit.Engine/UI/GraphicsMenu.cs",
+      "js": "html5/src/ui/GraphicsMenu.js"
+    },
+    {
+      "name": "sky-gradient",
+      "path": "html5/src/rendering/sky-gradient.json",
+      "cs": "SexyBiscuit.Engine/Rendering/SkyGradient.cs",
+      "js": "html5/src/rendering/SkyGradient.js"
+    },
+    {
+      "name": "chibi-parts",
+      "path": "html5/src/chibi/chibi-parts.json",
+      "cs": "SexyBiscuit.Engine/Chibi/ChibiParts.cs",
+      "js": "html5/src/chibi/ChibiRecipe.js"
+    },
+    {
+      "name": "chibi-clips",
+      "path": "html5/src/chibi/chibi-clips.json",
+      "cs": "SexyBiscuit.Engine/Chibi/ChibiClips.cs",
+      "js": "html5/src/chibi/ChibiClips.js"
+    },
+    {
+      "name": "bridge-api",
+      "path": "html5/src/scripting/bridge-api.json",
+      "cs": "SexyBiscuit.Engine/Scripting/ScriptBridge.cs",
+      "js": "html5/src/scripting/ScriptBridge.js"
+    }
+  ],
+  "components": {
+    "$comment": "knownGaps: properties the browser serialises that the native engine has no property for; a scene setting one is applied in the browser and dropped natively. Each is engine work to close. Both suites pass over them and fail on any new one; do not add to this list to make a test pass.",
+    "ignore": [
+      "Component",
+      "MissingComponent",
+      "MissingActorClass",
+      "Transform"
+    ],
+    "csOnly": [
+      "AngularWeldConstraint",
+      "AnimatorController",
+      "AudioListener3D",
+      "AudioSource",
+      "BallSocketConstraint",
+      "CameraShake",
+      "CharacterController2D",
+      "CompositeCollider2D",
+      "CompoundCollider3D",
+      "CylinderCollider3D",
+      "Decal3D",
+      "DistanceLimitConstraint",
+      "EdgeCollider2D",
+      "FirstPersonController",
+      "FloatingPawnMovement",
+      "FlyCamController",
+      "HingeConstraint",
+      "InstancedMeshRenderer",
+      "LODGroup",
+      "Light2D",
+      "NavMeshAgent",
+      "OrbitCamController",
+      "ParticleEmitter",
+      "ParticleSystem3D",
+      "PostProcessing3D",
+      "ProjectileMovement",
+      "RotatingMovement",
+      "ShadowCaster2D",
+      "SkeletalAnimator",
+      "SkinnedMeshRenderer",
+      "SliderConstraint",
+      "Spline",
+      "SplineFollower",
+      "SpringArm",
+      "SpriteAnimator",
+      "TextRenderer3D",
+      "TilemapCollider2D",
+      "TilemapRenderer",
+      "WorldStreamer"
+    ],
+    "jsOnly": [],
+    "knownGaps": {
+      "CapsuleCollider3D": [
+        "height"
+      ],
+      "CharacterController3D": [
+        "radius",
+        "height",
+        "gravity",
+        "airControl"
+      ],
+      "MeshCollider3D": [
+        "padding"
+      ],
+      "Rigidbody3D": [
+        "useGravity",
+        "freezeRotation"
+      ],
+      "Skybox": [
+        "cubemapPath",
+        "exposure"
+      ]
+    }
+  }
+}
