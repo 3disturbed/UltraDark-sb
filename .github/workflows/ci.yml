@@ -1,20 +1,81 @@
 name: CI
 
+# Cost policy. Every push and pull request runs the two cheap gates: the html5
+# suite (seconds) and one Linux build-and-test. Windows and macOS runners bill at
+# 2x and 10x, so they run for main on a nightly schedule, for release tags, and on
+# request (workflow_dispatch with full=true) - never per commit or per PR.
+# Docs-only pushes start nothing; a newer push to the same ref cancels the older run.
+
 on:
   push:
     branches: [ main ]
+    tags: [ 'release/*' ]
+    paths-ignore:
+      - '**/*.md'
+      - 'wiki/**'
+      - 'tutorials/**'
+      - 'LICENSE'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+      - 'wiki/**'
+      - 'tutorials/**'
+      - 'LICENSE'
+  schedule:
+    # Nightly, main only (see the cross-platform job's condition).
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Also run the Windows and macOS build-and-test jobs
+        type: boolean
+        default: false
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build and test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  # The HTML5 port has its own suite, and it is the fast gate: the interop and
+  # contract tests read the C# sources, so this is what catches the two engines
+  # drifting apart. Every bundled template must validate cleanly; a game repo
+  # adds its own `npm run validate -- ../Games/<name> --strict` here.
+  html5:
+    name: HTML5 tests, lint and template validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test
+        run: npm test
+        working-directory: html5
+
+      - name: Lint
+        run: npm run lint
+        working-directory: html5
+
+      - name: Validate templates
+        run: npm run validate
+        working-directory: html5
+
+      # The web exporter is what the prototype phase ships with; stage one template.
+      - name: Export smoke
+        run: node tools/export.js "../Templates/Hello World" --pwa --out /tmp/sb-web --quiet
+        working-directory: html5
+
+  # One Linux build and test of every C# project. The engine builds with warnings
+  # as errors here, so the separate warning job is gone.
+  linux:
+    name: Build and test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -26,8 +87,8 @@ jobs:
       - name: Restore
         run: dotnet restore SexyBiscuit.sln
 
-      - name: Build engine
-        run: dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj -c Release --no-restore
+      - name: Build engine (warnings as errors)
+        run: dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj -c Release --no-restore -warnaserror
 
       - name: Build demo
         run: dotnet build SexyBiscuit.Demo/SexyBiscuit.Demo.csproj -c Release --no-restore
@@ -51,7 +112,6 @@ jobs:
         shell: bash
 
       - name: Cookies compile against this engine
-        if: matrix.os == 'ubuntu-latest'
         env:
           SEXYBISCUIT_SLOW_TESTS: '1'
         run: dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName~BundledCookieTests"
@@ -59,41 +119,20 @@ jobs:
       - name: Test
         run: dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj -c Release --no-restore --verbosity normal
 
-  # The HTML5 port has its own suite, and it is the only thing that catches the two
-  # engines drifting apart: the interop and contract tests read the C# sources.
-  html5:
-    name: HTML5 tests, lint and template validation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Test
-        run: npm test
-        working-directory: html5
-
-      - name: Lint
-        run: npm run lint
-        working-directory: html5
-
-      # Every bundled template must validate cleanly; a game repo adds its own
-      # `npm run validate -- ../Games/<name> --strict` here.
-      - name: Validate templates
-        run: npm run validate
-        working-directory: html5
-
-      # The web exporter is what the prototype phase ships with; stage one template.
-      - name: Export smoke
-        run: node tools/export.js "../Templates/Hello World" --pwa --out /tmp/sb-web --quiet
-        working-directory: html5
-
-  warnings-as-errors:
-    name: Warning check
-    runs-on: ubuntu-latest
+  # The expensive runners. Nightly for main, every release tag, or on request.
+  cross-platform:
+    name: Build and test (${{ matrix.os }})
+    if: >-
+      startsWith(github.ref, 'refs/tags/release/') ||
+      (github.ref == 'refs/heads/main' &&
+        (github.event_name == 'schedule' ||
+         (github.event_name == 'workflow_dispatch' && inputs.full)))
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -102,6 +141,24 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # The engine builds warning-free today; this job keeps it that way.
-      - name: Build engine with warnings as errors
-        run: dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj -c Release -warnaserror
+      - name: Restore
+        run: dotnet restore SexyBiscuit.sln
+
+      - name: Build engine
+        run: dotnet build SexyBiscuit.Engine/SexyBiscuit.Engine.csproj -c Release --no-restore
+
+      - name: Build demo
+        run: dotnet build SexyBiscuit.Demo/SexyBiscuit.Demo.csproj -c Release --no-restore
+
+      - name: Build editor
+        run: dotnet build SexyBiscuit.Editor/SexyBiscuit.Editor.csproj -c Release --no-restore
+
+      - name: Build the CLI
+        run: dotnet build SexyBiscuit.Build/SexyBiscuit.Build.csproj -c Release --no-restore
+
+      - name: Export smoke
+        run: dotnet run --no-build --project SexyBiscuit.Build -c Release -- --project "Templates/Hello World" --platform web --no-publish --output "${{ runner.temp }}/sb-dist" --quiet
+        shell: bash
+
+      - name: Test
+        run: dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj -c Release --no-restore --verbosity normal

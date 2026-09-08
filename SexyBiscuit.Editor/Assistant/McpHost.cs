@@ -1,5 +1,6 @@
 using SexyBiscuit.Editor.CookieJar;
 using System.Text.Json.Nodes;
+using SexyBiscuit.Engine.Code;
 using SexyBiscuit.Engine.Core;
 using SexyBiscuit.Engine.Mcp;
 using SexyBiscuit.Engine.Mcp.ClaudeCode;
@@ -165,7 +166,40 @@ public sealed class McpHost : IDisposable
     }
 
     /// <summary>Runs queued tool work. Call at the top of every Update, before the scene flush.</summary>
-    public void Drain() => Dispatcher.Drain();
+    public void Drain()
+    {
+        Dispatcher.Drain();
+        RefreshCiStatusIfDue();
+    }
+
+    // -------------------------------------------------------------------------
+    // CI status
+    // -------------------------------------------------------------------------
+
+    private static readonly TimeSpan CiRefreshInterval = TimeSpan.FromMinutes(10);
+    private DateTime _ciRefreshedAt = DateTime.MinValue;
+
+    /// <summary>
+    /// The last CI run on main as one line (<c>main@9f7fc4f success 2h ago</c>), or null without
+    /// gh, a network or a checkout. get_context includes it so a session sees a red main before
+    /// it builds on it. Refreshed off the game thread at project open and every ten minutes.
+    /// </summary>
+    public string? CiStatusLine { get; private set; }
+
+    private void RefreshCiStatusIfDue()
+    {
+        if (DateTime.UtcNow - _ciRefreshedAt < CiRefreshInterval) return;
+        _ciRefreshedAt = DateTime.UtcNow;
+
+        string? root = EngineRepoLocator.Find()?.Root;
+        if (root == null) return;
+
+        _ = Task.Run(async () =>
+        {
+            var status = await GitHubActionsStatus.QueryAsync(root).ConfigureAwait(false);
+            CiStatusLine = status?.Summary(DateTimeOffset.UtcNow);
+        });
+    }
 
     /// <summary>The Stop button: withdraws every tool call in flight.</summary>
     public int RequestStopAll() => Server.CancelAll();
@@ -175,6 +209,7 @@ public sealed class McpHost : IDisposable
     {
         ProjectPaths.Root = root;
         Undo.Clear();
+        _ciRefreshedAt = DateTime.MinValue;   // a fresh line for the new project's first get_context
 
         if (!Settings.WriteProjectMcpConfig || Url == null) return;
 

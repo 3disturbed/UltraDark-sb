@@ -36,7 +36,7 @@ public sealed class EditorTools
 
     [McpTool("get_context",
         "Where things stand, in about a hundred tokens: project, scene (name, path, actor count, layers, dirty flag, " +
-        "checks), selection, play state, C# project and last build. Call this first; get_scene_summary, get_actor and " +
+        "checks), selection, play state, C# project, last build and the last CI run on main. Call this first; get_scene_summary, get_actor and " +
         "get_project_info give more when a task needs it.",
         Label = "Read the context")]
     public McpToolResult GetContext()
@@ -59,6 +59,7 @@ public sealed class EditorTools
         context["scene"]   = scene == null ? null : SceneViews.SceneBrief(scene, _host.SceneHost, _host.Undo);
         context["playing"] = EditorState.IsPlaying;
         if (EditorState.IsPlayPaused) context["paused"] = true;
+        if (_host.CiStatusLine is { } ci) context["ci"] = ci;   // about twelve tokens; absent without gh
 
         var code = GameCodeHost.Instance;
         if (code?.Project != null)

@@ -10,14 +10,19 @@ checkout (or in CI through `release.yml`).
 
 ## Steps
 
-1. **Gate.** From `html5/`: `npm run validate -- ../Games/<name> --strict` must print OK, then
+1. **CI is green.** `gh run list --workflow ci.yml --branch main --limit 1 --json conclusion,headSha,url`
+   must show `success`. Docs-only pushes start no run, so it is the latest run on main, not
+   necessarily HEAD. On `failure`, `startup_failure` or no run at all: stop and report; never
+   ship on a red main.
+
+2. **Gate.** From `html5/`: `npm run validate -- ../Games/<name> --strict` must print OK, then
    `npm test`. From the root: `dotnet test SexyBiscuit.Tests/SexyBiscuit.Tests.csproj`. Fix
    the game, not the gate.
 
-2. **Settings.** `Games/<name>/BuildSettings.json` exists with `appName`, `version`,
+3. **Settings.** `Games/<name>/BuildSettings.json` exists with `appName`, `version`,
    `startScene` and an `upload` section (see `wiki/18-build-export.md`). Bump `version`.
 
-3. **Build everything.**
+4. **Build everything.**
 
    ```bash
    dotnet build SexyBiscuit.Build/SexyBiscuit.Build.csproj -c Release
@@ -37,15 +42,15 @@ checkout (or in CI through `release.yml`).
    publish never costs another twenty-minute desktop build. `get_build_report` reads a run
    that outlived the wait.
 
-4. **Read the summary, not the log.** One line per target. Open the log (`dist/<Platform>/`
+5. **Read the summary, not the log.** One line per target. Open the log (`dist/<Platform>/`
    is the staged folder; the CLI prints the error lines under a failed target) only for a
    target that failed.
 
-5. **Optional C# layer.** Only for a documented reason (a feature the browser lacks, native
+6. **Optional C# layer.** Only for a documented reason (a feature the browser lacks, native
    performance): `create_code_project` / `create_class` through the editor session, keep the
-   JavaScript as the source for the web build, rerun step 3.
+   JavaScript as the source for the web build, rerun step 4.
 
-6. **Report in four lines**: version and commit, the URLs (or where the archives are), the
+7. **Report in four lines**: version and commit, the URLs (or where the archives are), the
    test totals, and this session's usage line (`node html5/tools/usage.js --latest`).
 
 ## Rules that keep the session cheap
