@@ -155,12 +155,12 @@ public sealed class GameCodeTools
     // -------------------------------------------------------------------------
 
     [McpTool("run_tests",
-        "Run a test suite and return the totals and the failing names, not the log. The first run after a change " +
-        "includes a build, so allow for it.",
+        "Run a test suite and return the totals and the failing names, not the log. An html5 filter naming files " +
+        "('ui*') runs just those; anything else matches test names. The first run after a change includes a build.",
         MainThread = false, Label = "Run tests")]
     public async Task<McpToolResult> RunTests(
         [McpParam("engine, templates, html5 or lint")] string project = "engine",
-        [McpParam("Name filter")] string? filter = null,
+        [McpParam("Test-name filter, or html5 files such as 'ui*'")] string? filter = null,
         [McpParam("Seconds to wait before giving up")] int waitSeconds = 600,
         CancellationToken cancellation = default)
     {
@@ -201,7 +201,14 @@ public sealed class GameCodeTools
                 if (kind == "html5" && !string.IsNullOrWhiteSpace(filter))
                 {
                     string node = NodeLocator.FindNode() ?? throw new McpToolException("node was not found.", "Install node 22 or newer.");
-                    var args = new List<string> { "--test", "--test-name-pattern", filter.Trim(), "tests/" };
+
+                    // A filter naming files ("ui*", "tests/net.test.js") runs those files; anything
+                    // else matches test names. One area is a second against the suite's three, and an
+                    // agent working on the UI wants the UI files, not a test name it has to guess.
+                    var args = IsFileFilter(filter)
+                        ? new List<string> { "--test" }.Concat(ExpandTestFiles(html5, filter)).ToList()
+                        : new List<string> { "--test", "--test-name-pattern", filter.Trim(), "tests/" };
+
                     command = "node " + string.Join(' ', args);
                     run = await ProcessRunner.RunAsync(node, args, html5, timeout, progress, null, cancellation);
                 }
@@ -254,6 +261,44 @@ public sealed class GameCodeTools
         var result = McpToolResult.Json(view, headline);
         if (summary.Incomplete) result.IsError = true;
         return result;
+    }
+
+    /// <summary>A filter that names files rather than tests: it has a glob, a path, or the suffix.</summary>
+    internal static bool IsFileFilter(string filter)
+        => filter.Contains('*') || filter.Contains('/') || filter.EndsWith(".test.js", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The test files a file-shaped filter matches, relative to <c>html5/</c>: <c>ui*</c> and
+    /// <c>tests/ui*.test.js</c> both mean the UI files.
+    /// </summary>
+    /// <remarks>
+    /// Node's test runner does not glob and no shell is involved, so the expansion happens here.
+    /// A filter matching nothing is an error rather than a silent run of zero tests, which reads
+    /// as a green suite.
+    /// </remarks>
+    internal static IReadOnlyList<string> ExpandTestFiles(string html5Root, string filter)
+    {
+        string pattern = filter.Trim().Replace('\\', '/');
+        if (!pattern.Contains('/')) pattern = "tests/" + pattern;
+        if (!pattern.EndsWith(".js", StringComparison.Ordinal)) pattern += "*.test.js";
+
+        int slash = pattern.LastIndexOf('/');
+        string directory = pattern[..slash];
+        string leaf      = pattern[(slash + 1)..];
+        string full      = Path.Combine(html5Root, directory);
+
+        if (!Directory.Exists(full))
+            throw new McpToolException($"html5/{directory} does not exist.", "A file filter looks like 'ui*' or 'tests/net.test.js'.");
+
+        var matches = Directory.GetFiles(full, leaf)
+            .Select(f => directory + "/" + Path.GetFileName(f))
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+
+        if (matches.Count == 0)
+            throw new McpToolException($"No test file in html5/ matches '{filter}'.", "Widen the filter, or drop it to run the whole suite.");
+
+        return matches;
     }
 
     /// <summary>The lint run as a summary: one "test" per module checked, one failure per reported problem.</summary>

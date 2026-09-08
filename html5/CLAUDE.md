@@ -16,6 +16,9 @@ roomserver, usage, check); `tests/` the suite.
     node --test tests/ui*.test.js                     # one area only
     node --test --test-name-pattern "<text>" tests/   # one test by name
 
+In an editor session the same areas are `run_tests` with `project: "html5"` and a filter: files
+(`ui*`) or a test name.
+
 ## Every runtime file has a twin
 
 `src/<area>/X.js` mirrors `SexyBiscuit.Engine/<Area>/X.cs`. A serialised property, a hook, a wire
