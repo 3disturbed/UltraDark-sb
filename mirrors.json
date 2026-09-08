@@ -1034,12 +1034,6 @@
     ],
     "jsOnly": [],
     "knownGaps": {
-      "CharacterController3D": [
-        "radius",
-        "height",
-        "gravity",
-        "airControl"
-      ],
       "Skybox": [
         "cubemapPath",
         "exposure"

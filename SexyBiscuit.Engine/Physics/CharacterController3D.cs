@@ -32,11 +32,39 @@ public sealed class CharacterController3D : Component
     // Configuration
     // -----------------------------------------------------------------------
 
+    /// <summary>Radius of the capsule the character occupies. Default 0.35.</summary>
+    public float Radius        { get; set; } = 0.35f;
+
+    /// <summary>Total height of that capsule, caps included. Default 1.8.</summary>
+    public float Height        { get; set; } = 1.8f;
+
     /// <summary>Maximum horizontal movement speed (world units / second). Default 5.</summary>
     public float MoveSpeed     { get; set; } = 5f;
 
     /// <summary>Vertical speed applied when jumping. Default 8.</summary>
     public float JumpSpeed     { get; set; } = 8f;
+
+    /// <summary>
+    /// Downward acceleration on the character, in units per second squared. Negative points
+    /// down. Default -20.
+    /// </summary>
+    /// <remarks>
+    /// Not -9.81: a character falling at real-world gravity reads as floaty, so both engines
+    /// pull about twice as hard and let a game that wants the real number say so. This is the
+    /// controller's own gravity — it integrates its vertical speed itself rather than letting
+    /// the simulation do it, because a character that is simulated slides down slopes, tips
+    /// over and fights the player for control.
+    /// </remarks>
+    public float Gravity       { get; set; } = -20f;
+
+    /// <summary>
+    /// How much of the requested speed applies while airborne, 0 to 1. Default 0.4.
+    /// </summary>
+    /// <remarks>
+    /// A player cannot change direction in mid-air as freely as on the ground; 1 lets them,
+    /// 0 commits them to the jump they took off with.
+    /// </remarks>
+    public float AirControl    { get; set; } = 0.4f;
 
     /// <summary>Maximum height of a step the character can climb automatically. Default 0.3.</summary>
     public float StepUpHeight  { get; set; } = 0.3f;
@@ -63,20 +91,23 @@ public sealed class CharacterController3D : Component
     /// <summary>Current slope angle in degrees. 0 = flat.</summary>
     public float SlopeAngle { get; private set; }
 
+    /// <summary>
+    /// Distance from the actor's origin down to the soles.
+    /// </summary>
+    /// <remarks>
+    /// The transform sits at the middle of the capsule, so anything placing a character on a
+    /// surface — a spawn point, a teleport, a lift — has to raise it by this much or the
+    /// character starts half-buried.
+    /// </remarks>
+    public float FootOffset => MathF.Max(Height * 0.5f, Radius);
+
     // -----------------------------------------------------------------------
     // Internals
     // -----------------------------------------------------------------------
     private Rigidbody3D? _rb;
 
-    // Capsule dimensions — read from CapsuleCollider3D or default
-    private float _capsuleRadius = 0.5f;
-    private float _capsuleLength = 1f;
-
     // Accumulated vertical velocity (only used when airborne)
     private float _verticalVelocity;
-
-    // World gravity scalar (downward acceleration)
-    private const float Gravity = 9.81f;
 
     // -----------------------------------------------------------------------
     // Lifecycle
@@ -88,11 +119,13 @@ public sealed class CharacterController3D : Component
         if (_rb != null)
             _rb.IsKinematic = true;
 
-        var cap = GetComponent<CapsuleCollider3D>();
-        if (cap != null)
+        // A capsule collider on the same actor is the shape the simulation actually sees, so
+        // it wins; Radius and Height are what a scene sets when there is none.
+        var capsule = GetComponent<CapsuleCollider3D>();
+        if (capsule != null)
         {
-            _capsuleRadius = cap.Radius;
-            _capsuleLength = cap.Length;
+            Radius = capsule.Radius;
+            Height = capsule.Height;
         }
     }
 
@@ -111,8 +144,8 @@ public sealed class CharacterController3D : Component
         }
         else
         {
-            // Apply gravity when airborne
-            _verticalVelocity -= Gravity * dt;
+            // Apply gravity when airborne. Gravity is signed and points down.
+            _verticalVelocity += Gravity * dt;
         }
 
         // Apply accumulated vertical velocity to the body
@@ -137,7 +170,10 @@ public sealed class CharacterController3D : Component
     {
         if (_rb == null || !_rb.HasHandle) return;
 
-        var horizontal = new XnaVec3(velocity.X, 0f, velocity.Z);
+        // Airborne movement is damped, so a player cannot change direction in mid-air as
+        // freely as on the ground.
+        float control  = IsGrounded ? 1f : AirControl;
+        var horizontal = new XnaVec3(velocity.X * control, 0f, velocity.Z * control);
 
         // If on a slope, project movement onto slope plane to avoid bouncing
         if (IsOnSlope && IsGrounded)
@@ -191,8 +227,7 @@ public sealed class CharacterController3D : Component
         SlopeAngle  = 0f;
 
         // Origin: bottom of the capsule + a small step-up offset to avoid self-intersection
-        float halfTotalHeight = _capsuleLength * 0.5f + _capsuleRadius;
-        var origin = t3d.Position + new XnaVec3(0f, -halfTotalHeight + StepUpHeight, 0f);
+        var origin = t3d.Position + new XnaVec3(0f, -FootOffset + StepUpHeight, 0f);
         var dir    = new XnaVec3(0f, -1f, 0f);
         float dist = SnapDistance + StepUpHeight + 0.05f;
 
@@ -221,7 +256,7 @@ public sealed class CharacterController3D : Component
             if (slideDir.LengthSquared() > 0f)
             {
                 slideDir = XnaVec3.Normalize(slideDir);
-                float slideSpeed = Gravity * MathF.Sin(MathHelper.ToRadians(SlopeAngle));
+                float slideSpeed = MathF.Abs(Gravity) * MathF.Sin(MathHelper.ToRadians(SlopeAngle));
 
                 var body = PhysicsSystem3D.Instance.Simulation.Bodies.GetBodyReference(_rb.Handle);
                 body.Velocity.Linear = PhysicsConvert3D.ToNum(slideDir * slideSpeed);
@@ -254,8 +289,7 @@ public sealed class CharacterController3D : Component
         var t3d = Actor.GetComponent<Transform3D>();
         if (t3d == null) return movement;
 
-        float halfTotalHeight = _capsuleLength * 0.5f + _capsuleRadius;
-        var origin = t3d.Position + new XnaVec3(0f, -halfTotalHeight + StepUpHeight, 0f);
+        var origin = t3d.Position + new XnaVec3(0f, -FootOffset + StepUpHeight, 0f);
 
         if (!PhysicsSystem3D.Instance.Raycast(origin, new XnaVec3(0f, -1f, 0f), SnapDistance + StepUpHeight + 0.05f, out var hit))
             return movement;

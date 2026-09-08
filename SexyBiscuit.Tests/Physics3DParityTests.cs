@@ -79,6 +79,104 @@ public class Physics3DParityTests
     }
 
     // -------------------------------------------------------------------------
+    // CharacterController3D.radius, .height, .gravity and .airControl
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// The controller's capsule and its fall are the browser's, down to the defaults.
+    /// </summary>
+    /// <remarks>
+    /// None of these four existed here. The dimensions were read off a CapsuleCollider3D or
+    /// left at a hard-coded 0.5 × 2, gravity was a private <c>const 9.81f</c>, and there was
+    /// no air control at all — so a 1.8 m character tuned in the browser arrived native as a
+    /// 2 m one falling at half the speed, and steered in mid-air like it was on the ground.
+    /// </remarks>
+    [Fact]
+    public void AControllersCapsuleAndFallStartWhereTheBrowsersDo()
+    {
+        var controller = new CharacterController3D();
+
+        Assert.Equal(0.35f, controller.Radius, 3);
+        Assert.Equal(1.8f, controller.Height, 3);
+        Assert.Equal(-20f, controller.Gravity, 3);
+        Assert.Equal(0.4f, controller.AirControl, 3);
+        Assert.Equal(0.9f, controller.FootOffset, 3);
+
+        // A squat character is a ball: the soles cannot rise above the widest point.
+        controller.Height = 0.5f;
+        controller.Radius = 0.4f;
+        Assert.Equal(0.4f, controller.FootOffset, 3);
+    }
+
+    /// <summary>
+    /// A capsule collider on the same actor still wins, because it is the shape the
+    /// simulation actually sees.
+    /// </summary>
+    [Fact]
+    public void ACapsuleColliderOnTheSameActorSizesTheController()
+    {
+        var scene = new Scene("ControllerCapsule");
+        var actor = scene.AddActor(new Actor("Walker"));
+
+        var capsule = actor.AddComponent<CapsuleCollider3D>();
+        capsule.Radius = 0.5f;
+        capsule.Height = 2.4f;
+
+        var controller = actor.AddComponent<CharacterController3D>();
+        scene.FlushPendingActors();
+
+        try
+        {
+            Assert.Equal(0.5f, controller.Radius, 3);
+            Assert.Equal(2.4f, controller.Height, 3);
+            Assert.Equal(1.2f, controller.FootOffset, 3);
+        }
+        finally
+        {
+            PhysicsSystem3D.Instance.RemoveBody(actor);
+            scene.Destroy();
+        }
+    }
+
+    /// <summary>
+    /// A falling character accelerates at its own <c>Gravity</c>, and steering in the air is
+    /// cut to <c>AirControl</c> of what was asked for.
+    /// </summary>
+    [Fact]
+    public void AnAirborneCharacterFallsAtItsOwnGravityAndSteersAtAirControl()
+    {
+        var scene = new Scene("ControllerAir");
+        var actor = scene.AddActor(new Actor("Walker"));
+
+        // Far from anything another test may have left in the shared simulation, so the
+        // ground check below finds nothing and the character is genuinely airborne.
+        actor.AddComponent<Transform3D>().Position = new XnaVec3(500f, 200f, 500f);
+        var controller = actor.AddComponent<CharacterController3D>();
+        scene.FlushPendingActors();
+
+        try
+        {
+            var body = actor.GetComponent<Rigidbody3D>()!;
+
+            for (int step = 0; step < 60; step++) controller.FixedUpdate(1f / 60f);
+            Assert.False(controller.IsGrounded);
+            Assert.Equal(-20f, body.LinearVelocity.Y, 2);   // one second at -20 m/s²
+
+            controller.Move(new XnaVec3(10f, 0f, 0f));
+            Assert.Equal(4f, body.LinearVelocity.X, 3);     // 10 asked for, 0.4 of it granted
+
+            controller.AirControl = 1f;
+            controller.Move(new XnaVec3(10f, 0f, 0f));
+            Assert.Equal(10f, body.LinearVelocity.X, 3);
+        }
+        finally
+        {
+            PhysicsSystem3D.Instance.RemoveBody(actor);
+            scene.Destroy();
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Rigidbody3D.useGravity and .freezeRotation
     // -------------------------------------------------------------------------
 

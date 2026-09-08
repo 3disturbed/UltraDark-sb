@@ -504,12 +504,22 @@ Combined with `Camera3D.ScreenToWorldRay`, this is your mouse picker.
 
 ```csharp
 var cc = actor.AddComponent<CharacterController3D>();   // adds Rigidbody3D
+cc.Radius       = 0.35f;
+cc.Height       = 1.8f;    // total, caps included
 cc.MoveSpeed    = 5f;
 cc.JumpSpeed    = 8f;
+cc.Gravity      = -20f;    // signed, and about twice life so falling does not read as floaty
+cc.AirControl   = 0.4f;    // fraction of the requested speed granted in mid-air
 cc.StepUpHeight = 0.3f;
 cc.SlopeLimit   = 45f;
 cc.SnapDistance = 0.1f;
 ```
+
+A `CapsuleCollider3D` on the same actor wins over `Radius` and `Height`, because
+it is the shape the simulation sees; set them here when there is no collider.
+The controller integrates its own vertical speed rather than letting the
+simulation do it — a character that is simulated slides down slopes, tips over
+and fights the player — so `Gravity` is the controller's, not the world's.
 
 ```csharp
 public override void Update(float dt)
@@ -522,8 +532,10 @@ public override void Update(float dt)
 ```
 
 `Move` takes a **velocity**, not a displacement — do not multiply by `dt`.
-Read-only: `IsGrounded`, `IsOnSlope`, `SlopeAngle`. Ground detection and step-up
-use downward raycasts against the Bepu simulation.
+Read-only: `IsGrounded`, `IsOnSlope`, `SlopeAngle`, and `FootOffset` — the drop
+from the actor's origin to the soles, which anything placing a character on a
+surface has to add or the character starts half-buried. Ground detection and
+step-up use downward raycasts against the Bepu simulation.
 
 ---
 
