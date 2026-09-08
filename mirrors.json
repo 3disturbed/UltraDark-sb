@@ -1040,9 +1040,6 @@
         "gravity",
         "airControl"
       ],
-      "MeshCollider3D": [
-        "padding"
-      ],
       "Rigidbody3D": [
         "useGravity",
         "freezeRotation"

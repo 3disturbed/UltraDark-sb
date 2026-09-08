@@ -453,6 +453,19 @@ PhysicsSystem3D.Instance.AddStaticBox(
 PhysicsSystem3D.Instance.AddStaticMesh(vertices, indices, position);
 ```
 
+`MeshCollider3D` bakes an actor's own geometry as a static, once, at `Start`:
+
+```csharp
+var terrain = actor.AddComponent<MeshCollider3D>();
+terrain.SetMesh(vertices, indices);        // or SetMeshFromModel(path)
+terrain.Padding = 0.05f;                   // clearance, in local units
+```
+
+`Padding` pushes every vertex out along its normal before the bake, so the
+collision stands that far proud of the art — a floor rises by it, a wall thickens
+by it, and a character stops short of the surface instead of scraping it. It is
+read at bake time along with the geometry, so set it before `Start`.
+
 ## Direct body creation
 
 ```csharp
