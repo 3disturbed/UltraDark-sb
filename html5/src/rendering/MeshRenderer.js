@@ -185,6 +185,15 @@ registerComponent(MeshRenderer, { category: 'Rendering', summary: 'Draws 3D geom
 // The passthrough shortcuts are not saved: the material they proxy is already
 // written in full under `Materials`, and writing both means the file disagrees
 // with itself the moment either is edited.
-for (const key of ['albedoColor', 'metallic', 'roughness', 'emissiveIntensity', 'albedoTexturePath']) {
+//
+// Typed one at a time rather than as one loop of Number. The loop was cheaper to
+// write and it declared `albedoColor` a number, which is what the script bridge
+// coerces a value to before writing it: every colour a script set through the
+// component proxy became NaN, and `Color.from(NaN)` is WHITE. Silently, for any
+// input -- hex, {R,G,B,A}, channels -- so a game that tinted a mesh from a script
+// got a white mesh and no warning, on the engine that ships to the web.
+for (const key of ['metallic', 'roughness', 'emissiveIntensity']) {
     MeshRenderer.schema[key] = { type: P.Number, transient: true };
 }
+MeshRenderer.schema.albedoColor = { type: P.Color, transient: true };
+MeshRenderer.schema.albedoTexturePath = { type: P.String, transient: true };
