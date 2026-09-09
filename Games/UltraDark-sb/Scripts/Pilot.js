@@ -783,6 +783,20 @@ function setPilot(index) {
 }
 
 function getPilot()     { return pilot; }
+
+/**
+ * How fast the ship is moving, as a fraction of its own top speed.
+ *
+ * A fraction rather than pixels per second because the reader is a walk cycle:
+ * BINK is 18% faster than DAVE and both should be running when they are running,
+ * not one walking while the other sprints.
+ */
+function getSpeed01() {
+    var top = baseSpeed * PILOT_SPEEDM[pilot] * sSpeed;
+    if (!(top > 0)) { return 0; }
+    var speed = Math.sqrt(vx * vx + vy * vy) / top;
+    return speed > 1 ? 1 : speed;
+}
 function getPilotName() { return PILOT_NAME[pilot]; }
 
 // Full reset between runs, without reloading the scene.

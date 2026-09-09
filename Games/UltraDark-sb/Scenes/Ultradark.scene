@@ -272,6 +272,25 @@
       "scaleX": 1,
       "scaleY": 1
      }
+    },
+    {
+     "name": "Stage3D",
+     "tag": "Stage3D",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/Stage3D.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
     }
    ]
   }

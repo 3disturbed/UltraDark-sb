@@ -117,6 +117,12 @@ const t0 = Date.now();
 
 // The actor count with nothing in play. Anything the run cannot get back below
 // this is something a pool forgot to return.
+//
+// Taken after the stage has settled, not at boot: the 3D stage builds a camera,
+// two lights, a ground and -- once the pilot exists -- a MakeChibi character,
+// which is forty-five actors of permanent scenery. Measuring before that reports
+// the pilot's own body as a leak.
+await g.step(30);
 const baselineActors = scene.allActors.filter((a) => !a.isDestroyed).length;
 
 for (frame = 0; frame < totalFrames; frame++) {

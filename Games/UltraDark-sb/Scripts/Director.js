@@ -1094,6 +1094,14 @@ function forceWave(w)    {
     return wave;
 }
 function forceLaunch()   { launch(); return 1; }
+
+// A measurement hook, not a game mechanic: tools/chibi-cost.mjs asks how many
+// actors and how much frame a character costs before anything is designed
+// around one. Returns 1 when a character was made.
+function spawnChibiProbe(seed, x, y, z) {
+    var a = Chibi.random(Number(seed) | 0, Number(x) || 0, Number(y) || 0, Number(z) || 0);
+    return a ? 1 : 0;
+}
 // Stops the current wave sending anything else, so a test can work with the
 // enemies it placed rather than with whatever the wave felt like adding.
 function forceBudget(n)  { return waves ? waves.call("forceBudget", n) : 0; }

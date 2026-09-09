@@ -1086,3 +1086,176 @@ test('the run banks itself to the cloud when it ends', async () => {
         assert.ok(Number.isFinite(g.dg.saves[0].data.bestScore), 'the save has no best score in it');
     } finally { g.restore(); }
 });
+
+// ---------------------------------------------------------------------------
+// The 3D stage
+// ---------------------------------------------------------------------------
+//
+// The game stays 2D underneath -- physics, AI, waves and collision are all
+// untouched -- and this is the presentation over it. So the checks are about the
+// mirror holding: everything drawn has a mesh, nothing drawn still has a live
+// sprite, and the two characters arrive and leave with what they represent.
+
+/** Every live component of one type in the scene. */
+function componentsOfType(g, name) {
+    const out = [];
+    for (const actor of g.scene.allActors) {
+        if (actor.isDestroyed) continue;
+        for (const c of actor.getAllComponents()) if (c.constructor.name === name) out.push(c);
+    }
+    return out;
+}
+
+test('the stage builds a camera the engine will actually use', async () => {
+    const g = boot();
+    try {
+        await g.step(10);
+
+        const camera = g.byTag('MainCamera3D')[0];
+        assert.ok(camera, 'no camera tagged MainCamera3D');
+        // The tag is the whole contract natively: Camera3D.Main accepts that one
+        // and no other, so a camera tagged anything else renders a black screen
+        // and says nothing about why.
+        assert.ok(camera.getAllComponents().some((c) => c.constructor.name === 'Camera3D'),
+            'the tagged actor has no Camera3D on it');
+
+        assert.ok(componentsOfType(g, 'Light3D').length >= 2, 'no lights');
+        assert.ok(g.find('Ground3D'), 'no ground under the arena');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+test('everything drawn becomes a mesh, and nothing drawn stays a sprite', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(120);
+        g.director().invoke('forceWave', 5);
+        await g.step(120);
+        for (let k = 0; k < 12; k++) { g.swarm().invoke('spawnKind', k, 200 + k * 40, 300, 1, 1); }
+        g.bullets().invoke('fire', 0, 0, 0, 300, 1, 0, 4, 5, 0, 0);
+        await g.step(30);
+
+        assert.ok(g.scriptOn('Stage3D').invoke('adoptedCount') > 20,
+            'the stage adopted almost nothing');
+
+        // The 2D pass paints OVER the 3D one, so a sprite left enabled is a flat
+        // coloured rectangle sitting on top of the world it was meant to become.
+        const live = componentsOfType(g, 'SpriteRenderer').filter((s) => s.enabled);
+        assert.equal(live.length, 0,
+            `${live.length} sprites are still drawing over the 3D world`);
+
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+test('the pilot is a character, and it walks when the ship does', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(60);
+
+        // One enemy, far away and held still. The clip follows the ship's SPEED,
+        // which is the right rule -- a pilot shoved by a Brute is moving -- so
+        // nothing may be near enough to shove it. But the arena cannot be EMPTY
+        // either: an empty arena with no budget left ends the wave, and a pilot
+        // in the draft that opens is frozen and cannot fly at all.
+        g.director().invoke('forceWave', 1);
+        g.director().invoke('forceBudget', 0);
+        g.swarm().invoke('clearAll');
+        g.swarm().invoke('spawnKind', 0, 900, 500, 1, 0.001);
+        await g.step(20);
+
+        const stage = g.scriptOn('Stage3D');
+        assert.equal(stage.invoke('hasPilotChibi'), 1, 'the pilot has no character');
+        assert.equal(stage.invoke('getClip'), 'idle', 'a parked ship is not idling');
+
+        // Fly it, and the clip should follow the speed rather than the input:
+        // a pilot pushed by a knockback is moving too.
+        g.hold('W', true);
+        await g.step(90);
+        const moving = stage.invoke('getClip');
+        g.hold('W', false);
+        assert.ok(moving === 'walk' || moving === 'run',
+            `a ship at speed is playing "${moving}"`);
+
+        await g.step(120);
+        assert.equal(stage.invoke('getClip'), 'idle', 'a stopped ship is still running');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+test('the boss is a character, and it leaves when the boss does', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(10);
+        const stage = g.scriptOn('Stage3D');
+        assert.equal(stage.invoke('hasBossChibi'), 0, 'a boss character with no boss');
+
+        g.director().invoke('forceWave', 5);
+        await g.step(120);
+        assert.equal(stage.invoke('hasBossChibi'), 1, 'the boss arrived without a character');
+
+        const boss = g.find('Boss');
+        const script = boss.getComponents((await import('./harness.mjs')).ScriptComponent)[0];
+        for (let i = 0; i < 500 && script.invoke('isDead') === 0; i++) { script.invoke('takeDamage', 1, 0); }
+        await g.step(60);
+
+        assert.equal(stage.invoke('hasBossChibi'), 0,
+            'the boss died and its character stayed in the arena');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+test('the dark is a screen panel in 3D, not a slab over the world', async () => {
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(30);
+        const stage = g.scriptOn('Stage3D');
+        assert.ok(stage.invoke('getDark01') < 0.05, 'wave 1 is already dark');
+
+        // A world-space quad over a perspective camera is the wrong shape: you
+        // can see its edge, and it dims what is nearest the camera hardest. The
+        // dark is a property of the view.
+        g.director().invoke('forceWave', 20);
+        await g.step(120);
+        assert.ok(stage.invoke('getDark01') > 0.5,
+            `wave 20 is only ${stage.invoke('getDark01')} dark`);
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+test('an adopted mesh is the size and colour of the sprite it replaced', async () => {
+    const g = boot();
+    try {
+        await g.step(30);
+
+        // The check that "it has a mesh" cannot make. A component's size reads
+        // back as an ARRAY in the browser and an object under Jint, and its tint
+        // as a hex STRING in the browser and {r,g,b,a} under Jint -- lower case,
+        // where a script WRITES {R,G,B}. Reading one shape gets undefined on the
+        // other engine: undefined size falls through to a 1x1 default, and
+        // undefined colour converts to #000000. The whole world rendered as
+        // one-unit black cubes on a black background, with no error anywhere,
+        // and every other check here passed.
+        const floor = g.find('Floor');
+        assert.ok(floor, 'no floor');
+
+        const t3d = floor.getAllComponents().find((c) => c.constructor.name === 'Transform3D');
+        const mesh = floor.getAllComponents().find((c) => c.constructor.name === 'MeshRenderer');
+        assert.ok(t3d && mesh, 'the floor was never adopted');
+
+        const scale = t3d.localScale;
+        assert.ok(scale.x > 100 && scale.z > 100,
+            `the floor is ${scale.x}x${scale.z} units -- it should be the size of the arena`);
+
+        const colour = String(mesh.albedoColor ?? '').toLowerCase();
+        assert.notEqual(colour, '#000000ff', 'the floor was painted pure black');
+        assert.notEqual(colour, '#000000', 'the floor was painted pure black');
+        assert.ok(colour.length > 0, 'the floor has no colour at all');
+
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
