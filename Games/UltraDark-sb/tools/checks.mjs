@@ -422,9 +422,14 @@ test('a dead pilot gets an overlay saying so, and R clears it', async () => {
         assert.equal(g.director().invoke('getPhase'), 4);
         assert.ok(uiTexts(g).includes('RUN OVER'), 'no game-over overlay');
 
+        // R goes back to the FRONT END now, not to a HUD overlay saying HANGAR:
+        // the main menu owns that screen, and two things offering to start a run
+        // is two things that can disagree about which pilot is selected.
         g.press('R');
-        await g.step(4);
-        assert.ok(uiTexts(g).includes('HANGAR'), 'R did not return to the hangar');
+        await g.step(6);
+        assert.equal(g.scriptOn('Menus').invoke('getScreen'), 1,
+            'R did not return to the main menu');
+        assert.ok(uiTexts(g).includes('PLAY'), 'the main menu is not on screen');
     } finally { g.restore(); }
 });
 
@@ -432,12 +437,14 @@ test('pausing is refused where it would trap the player', async () => {
     const g = boot();
     try {
         await g.step(10);
-        // The hangar and the game-over screen already own the overlay; pausing
-        // one of them would replace the only thing telling the player what to do.
-        assert.ok(uiTexts(g).includes('HANGAR'));
+        // The front end and the game-over screen already own the whole screen;
+        // pausing one of them would replace the only thing telling the player
+        // what to do with a PAUSED heading they cannot leave.
+        assert.ok(uiTexts(g).includes('PLAY'), 'the main menu is not up at boot');
         g.press('Escape');
         await g.step(3);
-        assert.ok(uiTexts(g).includes('HANGAR'), 'Escape replaced the hangar overlay');
+        assert.ok(uiTexts(g).includes('PLAY'), 'Escape replaced the main menu');
+        assert.equal(g.scriptOn('Menus').invoke('getScreen'), 1);
     } finally { g.restore(); }
 });
 
@@ -1259,3 +1266,159 @@ test('an adopted mesh is the size and colour of the sprite it replaced', async (
         assert.equal(g.errors.length, 0, g.errors.join('\n'));
     } finally { g.restore(); }
 });
+
+// ---------------------------------------------------------------------------
+// The front end
+// ---------------------------------------------------------------------------
+//
+// A main menu, a character select, options and a dialog, all on the UI tree.
+// Every one of these can fail without stopping the game: a menu nothing can
+// focus, a select screen that shows one pilot and launches another, an option
+// that moves a number nothing reads, a dialog you can click straight through.
+
+const S_NONE = 0, S_MAIN = 1, S_SELECT = 2, S_OPTIONS = 3;
+
+test('the game opens on a menu a pad can use, and walks to the pilots', async () => {
+    const g = boot();
+    try {
+        await g.step(10);
+        const menus = g.scriptOn('Menus');
+        assert.equal(menus.invoke('getScreen'), S_MAIN);
+
+        // Focus is what makes a menu work without a mouse, and something has to
+        // hold it the moment the screen opens -- a menu that waits for a click
+        // to give itself focus is a menu a pad cannot open at all.
+        assert.ok(g.ui.find('mPlay'), 'no PLAY button');
+        assert.equal(g.ui.nodes().some((n) => n.node.focused), true,
+            'the menu opened with nothing focused');
+
+        menus.invoke('openSelect');
+        await g.step(5);
+        assert.equal(menus.invoke('getScreen'), S_SELECT);
+
+        // The eight cards read the pilot script's own roster, so there is one
+        // list rather than two that drift.
+        const texts = uiTexts(g);
+        assert.ok(texts.includes('BINK') && texts.includes('HAWK'),
+            `the select screen is missing pilots: ${texts.join(', ')}`);
+        assert.ok(texts.some((t) => t.includes('BLINK VOLLEY')),
+            'the cards do not name the abilities');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+test('the pilot the select screen shows is the pilot that launches', async () => {
+    const g = boot();
+    try {
+        await g.step(10);
+        const menus = g.scriptOn('Menus');
+        menus.invoke('openSelect');
+        await g.step(5);
+
+        // Walk right twice with the arrows: the focus system does the moving,
+        // and what has focus IS what is chosen -- one state, so the highlight and
+        // the pilot cannot disagree.
+        g.press('ArrowRight'); await g.step(2);
+        g.press('ArrowRight'); await g.step(2);
+
+        const chosen = menus.invoke('getChosen');
+        assert.ok(chosen > 0, 'the arrows moved nothing');
+        assert.equal(g.pilot().invoke('getPilot'), chosen,
+            'the highlighted card is not the pilot that would fly');
+
+        const name = g.pilot().invoke('getPilotName');
+        g.press('Enter');
+        await g.step(10);
+
+        assert.equal(menus.invoke('getScreen'), S_NONE, 'ENTER did not leave the menu');
+        assert.equal(g.director().invoke('getPhase'), 1, 'ENTER did not start the run');
+        assert.equal(g.pilot().invoke('getPilotName'), name, 'a different pilot launched');
+    } finally { g.restore(); }
+});
+
+test('an option moves a number something actually reads', async () => {
+    const g = boot();
+    try {
+        await g.step(10);
+        const menus = g.scriptOn('Menus');
+        assert.equal(g.scriptOn('Effects').invoke('getShakeScale'), 1,
+            'the shake scale did not start at 1');
+
+        // Driven the way a player drives it: click OPTIONS, then click the
+        // option's own button. An option nothing reads is a number in a menu.
+        clickNode(g, 'mOptions');
+        await g.step(4);
+        assert.equal(menus.invoke('getScreen'), S_OPTIONS, 'OPTIONS did not open');
+
+        for (let i = 0; i < 6; i++) { clickNode(g, 'optShakeDown'); await g.step(3); }
+        assert.equal(menus.invoke('getShake'), 0, 'the shake option did not reach zero');
+        assert.equal(g.scriptOn('Effects').invoke('getShakeScale'), 0,
+            'the option moved but the effects script never heard about it');
+
+        // And the dark, which is the accessibility one.
+        for (let i = 0; i < 3; i++) { clickNode(g, 'optDarkDown'); await g.step(3); }
+        assert.ok(g.scriptOn('Stage3D').invoke('getDarkLimit') < 1,
+            'the darkness option did not reach the stage');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+test('a dialog traps the screen behind it', async () => {
+    const g = boot();
+    try {
+        await g.step(10);
+        const menus = g.scriptOn('Menus');
+
+        clickNode(g, 'mHow');
+        await g.step(4);
+        assert.equal(menus.invoke('isDialogOpen'), 1, 'HOW TO PLAY opened nothing');
+        assert.ok(uiTexts(g).includes('HOW TO PLAY'), 'the dialog has no heading');
+
+        // The pointer cannot reach the menu behind it -- though that is the
+        // full-screen sheet doing the work, not `modal`.
+        const behind = g.ui.nodes().find((n) => n.name === 'mOptions');
+        g.pointAt(behind.screen.x + behind.screen.width / 2,
+                  behind.screen.y + behind.screen.height / 2);
+        await g.step(3);
+        assert.equal(g.ui.find('mOptions').hovered, false,
+            'the pointer reached a button behind the dialog');
+
+        // FOCUS is what `modal` guarantees, and it is the half a mouse never
+        // shows you: without it a pad walks straight out of the dialog into the
+        // menu behind, and the player is pressing buttons they cannot see.
+        //
+        // Driven through the UI's own navigation rather than through the game's
+        // keys, because that is what a pad does -- and because the script guards
+        // itself while a dialog is up, so pressing a key proves only the guard.
+        for (const way of ['down', 'down', 'up', 'left', 'right', 'down']) {
+            g.ui.navigate(way);
+            await g.step(2);
+        }
+        const focused = g.ui.nodes().find((n) => n.node.focused);
+        assert.ok(focused, 'nothing has focus inside an open dialog');
+        assert.ok(focused.name === 'dlgOk' || focused.name === 'dlgCancel',
+            `focus walked out of the dialog to "${focused.name}"`);
+
+        const screenBefore = menus.invoke('getScreen');
+        clickNode(g, 'mOptions');
+        await g.step(4);
+        assert.equal(menus.invoke('getScreen'), screenBefore,
+            'a click went through the dialog to the menu behind it');
+        assert.equal(menus.invoke('isDialogOpen'), 1, 'the dialog closed itself');
+
+        g.press('Enter');
+        await g.step(4);
+        assert.equal(menus.invoke('isDialogOpen'), 0, 'ENTER did not close the dialog');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
+/** Presses a node by name, the way a player does: down inside, then release. */
+function clickNode(g, name) {
+    const node = g.ui.nodes().find((n) => n.name === name);
+    if (!node) { throw new Error(`no node called "${name}" on screen`); }
+    const r = node.screen;
+    g.pointAt(r.x + r.width / 2, r.y + r.height / 2);
+    g.pointerDown(true);
+    return g.step(2).then(() => { g.pointerDown(false); return g.step(2); });
+}

@@ -799,6 +799,12 @@ function getSpeed01() {
 }
 function getPilotName() { return PILOT_NAME[pilot]; }
 
+// The roster by index, so a select screen shows the same eight names and
+// abilities this file flies rather than a second copy that drifts from it.
+function nameOfPilot(i)    { var k = Number(i) | 0; return PILOT_NAME[k] || ""; }
+function abilityOfPilot(i) { var k = Number(i) | 0; return PILOT_ABIL[k] || ""; }
+function pilotCount()      { return PILOT_NAME.length; }
+
 // Full reset between runs, without reloading the scene.
 function resetRun() {
     if (upgrades) { upgrades.call("clearAll"); }

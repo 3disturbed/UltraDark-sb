@@ -291,6 +291,25 @@
       "scaleX": 1,
       "scaleY": 1
      }
+    },
+    {
+     "name": "Menus",
+     "tag": "Menus",
+     "components": [
+      {
+       "type": "ScriptComponent",
+       "properties": {
+        "ScriptPath": "Scripts/Menus.js"
+       }
+      }
+     ],
+     "transform": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+     }
     }
    ]
   }

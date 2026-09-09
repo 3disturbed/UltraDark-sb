@@ -503,5 +503,28 @@ function setPaused(on, heading, hint) {
 
 function isPaused() { return paused ? 1 : 0; }
 
+/**
+ * Shows or hides the readout itself -- the panel, the tracked bars and the
+ * message line -- without touching the overlay.
+ *
+ * A front end covers the whole screen, and a HUD showing through it is a second
+ * thing the player is being asked to read: WAVE 0, SCORE 0, a full health bar
+ * for a run that has not started. The overlay is deliberately left alone,
+ * because a game-over overlay and the menu that replaces it are the same
+ * screen's worth of words.
+ */
+function setChromeVisible(on) {
+    ensureBuilt();
+    var show = on ? true : false;
+
+    var p = UI.find("panel");
+    if (p) { p.visible = show; }
+    var t = UI.find("trackers");
+    if (t) { t.visible = show; }
+    if (messageLabel && !show) { messageLabel.visible = false; }
+
+    return show ? 1 : 0;
+}
+
 /** Tidy up, so a scene change does not leave the last scene's HUD on screen. */
 function onDestroy() { UI.clear(); }

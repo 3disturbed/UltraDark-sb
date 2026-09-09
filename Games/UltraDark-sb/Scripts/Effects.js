@@ -14,6 +14,7 @@
 // Dials
 // ---------------------------------------------------------------------------
 var cameraTag   = "MainCamera";
+var shakeScale = 1.0;    // set from the options screen
 var shakeDecay  = 5.0;      // higher settles faster
 var maxShake    = 40;       // a ceiling, so a bug cannot throw the camera off the map
 var flashSeconds = 0.12;
@@ -144,7 +145,9 @@ function updateHitStop(dt) {
 
 /** Kick the camera. Strength is in pixels; 6 is a footstep, 20 is an explosion. */
 function shake(strength) {
-    var amount = Number(strength) || 0;
+    // Scaled by whatever the options say. Zero is a real setting: motion is the
+    // most common reason somebody cannot play a game like this at all.
+    var amount = (Number(strength) || 0) * shakeScale;
     if (amount > maxShake) { amount = maxShake; }
     if (amount > shakeAmount) { shakeAmount = amount; }
 }
@@ -218,3 +221,12 @@ function withAlpha(colour, alpha) {
 
     return "#" + body.substring(0, 6) + hex;
 }
+
+/** How much of the configured shake to actually apply. 0 turns it off. */
+function setShakeScale(scale) {
+    var v = Number(scale);
+    shakeScale = (v === v && v >= 0) ? v : 1;
+    return shakeScale;
+}
+
+function getShakeScale() { return shakeScale; }

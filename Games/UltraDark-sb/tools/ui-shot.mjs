@@ -12,7 +12,7 @@
 // not built at.
 //
 //   node tools/ui-shot.mjs [state] [width] [height]
-//   state: hangar | wave | boss | draft | dead
+//   state: hangar | select | options | wave | boss | draft | dead
 import fs from 'node:fs';
 import { boot } from './harness.mjs';
 
@@ -29,6 +29,20 @@ try {
     } else if (state === 'wave') {
         g.director().invoke('forceLaunch');
         await g.step(60);
+    } else if (state === 'select' || state === 'options') {
+        // The two biggest screens in the game: eight cards in a grid, and a
+        // panel of rows that each share their width. Both are laid out rather
+        // than placed, so both are worth checking at a viewport they were not
+        // designed at.
+        await g.step(10);
+        g.scriptOn('Menus').invoke(state === 'select' ? 'openSelect' : 'openMain');
+        if (state === 'options') {
+            const node = g.ui.nodes().find((n) => n.name === 'mOptions');
+            g.pointAt(node.screen.x + node.screen.width / 2, node.screen.y + node.screen.height / 2);
+            g.pointerDown(true); await g.step(2);
+            g.pointerDown(false); await g.step(4);
+        }
+        await g.step(6);
     } else if (state === 'boss') {
         // The marquee bar is the widest thing the HUD ever draws and the only
         // one sized from the viewport rather than fixed, so it is the one most

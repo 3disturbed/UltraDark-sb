@@ -136,13 +136,14 @@ var bossUp = 0;
 var bossActor = null;
 
 var darkOverride = -1;
+var menuOpen = 0;
 
 var draftIds = [-1, -1, -1];
 var shopIds = [-1, -1, -1, -1];
 var shopTimer = 0;
 
 var swarm = null, bullets = null, pilot = null, player = null;
-var clock = null, board = null, waves = null, hud = null, fx = null, pickups = null;
+var clock = null, board = null, waves = null, hud = null, fx = null, pickups = null, menus = null;
 var upgrades = null;
 
 // effect pool
@@ -174,7 +175,8 @@ function onStart() {
     log("  1-8            pick a pilot in the hangar");
     log("  ESC            pause");
     log("=====================================");
-    if (hud) { hud.call("setPaused", true, "HANGAR", "1-8 pick a pilot   ENTER to launch"); }
+    // No overlay here: Menus.js puts the main menu up in its own onStart, and a
+    // HUD overlay underneath it would be a second heading nobody can see.
 }
 
 function resolve() {
@@ -184,6 +186,7 @@ function resolve() {
     if (!board)   { var d = Scene.findFirstByTag("Draft");   if (d) { board = d.getComponent("ScriptComponent"); } }
     if (!waves)   { var wv = Scene.findFirstByTag("Waves");  if (wv) { waves = wv.getComponent("ScriptComponent"); } }
     if (!hud)     { var h = Scene.findFirstByTag("Hud");     if (h) { hud = h.getComponent("ScriptComponent"); } }
+    if (!menus)   { var mn = Scene.findFirstByTag("Menus");  if (mn) { menus = mn.getComponent("ScriptComponent"); } }
     if (!fx)      { var e = Scene.findFirstByTag("Effects"); if (e) { fx = e.getComponent("ScriptComponent"); } }
     if (!pickups) { var pk = Scene.findFirstByTag("Pickups"); if (pk) { pickups = pk.getComponent("ScriptComponent"); } }
     if (!upgrades) { var up = Scene.findFirstByTag("Upgrades"); if (up) { upgrades = up.getComponent("ScriptComponent"); } }
@@ -299,6 +302,12 @@ function buildHangar() {
 }
 
 function hangar(dt) {
+    // The front end owns the hangar now. While a menu is up this does nothing:
+    // number keys, walking into a ship and ENTER all belong to the select screen,
+    // and two things reading the same keys is two things disagreeing about which
+    // pilot was picked.
+    if (menuOpen) { return; }
+
     var chosen = pilot ? pilot.call("getPilot") : 0;
 
     for (var i = 0; i < 8; i++) {
@@ -330,6 +339,12 @@ function hangar(dt) {
 }
 
 function launch() {
+    // Whatever started the run, the front end is over: a test seam, a key, or a
+    // button on the select screen. Closing it here rather than in the one path
+    // that goes through a menu means a run can never begin underneath one.
+    menuOpen = 0;
+    if (menus) { menus.call("close"); }
+
     for (var i = 0; i < hangarShips.length; i++) { hangarShips[i].destroy(); }
     hangarShips = [];
     wave = 0;
@@ -1035,8 +1050,9 @@ function runDead(dt) {
     score = 0;
     cores = 0;
     buildHangar();
-    if (hud) { hud.call("setPaused", true, "HANGAR", "1-8 pick a pilot   ENTER to launch"); }
-    log("--- HANGAR --- 1-8 to pick a pilot, ENTER to launch");
+    if (menus) { menus.call("openMain"); }
+    else if (hud) { hud.call("setPaused", true, "HANGAR", "1-8 pick a pilot   ENTER to launch"); }
+    log("--- HANGAR ---");
 }
 
 // ===========================================================================
@@ -1093,7 +1109,11 @@ function forceWave(w)    {
     if (waves) { waves.call("forceWave", w); }
     return wave;
 }
-function forceLaunch()   { launch(); return 1; }
+function forceLaunch()   { menuOpen = 0; launch(); return 1; }
+
+/** Told by the front end. While a menu is up the hangar takes no input. */
+function setMenuOpen(on) { menuOpen = on ? 1 : 0; return menuOpen; }
+function isMenuOpen()    { return menuOpen; }
 
 // A measurement hook, not a game mechanic: tools/chibi-cost.mjs asks how many
 // actors and how much frame a character costs before anything is designed

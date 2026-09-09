@@ -189,6 +189,10 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene', dg = null } 
     // Per boot, not the module constant: the size sweep changes it.
     const viewport = { width: VIEWPORT.width, height: VIEWPORT.height };
 
+    // One frame's worth of directional input, for the half of a UI a mouse never
+    // exercises: focus, navigation and whether a modal traps them.
+    let nav = null;
+
     /**
      * What EngineHost._updateUiCanvases does: size every canvas, lay it out, then
      * feed it the frame's input.
@@ -209,11 +213,13 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene', dg = null } 
             pointerIsTouch: false,
             wheel: 0,
             navAxis: { x: 0, y: 0 },
-            navUp: false, navDown: false, navLeft: false, navRight: false,
-            confirm: false, cancel: false,
+            navUp: nav === 'up', navDown: nav === 'down',
+            navLeft: nav === 'left', navRight: nav === 'right',
+            confirm: nav === 'confirm', cancel: nav === 'cancel',
             typed: '', backspace: false,
         };
         lastPointer = { x: pointer.x, y: pointer.y };
+        nav = null;                 // one frame, like a key press
 
         // A copy, because a script reacting to a click may destroy a canvas.
         for (const canvas of [...UiCanvas.all]) {
@@ -306,6 +312,15 @@ export function boot({ scene: sceneName = 'Scenes/Ultradark.scene', dg = null } 
                 viewport.height = height;
                 pumpUi();
             },
+            /**
+             * A press on the d-pad, for one frame.
+             *
+             * `up` | `down` | `left` | `right` | `confirm` | `cancel`. This is the
+             * only way to test what a pad does, and a UI that works with a mouse
+             * can still be unusable without one -- focus that starts nowhere, a
+             * modal a stick walks straight out of.
+             */
+            navigate(direction) { nav = String(direction); },
         },
         dg: dgRuntime,
         social: () => scriptOn('Social'),

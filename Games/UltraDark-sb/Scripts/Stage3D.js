@@ -64,6 +64,8 @@ var groundColour = "#2a3040";
 // screen-space panel, which is also the only way it can cover a horizon.
 var darkColour = "#05060a";
 var darkMax = 0.86;           // alpha at full darkness
+var darkLimit = 1.0;          // the options screen can lower this
+var camScale = 1.0;           // and pull the camera back
 
 // ===========================================================================
 // State
@@ -227,7 +229,7 @@ function onLateUpdate(dt) {
 /** The dark, as a screen-space panel rather than a sprite over the world. */
 function fade() {
     if (!darkPanel || !director) { return; }
-    darkPanel.opacity = num(director.call("getDarkness"), 0) * darkMax;
+    darkPanel.opacity = num(director.call("getDarkness"), 0) * darkMax * darkLimit;
 }
 
 /**
@@ -497,14 +499,14 @@ function followCamera(dt) {
     if (!t3d) { return; }
 
     var wantX = player.transform.x;
-    var wantZ = player.transform.y + camBack;
+    var wantZ = player.transform.y + camBack * camScale;
 
     // Lagged, so the view is not welded to a ship that dashes 900 px/s: the
     // camera arrives a moment later, which is what makes a dash read as fast.
     var k = Math.min(1, camLag * dt);
     t3d.x = t3d.x + (wantX - t3d.x) * k;
     t3d.z = t3d.z + (wantZ - t3d.z) * k;
-    t3d.y = camHeight;
+    t3d.y = camHeight * camScale;
 }
 
 // ===========================================================================
@@ -547,3 +549,26 @@ function hasPilotChibi() { return pilotChibi ? 1 : 0; }
 function hasBossChibi()  { return bossChibi ? 1 : 0; }
 function getClip()       { return pilotChibiClip; }
 function getDark01()    { return darkPanel ? darkPanel.opacity : 0; }
+
+/**
+ * A ceiling on how black the late waves get.
+ *
+ * An accessibility dial rather than a difficulty one: the dark is the game's
+ * best idea and it is also the reason somebody with a dim screen stops playing
+ * at wave 16.
+ */
+function setDarkLimit(limit) {
+    var v = Number(limit);
+    darkLimit = (v === v && v >= 0) ? Math.min(1, v) : 1;
+    return darkLimit;
+}
+
+/** How far back the camera sits, as a multiple of the default. */
+function setCameraScale(scale) {
+    var v = Number(scale);
+    camScale = (v === v && v > 0.1) ? v : 1;
+    return camScale;
+}
+
+function getDarkLimit()   { return darkLimit; }
+function getCameraScale() { return camScale; }
