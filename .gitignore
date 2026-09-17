@@ -1,0 +1,6 @@
+dist/
+.sexybiscuit/
+.mcp.json
+node_modules/
+Logs/
+*.log

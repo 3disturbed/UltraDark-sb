@@ -1,0 +1,12 @@
+{
+  "WindowTitle": "UltraDark",
+  "WindowWidth": 1600,
+  "WindowHeight": 900,
+  "Fullscreen": false,
+  "VSync": true,
+  "ShowCursor": true,
+  "StartScene": "Scenes/Main",
+  "ProjectId": "9039a6815b444f62bc087d7be265da13",
+  "darksGames": "ultradark-sb",
+  "MaxScriptStatements": 250000
+}

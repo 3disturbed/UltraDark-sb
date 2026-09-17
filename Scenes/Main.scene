@@ -1,0 +1,29 @@
+{
+  "name": "Main",
+  "layers": [
+    {
+      "name": "Default",
+      "actors": [
+        {
+          "name": "DarkShapes",
+          "tag": "Manager",
+          "components": [
+            {
+              "type": "ScriptComponent",
+              "properties": {
+                "ScriptPath": "Scripts/DarkShapes.js"
+              }
+            }
+          ],
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
+        }
+      ]
+    }
+  ]
+}
