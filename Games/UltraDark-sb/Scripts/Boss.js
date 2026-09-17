@@ -562,5 +562,7 @@ function hex2(n) {
 
 function getName()     { return BOSS_NAME[kind]; }
 function getKind()     { return kind; }
+// The swarm's area and chain damage measure to the body, not the centre.
+function getRadius()   { return BOSS_RAD[kind]; }
 function isDead()      { return dead; }
 function isInvuln()    { return (invuln > 0 || doorShut) ? 1 : 0; }

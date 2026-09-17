@@ -62,6 +62,11 @@ var pool0 = [], pool1 = [];
 var swarm = null, player = null, pilot = null, fx = null, bounds = null;
 var bossActor = null, bossScript = null;
 
+// Where the world ends this frame: the half-extent plus the pad. Asked of the
+// bounds script once a frame, not once per projectile -- the sweep checks it at
+// every step, and a cross-script call there would cost more than the step.
+var edge = boundsHalf + boundsPad;
+
 var TEAM_R = [255, 255], TEAM_G = [230, 120], TEAM_B = [120, 90];
 
 // ===========================================================================
@@ -85,6 +90,7 @@ function resolve() {
 
 function onUpdate(dt) {
     resolve();
+    edge = arenaEdge();
 
     for (var i = n - 1; i >= 0; i--) {
         bLife[i] -= dt;
@@ -116,6 +122,15 @@ function onUpdate(dt) {
 // So the frame is walked in steps of at most the capture window. A slow bolt is
 // one step and costs exactly what it did before; only something genuinely fast
 // pays for more.
+//
+// There is no ceiling on the steps. There was one, twelve, and past twelve
+// windows a frame the gaps between steps were wider than a Mite: reported from
+// play as "very fast shots go through enemies". Speed mods stack without limit
+// and a slow phone's long frame multiplies the travel, so the ceiling was met by
+// players, and a phone met it first. What bounds the cost instead is the arena:
+// nothing past its edge can be hit, so the walk stops the step a shot leaves it
+// and onUpdate recycles it. A frame costs the distance flown inside the arena,
+// however fast the shot is.
 // ---------------------------------------------------------------------------
 function sweep(i, dt) {
     var travel = Math.sqrt(bVx[i] * bVx[i] + bVy[i] * bVy[i]) * dt;
@@ -123,7 +138,6 @@ function sweep(i, dt) {
 
     var steps = 1;
     if (travel > window) { steps = Math.ceil(travel / window); }
-    if (steps > 12) { steps = 12; }        // a ceiling, so a silly speed cannot stall a frame
 
     var sub = dt / steps;
 
@@ -136,6 +150,10 @@ function sweep(i, dt) {
         } else {
             if (hitPlayer(i)) { return 1; }
         }
+
+        // The last step's check is onUpdate's own, so a one-step shot pays
+        // nothing extra here.
+        if (s + 1 < steps && outOfArena(i)) { return 0; }
     }
     return 0;
 }
@@ -284,13 +302,18 @@ function burst(i) {
 }
 
 function outOfArena(i) {
+    return (bX[i] < -edge || bX[i] > edge || bY[i] < -edge || bY[i] > edge) ? 1 : 0;
+}
+
+// Once a frame, from onUpdate. An uninitialised bounds script answers undefined,
+// which fails `> 0` and leaves the default.
+function arenaEdge() {
     var half = boundsHalf;
     if (bounds) {
-        var asked = bounds.call(boundsCall);
+        var asked = Number(bounds.call(boundsCall));
         if (asked > 0) { half = asked; }
     }
-    half += boundsPad;
-    return (bX[i] < -half || bX[i] > half || bY[i] < -half || bY[i] > half) ? 1 : 0;
+    return half + boundsPad;
 }
 
 // ===========================================================================
@@ -300,8 +323,28 @@ function outOfArena(i) {
 function count()     { return n; }
 function poolSize()  { return pool0.length + pool1.length; }
 
+function countTeam(team) {
+    var t = (Number(team) | 0) === 1 ? 1 : 0;
+    var c = 0;
+    for (var i = 0; i < n; i++) { if (bTeam[i] === t) { c++; } }
+    return c;
+}
+
 function clearAll() {
     for (var i = n - 1; i >= 0; i--) { recycle(i); }
     n = 0;
     return 1;
+}
+
+// One side's projectiles, leaving the other's flying. The draft and the shop
+// clear team 1 when they open: a shot already in the air when the wave clears
+// otherwise lands on a pilot the board has just parked, who cannot dodge it.
+// Walked backwards, so the row recycle() swaps in has already been looked at.
+function clearTeam(team) {
+    var t = (Number(team) | 0) === 1 ? 1 : 0;
+    var cleared = 0;
+    for (var i = n - 1; i >= 0; i--) {
+        if (bTeam[i] === t) { recycle(i); cleared++; }
+    }
+    return cleared;
 }

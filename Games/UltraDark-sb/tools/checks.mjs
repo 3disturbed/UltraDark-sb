@@ -47,6 +47,55 @@ test('clearing a wave opens the draft, and the draft always resolves', async () 
     } finally { g.restore(); }
 });
 
+test('nothing hurts the pilot while the draft is open', async () => {
+    // Reported from play: "I took damage while the upgrade prompt was open". The
+    // board parks the pilot, but an enemy shot already in the air when the last
+    // enemy died kept flying at it, and hurt() did not know the pilot was parked.
+    // Nothing errors and the draft works; the pilot just loses a hit point it was
+    // not allowed to dodge -- a third of its health, on a screen asking it to pick
+    // a card.
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(120);
+        g.director().invoke('forceWave', 1);
+        await g.step(30);
+        g.director().invoke('forceBudget', 0);
+
+        const player = g.find('Player');
+        player.transform.x = 0;
+        player.transform.y = 0;
+
+        // An enemy shot 300 px out and flying at the pilot, due in about 45
+        // frames; one of the pilot's own, parked in empty space; and the last
+        // enemy dying in the same frame.
+        g.bullets().invoke('fire', 300, 0, Math.PI, 400, 1, 1, 5, 3, 0, 0);
+        g.bullets().invoke('fire', -400, -300, 0, 0, 1, 0, 5, 5, 0, 0);
+        g.swarm().invoke('clearAll');
+        await g.step(2);
+
+        assert.equal(g.director().invoke('getPhase'), 2, 'the draft did not open');
+        assert.equal(g.bullets().invoke('countTeam', 1), 0,
+            'enemy shots outlived the wave that fired them');
+        assert.equal(g.bullets().invoke('countTeam', 0), 1,
+            "the pilot's own shot was cleared along with the enemy's");
+
+        // Taken now, not before the wave cleared: the draft grants a free mod as
+        // it opens, and Plating or Berserker moves the pilot's health.
+        const hp = g.pilot().invoke('getHp');
+
+        // What a mortar or a boss zone does, which is not a projectile to clear.
+        g.pilot().invoke('hurt', 1);
+        for (let f = 0; f < 90; f++) {
+            assert.ok(g.pilot().invoke('getHp') >= hp,
+                `the pilot lost health ${f} frames into the draft`);
+            await g.step(1);
+        }
+        assert.equal(g.director().invoke('getPhase'), 2, 'the draft closed before the shot was due');
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
 // ---------------------------------------------------------------------------
 // Damage -- the path from a projectile to a dead thing
 // ---------------------------------------------------------------------------
@@ -242,6 +291,71 @@ test('a fast projectile cannot pass through an enemy', async () => {
     } finally { g.restore(); }
 });
 
+test('a shot of any speed hits the smallest thing in its path', async () => {
+    // Reported from play: "very fast shots pass through enemies". The sweep above
+    // walked a frame in steps no longer than the capture window, but at most
+    // twelve of them, so past twelve windows a frame the gaps grew wider than a
+    // Mite. Nothing caps speed: HAWK's rail with Railshot, Long Barrel and Railgun
+    // Coils taken twice each flies 19,700 px/s, which is 330 px a frame at 60 fps
+    // and 1,975 on a frame the engine has clamped to 0.1 s -- so a phone met the
+    // ceiling first. A miss is just a shot that was not there; nothing reports it.
+    const g = boot();
+    try {
+        g.director().invoke('forceLaunch');
+        await g.step(10);
+        const player = g.find('Player');
+
+        // A Mite, held still and slid along the line of fire, so it sits at every
+        // offset from the step it could fall between.
+        for (let x = 500; x < 560; x += 3) {
+            g.director().invoke('forceWave', 1);
+            g.director().invoke('forceBudget', 0);
+            g.swarm().invoke('clearAll');
+            g.bullets().invoke('clearAll');
+            player.transform.x = -900;
+            player.transform.y = 500;
+            g.swarm().invoke('spawnKind', 1, x, 0, 1, 0.001);
+            await g.step(2);
+            assert.equal(g.swarm().invoke('alive'), 1, 'the target did not spawn');
+
+            g.bullets().invoke('fire', 0, 0, 0, 1400 * 60, 500, 0, 5, 1, 0, 0);
+            await g.step(2);
+
+            assert.equal(g.swarm().invoke('alive'), 0,
+                `a shot at 1400 px a frame passed through a Mite at x=${x}`);
+            // It crosses the arena inside one frame, so this is also the sweep
+            // stopping at the edge and handing the shot back.
+            assert.equal(g.bullets().invoke('count'), 0, 'the shot was not recycled');
+        }
+
+        // With no ceiling, the arena is what bounds the walk: past its edge there
+        // is nothing to hit. A shot a hundred times faster crosses the same arena
+        // in the same frame, and must cost no more physics queries to sweep --
+        // otherwise a silly speed is a frame spent stepping through empty space.
+        // Only player shots query physics, so this counts the sweep's steps.
+        const physics = g.scene.physics2D;
+        const overlapCircle = physics.overlapCircle;
+        let queries = 0;
+        physics.overlapCircle = function (...args) { queries++; return overlapCircle.apply(this, args); };
+        const sweepCost = async (perFrame) => {
+            g.bullets().invoke('clearAll');
+            queries = 0;
+            g.bullets().invoke('fire', 0, 0, 0, perFrame * 60, 1, 0, 5, 1, 0, 0);
+            await g.step(1);
+            return queries;
+        };
+        try {
+            const crossing = await sweepCost(1400);
+            const absurd = await sweepCost(140000);
+            assert.ok(crossing > 0, 'the sweep made no physics queries -- this measures nothing');
+            assert.ok(absurd <= crossing,
+                `a shot at 140000 px a frame took ${absurd} queries to 1400's ${crossing}: the sweep ran past the arena`);
+        } finally { physics.overlapCircle = overlapCircle; }
+
+        assert.equal(g.errors.length, 0, g.errors.join('\n'));
+    } finally { g.restore(); }
+});
+
 test('auto-aim finds the boss, which is not in the swarm ledger', async () => {
     const g = boot();
     try {
@@ -292,6 +406,72 @@ test('a pilot on auto-aim can kill a boss with no adds on the field', async () =
         assert.ok(g.said('BOSS DOWN') > 0,
             'a minute of held fire on auto-aim did not kill a wave-5 boss');
     } finally { g.restore(); }
+});
+
+test("DAVE's cleaver and SPARKS' arc gun hurt a boss", async () => {
+    // Reported from play: "DAVE's basic attack does no damage to bosses". Nor did
+    // SPARKS'. Neither weapon fires a projectile -- the cleaver is an area and the
+    // arc gun a chain -- and area and chain damage walked only the swarm ledger,
+    // which the boss is not in. So bombs, blades, abilities, the pylon and the
+    // flame zone all passed through a boss too. Every boss test above shoots it
+    // with bullets, and the pilot on auto-aim that kills one is BINK, so two of
+    // the eight pilots could not hurt a boss and the board stayed green.
+    const { ScriptComponent } = await import('./harness.mjs');
+
+    for (const [index, name] of [[3, 'DAVE'], [4, 'SPARKS']]) {
+        const g = boot();
+        try {
+            g.director().invoke('forceLaunch');
+            await g.step(10);
+            g.pilot().invoke('setPilot', index);
+            g.director().invoke('forceWave', 5);
+            await g.step(90);
+            g.director().invoke('forceBudget', 0);
+            g.swarm().invoke('clearAll');
+
+            const bossActor = g.find('Boss');
+            assert.ok(bossActor, 'no boss on wave 5');
+            const boss = bossActor.getComponents(ScriptComponent)[0];
+            const player = g.find('Player');
+
+            // Parked just in front of the pilot, inside either weapon's reach.
+            g.mouse(0, true);
+            for (let f = 0; f < 180 && g.said('BOSS DOWN') === 0; f++) {
+                bossActor.transform.x = 70;
+                bossActor.transform.y = 0;
+                player.transform.x = 0;
+                player.transform.y = 0;
+                if (f % 10 === 0) { g.pilot().invoke('heal', 999); }   // damage, not survival
+                await g.step(1);
+            }
+            g.mouse(0, false);
+
+            const health = g.said('BOSS DOWN') > 0 ? 0 : boss.invoke('getHealth01');
+            assert.ok(health < 0.9,
+                `${name} held fire on a parked boss for three seconds and left it at ${Math.round(health * 100)}%`);
+            assert.equal(g.errors.length, 0, g.errors.join('\n'));
+
+            if (index !== 4) { continue; }
+
+            // The two rules underneath, while this boss is still up. BRUTE PRIME
+            // has a radius of 52, so a 60 px blast reaches its body from 100 px
+            // away and not from 130 -- the centre alone would miss the first.
+            const bx = bossActor.transform.x, by = bossActor.transform.y;
+            const h0 = boss.invoke('getHealth01');
+            g.swarm().invoke('damageCircle', bx + 130, by, 60, 3, 1);
+            assert.equal(boss.invoke('getHealth01'), h0, 'a blast that fell short of the boss hurt it');
+            g.swarm().invoke('damageCircle', bx + 100, by, 60, 3, 1);
+            const h1 = boss.invoke('getHealth01');
+            assert.ok(h1 < h0, "a blast that reached the boss's body did not hurt it");
+
+            // And a chain of five links with nothing else to hop to takes the boss
+            // once, not five times.
+            g.swarm().invoke('chainFrom', bx - 60, by, 3, 5, 140);
+            const h2 = boss.invoke('getHealth01');
+            assert.ok(Math.abs((h1 - h2) - (h0 - h1)) < 1e-9,
+                `a five-link chain did ${((h1 - h2) / (h0 - h1)).toFixed(1)} links' damage to the boss`);
+        } finally { g.restore(); }
+    }
 });
 
 // ---------------------------------------------------------------------------

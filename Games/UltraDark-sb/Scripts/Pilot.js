@@ -607,6 +607,11 @@ function consumableCount() { return consumables.length; }
 function hurt(amount) {
     if (!alive || iFrames > 0) { return 0; }
 
+    // Parked is untouchable. The draft and the shop freeze the pilot, so anything
+    // that still arrives -- a shot fired before the wave cleared, a mortar, a boss
+    // zone -- lands on somebody who is not allowed to move out of its way.
+    if (director && num(director.call("pilotFrozen"), 0)) { return 0; }
+
     var dmg = Number(amount) || 0;
 
     if (shield > 0) {

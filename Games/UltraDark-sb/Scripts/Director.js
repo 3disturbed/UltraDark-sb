@@ -845,6 +845,7 @@ function setDarkOverride(value) {
 function openDraft() {
     phase = P_DRAFT;
     waveTimer = intermission;
+    clearEnemyShots();
 
     draftIds[0] = randomMod(-1, -1);
     draftIds[1] = randomMod(draftIds[0], -1);
@@ -869,6 +870,15 @@ function openDraft() {
     if (hud) { hud.call("say", "DRAFT  --  pick one"); }
     log("--- DRAFT --- 1/2/3, or click one");
     for (var j = 0; j < 3; j++) { log("   " + (j + 1) + ": " + upgradeName(draftIds[j])); }
+}
+
+// Reported from play: hit while the upgrade prompt was open. The board parks the
+// pilot, and the enemy shots already in the air when the last enemy died kept
+// flying at a ship that could not move out of their way. The original empties
+// its enemy bullets when an intermission begins; this is that. The player's own
+// shots are left to finish their flight.
+function clearEnemyShots() {
+    if (bullets) { bullets.call("clearTeam", 1); }
 }
 
 // Free, unchosen, and announced. The draft is the decision; this is the pilot
@@ -942,6 +952,7 @@ function runDraft(dt) {
 function openShop() {
     phase = P_SHOP;
     shopTimer = shopSeconds;
+    clearEnemyShots();
     rollShop();
     if (hud) { hud.call("say", "CORE SHOP  --  ENTER to leave"); }
     log("--- CORE SHOP --- " + cores + " cores. 1-4 to buy, ENTER to leave.");

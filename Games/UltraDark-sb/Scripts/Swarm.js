@@ -100,6 +100,25 @@ var nearestBossActor = null;
 var burnTick = 0;
 
 // ---------------------------------------------------------------------------
+// The boss, for damage.
+//
+// It is not in this ledger -- it is one actor with its own script -- and every
+// area and chain effect below used to walk only the ledger. So DAVE's CLEAVER
+// and SPARKS' ARC GUN did nothing at all to a boss, and neither did a bomb, a
+// blade, a pylon or a flame zone: only a projectile could reach one. Two of the
+// eight pilots could not hurt the thing the wave is about, and nothing said so.
+// In the original a boss is a row in the same enemies map, so everything that
+// hits an enemy hits it.
+//
+// Found once a frame rather than per call. A blade asks for damage every frame
+// and a shockwave chain up to maxCascade times, and a scene search on each of
+// those would be the whole cost of the feature. The boss comes and goes, so a
+// reference that has gone inactive is searched for again rather than trusted.
+// ---------------------------------------------------------------------------
+var bossActor = null, bossScript = null;
+var bossRadius = 0;
+
+// ---------------------------------------------------------------------------
 // Deferred blasts.
 //
 // SHOCKWAVE makes a kill explode, and an explosion kills, and that kill
@@ -130,8 +149,27 @@ function resolve() {
     if (!bullets)  { var b = Scene.findFirstByTag("Bullets");  if (b) { bullets  = b.getComponent("ScriptComponent"); } }
 }
 
+function resolveBoss() {
+    if (!bossActor || !bossScript || bossActor.active !== true) {
+        var b = Scene.findFirstByTag("Boss");
+        bossActor = (b && b.active === true) ? b : null;
+        bossScript = bossActor ? bossActor.getComponent("ScriptComponent") : null;
+    }
+    // Which boss it is decides how big it is. A script that has not initialised
+    // answers undefined, and a NaN radius would put the boss out of every reach.
+    bossRadius = bossScript ? num(bossScript.call("getRadius"), 0) : 0;
+}
+
+// A cross-script read with a default, because an uninitialised script returns
+// undefined and everything derived from that is silently NaN.
+function num(value, fallback) {
+    var v = Number(value);
+    return (v === v) ? v : fallback;
+}
+
 function onUpdate(dt) {
     resolve();
+    resolveBoss();
     if (!player) { return; }
 
     var px = player.transform.x, py = player.transform.y;
@@ -665,6 +703,10 @@ function damageCircle(x, y, r, dmg, announce) {
         hits++;
     }
 
+    // The boss, after the ledger and never inside it: BRUTE PRIME bursts into
+    // Mites through spawnKind, which adds rows to the ledger being walked.
+    if (hitBoss(x, y, r, dmg)) { hits++; }
+
     // Every caller is covered by draining here rather than at each call site:
     // a drain raised inside the loop above sees `cascading` and returns, so the
     // outermost damageCircle is always the one that flattens the chain.
@@ -710,6 +752,7 @@ function knockCircle(x, y, r, force) {
 // SPARKS' bolt: hop from the nearest enemy to its nearest untouched neighbour.
 function chainFrom(x, y, dmg, links, range) {
     var used = [];
+    var bossUsed = 0;
     var cx = x, cy = y, hits = 0;
 
     for (var link = 0; link < links; link++) {
@@ -724,6 +767,24 @@ function chainFrom(x, y, dmg, links, range) {
             var d2 = dx * dx + dy * dy;
             if (d2 < bestD) { bestD = d2; best = i; }
         }
+
+        // The boss is a link like any other, once a chain, and measured to its
+        // body rather than its centre -- it is three to five times the size of
+        // anything in the ledger. Taken after the scan, never during it: its
+        // death can add Mites to the ledger.
+        if (!bossUsed) {
+            var gap = bossGap(cx, cy);
+            if (gap >= 0 && gap * gap < bestD) {
+                bossUsed = 1;
+                var bx = bossActor.transform.x, by = bossActor.transform.y;
+                if (director) { director.call("spawnEffect", bx, by, 30, 190, 140, 255, 0.10); }
+                bossScript.call("takeDamage", dmg, 0);
+                hits++;
+                cx = bx; cy = by;
+                continue;
+            }
+        }
+
         if (best < 0) { break; }
 
         var hx = eActor[best].transform.x, hy = eActor[best].transform.y;
@@ -735,6 +796,26 @@ function chainFrom(x, y, dmg, links, range) {
     }
     drainBlasts();
     return hits;
+}
+
+// The boss as an area target: in reach when the circle touches its body, the
+// way the original adds an enemy's radius to every area check. Its own
+// takeDamage refuses while it is invulnerable or FOUNDRY's doors are shut.
+function hitBoss(x, y, r, dmg) {
+    if (!bossScript || !bossActor || bossActor.active !== true) { return 0; }
+    var dx = bossActor.transform.x - x, dy = bossActor.transform.y - y;
+    var reach = r + bossRadius;
+    if (dx * dx + dy * dy > reach * reach) { return 0; }
+    bossScript.call("takeDamage", dmg, 0);
+    return 1;
+}
+
+// How far a point is from the boss's body: 0 inside it, -1 with no boss.
+function bossGap(x, y) {
+    if (!bossScript || !bossActor || bossActor.active !== true) { return -1; }
+    var dx = bossActor.transform.x - x, dy = bossActor.transform.y - y;
+    var gap = Math.sqrt(dx * dx + dy * dy) - bossRadius;
+    return gap > 0 ? gap : 0;
 }
 
 // ===========================================================================
