@@ -75,8 +75,28 @@ Native builds: `sbengine --project ../projects/UltraDark-sb --all --config relea
 
 ## Things worth knowing before changing it
 
-- **A chibi faces +Z; the engine's forward is −Z.** `units.js`'s `yawForAim` turns the body's face
-  along a game aim angle, and `tests/stage.test.mjs` checks the actor's rotation against the aim.
+- **A built chibi faces its actor's forward, −Z.** The rig is laid out facing +Z and the engine's
+  builder hangs it on the actor under a half-turn (engine `7912b373`). `units.js`'s `yawForAim`
+  turns that front along a game aim angle. It was written for a +Z face a few minutes before that
+  commit was pulled, and 2.0.0 shipped with every pilot backwards, firing out of their own spine —
+  past a test that checked the actor's rotation, which is only the formula read back.
+  `tests/stage.test.mjs` now measures the body: the hip line, the face, and where the muzzle hangs.
+- **The sky's rim light follows the camera's pitch** (`arena.js`, `setViewPitch`). The rim is
+  (1 − N·V)³ and no material opts out of it, so from the hangar's shallow pitch the whole floor took
+  it and the game opened on a pale blue room. It is nearly out in the hangar and full in the fight.
+- **The invite link is this page's own address with `?room=CODE`** (`client/net.js`, `linkFor`), never
+  the room server's. The relay writes every link as `http://<host>/j/CODE`, and an exported build is
+  static files that name each other relatively: served at `/j/CODE` the page asks for
+  `/j/engine/...`, is handed itself, and the friend sees an empty page. The hub's Join button already
+  used the query form; the vhost also redirects `/j/CODE` to `/?room=CODE` for links of the old shape.
+- **Sharing and copying go through `engine/share.js`**, not the contract, which has neither. A toast
+  is drawn on a canvas and cannot be selected, so 2.0.0's INVITE gave the player a link to retype. A
+  script is compiled in the page's realm, so the seam feels for `navigator`/`document`: share sheet on
+  a phone, clipboard on a desk, a real text field with COPY where the browser refuses both, and
+  "none" natively, where the link is still shown. `tests/share.test.mjs` fakes each of those pages.
+- **`ClearColour` in ProjectSettings.json is read by neither engine** as of engine `7912b373`: the
+  browser parses it and `loadProject` drops it, and the C# reader has no case for it. The stage
+  covers the whole frame, so it only shows before the scripts have built the stage.
 - **The stage's projection is the engine's.** `camera.js` projects with a vertical field of view
   and the engine's conventions; a headless check compared it to `Camera3D.worldToScreen` to the pixel.
 - **Startwave keeps the last boss alive.** A jumped wave adds a boss beside the one already there;

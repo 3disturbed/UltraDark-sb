@@ -57,6 +57,7 @@ import { PILOTS, PHASE, MAX_PLAYERS } from "../shared/constants.js";
 import { MODS, modById } from "../shared/mods.js";
 import { shopItemById } from "../shared/shop.js";
 import { runs } from "../engine/glyphs.js";
+import { shareLink } from "../engine/share.js";   // UltraDark-sb
 
 const screens = ["screen-menu", "screen-lobby", "screen-draft", "screen-score", "screen-settings", "screen-lb", "screen-shop"];
 
@@ -1693,11 +1694,23 @@ export function updateRoster(roster, myId) {
 
 // ---------- invite ----------
 export async function invite(joinUrl, code) {
-  const text = `Fight with me in DarkShapes — wave shooter, right in the browser. Room ${code}:`;
-  // DarkShapes: the contract has no share sheet and no clipboard, so this is the original's last
-  // resort, the link itself in a toast, that a player without navigator.share or a clipboard got.
-  void text;
-  toast(joinUrl);
+  const text = `Fight with me in UltraDark — wave shooter, right in the browser. Room ${code}:`;
+  // DarkShapes: the contract has no share sheet and no clipboard, so it kept only the original's
+  // last resort, the link itself in a toast.
+  // UltraDark-sb: and a toast here is drawn on a canvas, where a link cannot be selected, so INVITE
+  // gave the player something to retype and nobody got a room going. engine/share.js reaches the
+  // page's own share sheet and clipboard where the game runs on a page, as the original did, and
+  // answers "none" where it does not -- a native build -- which still gets the link to read.
+  const how = await shareLink({ title: "UltraDark", text, url: joinUrl });
+  if (how === "copied") toast("Link copied — send it to a friend!");
+  else if (how === "none") toast(joinUrl, 6000);
+}
+
+/** UltraDark-sb: a link of any other kind, shared the same way; `copied` is what to say when it was. */
+export async function shareUrl(url, title, text, copied) {
+  const how = await shareLink({ title, text, url });
+  if (how === "copied") toast(copied);
+  else if (how === "none") toast(url, 6000);
 }
 
 // ---------- draft ----------

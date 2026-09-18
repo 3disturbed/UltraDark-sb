@@ -226,7 +226,9 @@ function shareChallenge() {
   const url = challengeLink(lastEnd);
   // DarkShapes: a script can neither share nor copy, so the link is shown, as the page showed it
   // wherever sharing and the clipboard were refused.
-  Screens.toast(url, 6000);
+  // UltraDark-sb: on a page it can (engine/share.js), as the original did; a native build shows it.
+  const text = `I scored ${lastEnd.score} in UltraDark (wave ${lastEnd.wave}). Same waves. Beat it:`;
+  Screens.shareUrl(url, "UltraDark Challenge", text, "⚔ Challenge link copied — send it!");
 }
 
 // ---------- Darks Games account + social overlay ----------

@@ -21,6 +21,7 @@ import {
   MSG, encodeJson, decodeJson, decodeSnapshot, decodePong, encodeInput, encodePing,
 } from "../shared/protocol.js";
 import { MAX_PLAYERS, ROOM_CODE_ALPHABET, ROOM_CODE_LEN } from "../shared/constants.js";
+import { pageLink } from "../engine/share.js";   // UltraDark-sb
 
 export const net = {
   ws: null,
@@ -79,7 +80,8 @@ function wireRoomEvents() {
     if (opening === null || session.kind !== "hosted") return;
     const code = String(room?.code ?? "").toUpperCase();
     session.created = { code, mode: opening.mode, seed: undefined };
-    opening.done({ code, mode: opening.mode, joinUrl: String(room?.joinUrl ?? "") || linkFor(code) });
+    // UltraDark-sb: this game's own link first, and the room server's only where there is none: see linkFor.
+    opening.done({ code, mode: opening.mode, joinUrl: linkFor(code) || String(room?.joinUrl ?? "") });
   });
   network.on("roomFailed", (reason) => {
     const opening = session.opening;
@@ -98,7 +100,15 @@ export function linkFor(code) {
     const origin = String(network.roomServer ?? "").replace(/\/+$/, "");
     return origin ? `${origin}/?room=${code}&server=${encodeURIComponent(session.server)}` : "";
   }
-  if (session.kind === "hosted" || session.kind === "joined") return String(network.joinLink ?? "");
+  if (session.kind === "hosted" || session.kind === "joined") {
+    // UltraDark-sb: the room server writes every link as http://<host>/j/CODE. An exported build is
+    // static files that name each other relatively, so its page served at /j/CODE asks for
+    // /j/engine/... and gets the page again: the friend who opened the invite saw nothing at all,
+    // and the scheme was the wrong one besides. The page this game is running on, with the room in
+    // its query (which the entry reads, and the hub's Join button already sends), is a link that
+    // works wherever the game does. No page -- a native build -- leaves the room server's.
+    return pageLink(`room=${encodeURIComponent(code)}`) || String(network.joinLink ?? "");
+  }
   return "";
 }
 
