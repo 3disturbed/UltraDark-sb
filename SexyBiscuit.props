@@ -1,0 +1,27 @@
+<Project>
+  <!--
+    Imported by the generated Android head project (.sexybiscuit/android/*.csproj),
+    which is rewritten on every publish; this file is not, so it is where a
+    per-game build property belongs.
+
+    Trimming is off because the trimmer is the largest single consumer of memory
+    in this pipeline and this box does not always have it. ILLink is spawned as
+    its own `dotnet` process and gets OOM killed. What that looks like is
+    MSB6006 "dotnet exited with code 137" followed by NETSDK1144 "Optimizing
+    assemblies for size failed", which names neither memory nor the trimmer and
+    reads like a broken toolchain.
+
+    The cost is an APK a few MB larger. The alternative is a build that succeeds
+    or fails depending on what else the machine happens to be doing, which is
+    worse for a playtest build nobody ships through Play.
+  -->
+  <PropertyGroup>
+    <PublishTrimmed>false</PublishTrimmed>
+    <AndroidLinkMode>None</AndroidLinkMode>
+    <!-- Release turns AOT on, and AOT requires trimming: XA1030. The two go
+         together, so turning one off turns the other off. A JIT build starts a
+         little slower and is otherwise the same game. -->
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+  </PropertyGroup>
+</Project>
