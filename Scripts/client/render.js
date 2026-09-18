@@ -1197,14 +1197,16 @@ function drawHUD() {
     ctx.fillStyle = beat ? "#b8ff5e" : "#ff9aa6";
     ctx.fillText(substitute(`⚔ ${world.challenge.n} ${world.challenge.s.toLocaleString("en-US")}${beat ? " ✓ BEATEN" : ""}`), pad, 90);
   }
-  // wave (top right)
+  // wave (top right). UltraDark-sb: the engine's runtime keeps a button in that corner, so the
+  // two lines stand clear of it.
+  const cornerPad = pad + 52;
   ctx.textAlign = "right";
   ctx.font = "bold 20px ui-monospace, monospace";
   ctx.fillStyle = "#fff";
-  ctx.fillText(`WAVE ${world.wave}`, W - pad, 30);
+  ctx.fillText(`WAVE ${world.wave}`, W - cornerPad, 30);
   ctx.font = "13px ui-monospace, monospace";
   ctx.fillStyle = "#8fa3c8";
-  if (world.phase === PHASE.WAVE) ctx.fillText(`${world.enemiesLeft} HOSTILES`, W - pad, 50);
+  if (world.phase === PHASE.WAVE) ctx.fillText(`${world.enemiesLeft} HOSTILES`, W - cornerPad, 50);
   if (net.rttMs) ctx.fillText(`${net.rttMs}ms`, W - pad, H - 10);
   // hp pips (bottom left) — max grows with Plating/Turtle mods
   const pips = myHpMax();
