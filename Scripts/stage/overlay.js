@@ -64,6 +64,16 @@ export function drawWorldLayer(ctx, a) {
   }
   ctx.composite = "source-over";
 
+  // ---- blasts: the original's white flash, growing and fading ----
+  ctx.composite = "lighter";
+  for (const z of world.zones) {
+    if (z.kind !== ZK.BLAST) continue;
+    const q = proj(z.x, z.y, 0.4);
+    if (!q) continue;
+    ctx.glow("#ffffff", q.x, q.y, z.r * 3.2 * (1 - z.ttl / 0.25 * 0.4) * q.s);
+  }
+  ctx.composite = "source-over";
+
   // ---- sniper telegraphs and beams, hateful-charge lines ----
   const now = clockNow();
   for (const l of world.lasers) {

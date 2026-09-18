@@ -21,8 +21,9 @@ import { SHAPE_LOOKS, BOSS_RECIPES } from "./looks.js";
 import { BossFighter } from "./fighter.js";
 
 const BODY_ALBEDO = "#0A0416";
-const GLOW_FULL = 1.7;
-const GLOW_PHASED = 0.25;
+const GLOW_FULL = 0.75;      // the body glows softly; the eye is what shines
+const GLOW_PHASED = 0.12;
+const EYE_GLOW = 3.2;
 
 function colourFor(def, flags) {
   if (flags & EF.OPEN) return "#ffffff";
@@ -41,7 +42,17 @@ function makeBody(mesh) {
     meshType: mesh, albedoColor: rgba(BODY_ALBEDO), emissiveColor: "#FFFFFFFF", emissiveIntensity: GLOW_FULL,
     metallic: 0.15, roughness: 0.45, castShadows: false,
   });
-  return { actor: a, t3d: a.transform3d, mesh: renderer, colour: "", glow: -1, spin: 0, id: -1, x: 0, y: 0, px: NaN, py: NaN, yaw: 0, ring: null };
+  // The eye: a small bright sphere on top, in the kind's colour, so the kind reads at any distance and in the dark.
+  const eye = Scene.createActor("EnemyEye", 0, 0);
+  let eyeMesh = null;
+  if (eye) {
+    Scene.addComponent(eye, "Transform3D", {});
+    eyeMesh = Scene.addComponent(eye, "MeshRenderer", {
+      meshType: "Sphere", albedoColor: "#FFFFFFFF", emissiveColor: "#FFFFFFFF", emissiveIntensity: EYE_GLOW,
+      metallic: 0, roughness: 0.3, castShadows: false,
+    });
+  }
+  return { actor: a, t3d: a.transform3d, mesh: renderer, eye, eyeT3d: eye ? eye.transform3d : null, eyeMesh, colour: "", glow: -1, spin: 0, id: -1, x: 0, y: 0, px: NaN, py: NaN, yaw: 0, ring: null };
 }
 
 /** HEXAGON PRIME: a hub, a ring, and six prisms orbiting it. FOUNDRY: a block with four doors. */
@@ -158,6 +169,7 @@ export class Swarm {
     if (list && list.length) {
       const body = list.pop();
       if (body.actor) body.actor.active = true;
+      if (body.eye) body.eye.active = true;
       return body;
     }
     return makeBody(mesh);
@@ -168,6 +180,7 @@ export class Swarm {
     if (this.radar && body.actor) this.radar.unmark(body.actor);
     if (body.ring) { body.ring.actor.active = false; (this.free.get("__ring") || this.free.set("__ring", []).get("__ring")).push(body.ring); body.ring = null; }
     if (body.actor) body.actor.active = false;
+    if (body.eye) body.eye.active = false;
     body.id = -1; body.px = NaN; body.py = NaN;
     const mesh = body.meshName;
     if (!this.free.has(mesh)) this.free.set(mesh, []);
@@ -262,8 +275,12 @@ export class Swarm {
     // Repainted only when the colour or the glow actually changes.
     const colour = colourFor(def, flags);
     const glow = (flags & EF.PHASED) ? GLOW_PHASED : (flags & EF.OPEN) ? 4 : GLOW_FULL;
-    if (colour !== body.colour) { body.colour = colour; body.mesh.emissiveColor = rgba(colour); }
-    if (glow !== body.glow) { body.glow = glow; body.mesh.emissiveIntensity = glow; }
+    if (colour !== body.colour) { body.colour = colour; body.mesh.emissiveColor = rgba(colour); if (body.eyeMesh) body.eyeMesh.emissiveColor = rgba(colour); }
+    if (glow !== body.glow) { body.glow = glow; body.mesh.emissiveIntensity = glow; if (body.eyeMesh) body.eyeMesh.emissiveIntensity = glow < 0.5 ? 0.6 : EYE_GLOW; }
+    if (body.eyeT3d) {
+      const es = Math.max(0.12, d * 0.22);
+      body.eyeT3d.set(x, lift + h * 0.55 + bob + 0.02, z, es, es, es);
+    }
     if (body.ring) {
       const rt = body.ring.actor.transform3d;
       rt.x = x; rt.z = z; rt.rotY = -body.spin * 2;
@@ -319,13 +336,13 @@ export class Swarm {
   }
 
   setActive(on) {
-    for (const body of this.live.values()) if (body.actor) body.actor.active = on;
+    for (const body of this.live.values()) { if (body.actor) body.actor.active = on; if (body.eye) body.eye.active = on; }
     for (const boss of this.bosses.values()) if (boss.show) boss.show(on);
   }
 
   dispose() {
-    for (const body of this.live.values()) { if (body.ring) body.ring.actor.destroy(); if (body.actor) body.actor.destroy(); }
-    for (const list of this.free.values()) for (const body of list) if (body.actor) body.actor.destroy();
+    for (const body of this.live.values()) { if (body.ring) body.ring.actor.destroy(); if (body.actor) body.actor.destroy(); if (body.eye) body.eye.destroy(); }
+    for (const list of this.free.values()) for (const body of list) { if (body.actor) body.actor.destroy(); if (body.eye) body.eye.destroy(); }
     for (const boss of this.bosses.values()) boss.dispose();
     for (const boss of this.dying) boss.dispose();
     this.live.clear(); this.free.clear(); this.bosses.clear(); this.dying = [];

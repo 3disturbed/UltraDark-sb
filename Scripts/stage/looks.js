@@ -91,8 +91,8 @@ export const GUNS = {
  * moves; `wide` stretches it along X; `ring` adds a second, glowing ring round it.
  */
 export const SHAPE_LOOKS = {
-  circle:   { mesh: "Sphere",   h: 1.0, spin: 0, bob: 1 },
-  dot:      { mesh: "Sphere",   h: 1.0, spin: 0, bob: 1 },
+  circle:   { mesh: "Sphere",   h: 0.55, spin: 0, bob: 1 },
+  dot:      { mesh: "Sphere",   h: 0.7, spin: 0, bob: 1 },
   diamond:  { mesh: "Cube",     h: 0.9, spin: 0, yaw: 45, tilt: 35, face: 1 },
   hex:      { mesh: "Cylinder", h: 0.55, spin: 25 },
   gear:     { mesh: "Torus",    h: 0.5, spin: 260 },
@@ -115,7 +115,7 @@ export const SHAPE_LOOKS = {
 export const ZONE_LOOKS = {
   warp:   { form: "ring", colour: "#ff5b6e", glow: 1.8 },
   mortar: { form: "ring", colour: "#ff4d4d", glow: 2.2, fill: "#ff4d4d" },
-  blast:  { form: "ball", colour: "#ffffff", glow: 6 },
+  blast:  { form: "disc", colour: "#ffffff", glow: 1.2, flash: 1 },
   flame:  { form: "disc", colour: "#ff7a3d", glow: 2.6, flicker: 1 },
   aegis:  { form: "ring", colour: "#b8ff5e", glow: 1.6 },
   well:   { form: "disc", colour: "#c26bfa", glow: 1.2, ring: "#c26bfa", spin: 90 },

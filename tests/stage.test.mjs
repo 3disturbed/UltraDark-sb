@@ -47,6 +47,17 @@ test("the hangar, the run, the swarm, the bosses and the dark, on one solo run",
   h.invoke("probeAction", JSON.stringify({ t: "ui_pilot", pilot: 0 }));
   await h.stepUntil(() => h.json("probeStats").ready === 1 && h.findAll("GunPart").length === 3, 300);
 
+  // A lobby of eight: the roster stands in a row, each in their own class, and leaves with it.
+  const eight = Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: "PILOT" + i, pilot: i, state: 0 }));
+  h.invoke("probeRoster", JSON.stringify(eight));
+  await h.stepUntil(() => { const s = h.json("probeStats"); return s.fighters === 8 && s.ready === 8 && s.armed === 8; }, 400);
+  stats = h.json("probeStats");
+  assert.equal(stats.fighters, 8, "eight pilots stand in the hangar");
+  assert.equal(stats.armed, 8, "every one of them armed");
+  h.invoke("probeRoster", JSON.stringify([]));
+  await h.stepUntil(() => h.json("probeStats").fighters === 1, 120);
+  assert.equal(h.json("probeStats").fighters, 1, "an empty roster leaves the local pilot alone");
+
   // ---- SOLO RUN: a loopback session, a room, a welcome, wave one ----
   h.invoke("probeAction", JSON.stringify({ t: "ui_solo" }));
   const toWave = await h.stepUntil(() => h.json("probeWorld").phase === PHASE_WAVE, 900);

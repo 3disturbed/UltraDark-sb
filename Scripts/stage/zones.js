@@ -92,7 +92,9 @@ export class Zones {
           }
         }
       } else if (look.form === "disc") {
-        t.set(x, 0.035, zz, r * 2, 0.05, r * 2);
+        const grow = look.flash ? 1.2 * (1 - z.ttl / 0.25 * 0.4) : 2;
+        t.set(x, 0.035, zz, r * grow, 0.05, r * grow);
+        if (look.flash && z.ttl >= 0.22 && arena) arena.blast(z.x, z.y, z.r, "#FFFFFF");
         const glow = look.flicker ? look.glow * (0.8 + 0.4 * Math.random()) : look.glow;
         paint(item, look.colour, glow, look.dark ? "#000000" : null);
         if (look.ring) {
@@ -104,10 +106,11 @@ export class Zones {
           }
         }
       } else if (look.form === "ball") {
-        // A blast: white, growing for a quarter of a second, and a lamp on the floor as it starts.
-        const s = r * 1.4 * (1 - z.ttl / 0.25 * 0.4);
-        t.set(x, 0.6, zz, s, s, s);
-        paint(item, look.colour, look.glow);
+        // A blast is light, not a thing: a lamp on the floor as it starts, and the overlay's white glow.
+        // The pooled item is a thin bright disc the lamp lights, and nothing stands up.
+        const s = r * 1.2 * (1 - z.ttl / 0.25 * 0.4);
+        t.set(x, 0.03, zz, s, 0.04, s);
+        paint(item, look.colour, 1.2);
         if (z.ttl >= 0.22 && arena) arena.blast(z.x, z.y, z.r, "#FFFFFF");
       } else if (look.form === "gem") {
         t.set(x, 0.55 + Math.sin(now / 220 + x) * 0.1, zz, 0.5, 0.5, 0.5);

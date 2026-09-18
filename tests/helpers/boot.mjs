@@ -71,6 +71,37 @@ function probeSim() {
 }
 function probeSetView(v) { probeRender.settings.view = v; return probeRender.settings.view; }
 function probeProject(px, py, h, W, H) { return JSON.stringify(probeStage.project(px, py, h, W, H)); }
+function probeRoster(json) { probeRender.setNames(JSON.parse(json)); return true; }
+// Bots in the authority's own simulation: seated as players, driven towards the nearest enemy each tick.
+function probeAddBots(n) {
+  if (authority === null) return 0;
+  const room = [...authority.rooms.map.values()][0];
+  if (!room) return 0;
+  let added = 0;
+  for (let i = 0; i < n; i++) { room.sim.addPlayer(100 + i, "BOT" + i, i % 8); added++; }
+  return added;
+}
+function probeBotTick(t) {
+  if (authority === null) return 0;
+  const room = [...authority.rooms.map.values()][0];
+  if (!room) return 0;
+  const sim = room.sim;
+  let n = 0;
+  for (const p of sim.players.values()) {
+    if (p.id < 100) continue;
+    let nearest = null, nd = Infinity;
+    for (const e of sim.enemies.values()) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < nd) { nd = d; nearest = e; } }
+    const ang = t * 0.03 + p.id * 1.7;
+    let mx = 1024 + Math.cos(ang) * 420 - p.x, my = 576 + Math.sin(ang) * 280 - p.y;
+    if (nearest && nd < 170) { mx = p.x - nearest.x; my = p.y - nearest.y; }
+    const ml = Math.hypot(mx, my) || 1;
+    let ax = 1, ay = 0;
+    if (nearest) { ax = (nearest.x - p.x) / (nd || 1); ay = (nearest.y - p.y) / (nd || 1); }
+    p.input = { seq: t, mx: mx / ml, my: my / ml, ax, ay, buttons: 1 };
+    n++;
+  }
+  return n;
+}
 `;
 
 /**
