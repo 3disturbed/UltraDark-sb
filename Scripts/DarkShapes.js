@@ -52,7 +52,7 @@ function onUpdate(dt) {
         stopServing();
     }
     wire.pump();
-    if (authority !== null) { authority.update(Time.unscaledDeltaTime); jumpWave(); }
+    if (authority !== null) { authority.update(Time.unscaledDeltaTime); jumpWave(); godMode(); }
     updateDarkShapes(Time.unscaledDeltaTime);
 }
 
@@ -67,6 +67,20 @@ function jumpWave() {
         if (room.sim.phase !== 1 || room.sim.wave !== 1) return;
         room.sim.startWave(Math.floor(wave));
         jumped = true;
+    }
+}
+
+// UltraDark-sb: `?god=1` keeps a SOLO run's pilots alive -- full health and a second of
+// invulnerability every tick -- so an unattended screenshot or a frame capture shows a pilot in the
+// fight rather than the run-over screen. Solo only, like ?wave=N; a shared room is nobody's to cheat.
+function godMode() {
+    if (Network.authority !== "solo" || GameInstance.launch.god !== "1") return;
+    for (const room of authority.rooms.map.values()) {
+        for (const p of room.sim.players.values()) {
+            if (p.state !== 0) continue;
+            p.hp = room.sim.hpMax(p);
+            p.iframesT = Math.max(p.iframesT, 1);
+        }
     }
 }
 
