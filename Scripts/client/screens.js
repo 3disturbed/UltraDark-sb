@@ -774,6 +774,14 @@ function firstRow(element) {
 }
 
 /** The engine face a computed style draws its text in. */
+// UltraDark-sb: a web build ships only the engine fonts a project names WHOLE somewhere the exporter
+// reads (html5/tools/export.js, fontsUsedBy): a `font: "<name>"` in a shipped file. The faces below are
+// the ones styles.css's font-families resolve to in faceOf, named so the export carries them; without
+// this the live site drew every screen in the bitmap font while the editor, which serves every font,
+// looked right.
+const SHIPPED_FONTS = [{ font: "display" }, { font: "heading" }, { font: "body" }, { font: "body-strong" }, { font: "mono" }, { font: "mono-bold" }];
+void SHIPPED_FONTS;
+
 function faceOf(style) {
   if (style.family === "mono") return style.weight >= 600 ? "mono-bold" : "mono";
   if (style.family === "display" || style.family === "heading") return style.family;
