@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "name": "RIGG",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 1,
+    "bodyWidth": 1.1,
+    "limbThickness": 1,
+    "legLength": 1,
+    "armLength": 1
+  },
+  "style": {
+    "head": "Wide",
+    "hair": "Bun",
+    "eyes": "Dot",
+    "body": "Overalls",
+    "legs": "Trousers",
+    "feet": "Boots"
+  },
+  "colours": {
+    "skin": "#D8A88A",
+    "hair": "#5A3A1A",
+    "eyes": "#FF9E2C",
+    "top": "#3A2A18",
+    "bottom": "#2A1E12",
+    "shoes": "#0B0D12",
+    "accent": "#FF9E2C",
+    "undersuit": "#0B0D12",
+    "armour": "#3A2A18",
+    "trim": "#FF9E2C",
+    "straps": "#6A4A2A",
+    "metal": "#7A6A4A",
+    "glow": "#FF9E2C"
+  },
+  "accessories": [
+    {
+      "part": "Cap",
+      "colour": null
+    },
+    {
+      "part": "UtilityBelt",
+      "colour": null
+    },
+    {
+      "part": "ThighPouch",
+      "colour": null
+    },
+    {
+      "part": "Backpack",
+      "colour": null
+    },
+    {
+      "part": "Bracer",
+      "colour": null
+    }
+  ]
+}

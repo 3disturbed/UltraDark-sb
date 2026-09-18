@@ -8,5 +8,6 @@
   "StartScene": "Scenes/Main",
   "ProjectId": "9039a6815b444f62bc087d7be265da13",
   "darksGames": "ultradark-sb",
-  "MaxScriptStatements": 250000
+  "MaxScriptStatements": 250000,
+  "ClearColour": "#05070C"
 }

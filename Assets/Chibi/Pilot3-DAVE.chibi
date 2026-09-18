@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "DAVE",
+  "seed": 0,
+  "proportions": {
+    "height": 1.1,
+    "headSize": 0.9,
+    "bodyWidth": 1.5,
+    "limbThickness": 1.6,
+    "legLength": 1,
+    "armLength": 1
+  },
+  "style": {
+    "head": "Chubby",
+    "hair": "Bald",
+    "eyes": "Sleepy",
+    "body": "Armour",
+    "legs": "Baggy",
+    "feet": "ArmouredBoots"
+  },
+  "colours": {
+    "skin": "#B08A78",
+    "hair": "#2A1A3A",
+    "eyes": "#C26BFA",
+    "top": "#2A1A3A",
+    "bottom": "#1A1024",
+    "shoes": "#0B0D12",
+    "accent": "#C26BFA",
+    "undersuit": "#0B0D12",
+    "armour": "#2A1A3A",
+    "trim": "#C26BFA",
+    "straps": "#2B3242",
+    "metal": "#5A4A70",
+    "glow": "#C26BFA"
+  },
+  "accessories": [
+    {
+      "part": "ChestPlate",
+      "colour": null
+    },
+    {
+      "part": "ShoulderPads",
+      "colour": null
+    },
+    {
+      "part": "KneePads",
+      "colour": null
+    },
+    {
+      "part": "ForearmGuards",
+      "colour": null
+    }
+  ]
+}

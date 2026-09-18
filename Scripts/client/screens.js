@@ -389,6 +389,8 @@ function buildOverlay() {
         h("input", { id: "set-floor", type: "range", min: "0", max: "80", step: "5" })),
       h("div", { class: "setting" }, h("label", null, "Volume ", h("span", { id: "v-vol" })),
         h("input", { id: "set-vol", type: "range", min: "0", max: "100", step: "5" })),
+      h("div", { class: "setting" }, h("label", null, "View"),
+        h("button", { id: "set-view", class: "btn small" })),
       h("div", { class: "setting" }, h("label", null, "World theme"),
         h("button", { id: "set-thworld", class: "btn small" })),
       h("div", { class: "setting" }, h("label", null, "Player theme"),
@@ -1980,6 +1982,7 @@ export function syncSettingLabels(s) {
   byId("v-floor").textContent = `${Math.round(s.floor * 100)}%`;
   byId("v-vol").textContent = `${Math.round(s.volume * 400)}%`;
   byId("set-flash").textContent = s.flash ? "ON" : "OFF (photosensitive)";
+  byId("set-view").textContent = s.view === "2d" ? "CLASSIC 2D" : "3D STAGE";   // UltraDark-sb
   byId("set-thworld").textContent = THEME_LABELS[s.themeWorld] ?? THEME_LABELS.retro;
   byId("set-thplayers").textContent = THEME_LABELS[s.themePlayers] ?? THEME_LABELS.retro;
   byId("set-thenemies").textContent = THEME_LABELS[s.themeEnemies] ?? THEME_LABELS.retro;
@@ -1989,6 +1992,7 @@ export function bindSettings(s, onChange) {
   byId("set-floor").oninput = (e) => { s.floor = e.target.value / 100; syncSettingLabels(s); onChange(); };
   byId("set-vol").oninput = (e) => { s.volume = e.target.value / 400; syncSettingLabels(s); onChange(); };
   byId("set-flash").onclick = () => { s.flash = !s.flash; syncSettingLabels(s); onChange(); };
+  byId("set-view").onclick = () => { s.view = s.view === "2d" ? "3d" : "2d"; syncSettingLabels(s); onChange(); };   // UltraDark-sb
   const cycle = (key) => {
     const cur = THEME_ORDER.indexOf(s[key]);
     s[key] = THEME_ORDER[(cur + 1) % THEME_ORDER.length];

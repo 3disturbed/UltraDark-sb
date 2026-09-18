@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "name": "KELVIN",
+  "seed": 0,
+  "proportions": {
+    "height": 1.08,
+    "headSize": 1,
+    "bodyWidth": 0.9,
+    "limbThickness": 1,
+    "legLength": 1,
+    "armLength": 1
+  },
+  "style": {
+    "head": "Tall",
+    "hair": "Long",
+    "eyes": "Round",
+    "body": "Jacket",
+    "legs": "Trousers",
+    "feet": "Boots"
+  },
+  "colours": {
+    "skin": "#E8F4FF",
+    "hair": "#DDF4FF",
+    "eyes": "#8FD8FF",
+    "top": "#16283A",
+    "bottom": "#0E1826",
+    "shoes": "#0B0D12",
+    "accent": "#8FD8FF",
+    "undersuit": "#0B0D12",
+    "armour": "#16283A",
+    "trim": "#8FD8FF",
+    "straps": "#2B3242",
+    "metal": "#5A7A90",
+    "glow": "#8FD8FF"
+  },
+  "accessories": [
+    {
+      "part": "Cape",
+      "colour": null
+    },
+    {
+      "part": "ForearmGuards",
+      "colour": null
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "name": "THE BROODMOTHER",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 1.05,
+    "bodyWidth": 0.9,
+    "limbThickness": 1,
+    "legLength": 1.3,
+    "armLength": 1.3
+  },
+  "style": {
+    "head": "Bean",
+    "hair": "Long",
+    "eyes": "Angry",
+    "body": "Dress",
+    "legs": "Bare",
+    "feet": "Heels"
+  },
+  "colours": {
+    "skin": "#3A3A24",
+    "hair": "#1A1A10",
+    "eyes": "#CFE05A",
+    "top": "#1E1E0C",
+    "bottom": "#14140A",
+    "shoes": "#14140A",
+    "accent": "#CFE05A",
+    "undersuit": "#14140A",
+    "armour": "#1E1E0C",
+    "trim": "#CFE05A",
+    "straps": "#2A2A14",
+    "metal": "#4A4A30",
+    "glow": "#CFE05A"
+  },
+  "accessories": [
+    {
+      "part": "Wings",
+      "colour": null
+    },
+    {
+      "part": "Horns",
+      "colour": null
+    }
+  ]
+}

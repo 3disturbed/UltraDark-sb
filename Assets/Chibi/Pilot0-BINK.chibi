@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "BINK",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 1.05,
+    "bodyWidth": 0.9,
+    "limbThickness": 1,
+    "legLength": 1.15,
+    "armLength": 1
+  },
+  "style": {
+    "head": "Slim",
+    "hair": "Mohawk",
+    "eyes": "Wide",
+    "body": "Undersuit",
+    "legs": "Undersuit",
+    "feet": "Skates"
+  },
+  "colours": {
+    "skin": "#E8D2BD",
+    "hair": "#39F0FF",
+    "eyes": "#39F0FF",
+    "top": "#0B0D12",
+    "bottom": "#0B0D12",
+    "shoes": "#12303A",
+    "accent": "#39F0FF",
+    "undersuit": "#0B0D12",
+    "armour": "#12303A",
+    "trim": "#39F0FF",
+    "straps": "#2B3242",
+    "metal": "#3D6C78",
+    "glow": "#39F0FF"
+  },
+  "accessories": [
+    {
+      "part": "Bracer",
+      "colour": null
+    },
+    {
+      "part": "ThighPouch",
+      "colour": null
+    },
+    {
+      "part": "UtilityBelt",
+      "colour": null
+    }
+  ]
+}

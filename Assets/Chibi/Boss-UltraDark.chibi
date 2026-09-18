@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "THE ULTRADARK",
+  "seed": 0,
+  "proportions": {
+    "height": 1.05,
+    "headSize": 1,
+    "bodyWidth": 1.2,
+    "limbThickness": 1.3,
+    "legLength": 1,
+    "armLength": 1
+  },
+  "style": {
+    "head": "Round",
+    "hair": "Long",
+    "eyes": "Star",
+    "body": "Armour",
+    "legs": "Undersuit",
+    "feet": "ArmouredBoots"
+  },
+  "colours": {
+    "skin": "#05040A",
+    "hair": "#05040A",
+    "eyes": "#7A5CFF",
+    "top": "#0A0814",
+    "bottom": "#050408",
+    "shoes": "#050408",
+    "accent": "#7A5CFF",
+    "undersuit": "#050408",
+    "armour": "#0A0814",
+    "trim": "#7A5CFF",
+    "straps": "#0A0814",
+    "metal": "#1A1830",
+    "glow": "#7A5CFF"
+  },
+  "accessories": [
+    {
+      "part": "Horns",
+      "colour": null
+    },
+    {
+      "part": "Cape",
+      "colour": null
+    },
+    {
+      "part": "Wings",
+      "colour": null
+    },
+    {
+      "part": "PowerPack",
+      "colour": null
+    }
+  ]
+}

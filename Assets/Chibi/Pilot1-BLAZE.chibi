@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "BLAZE",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 1,
+    "bodyWidth": 1.15,
+    "limbThickness": 1.2,
+    "legLength": 1,
+    "armLength": 1
+  },
+  "style": {
+    "head": "Square",
+    "hair": "Crop",
+    "eyes": "Angry",
+    "body": "Armour",
+    "legs": "Undersuit",
+    "feet": "ArmouredBoots"
+  },
+  "colours": {
+    "skin": "#C99A78",
+    "hair": "#2A1810",
+    "eyes": "#FF7A3D",
+    "top": "#3A1E14",
+    "bottom": "#0B0D12",
+    "shoes": "#1A0E0A",
+    "accent": "#FF7A3D",
+    "undersuit": "#0B0D12",
+    "armour": "#3A1E14",
+    "trim": "#FF7A3D",
+    "straps": "#2B3242",
+    "metal": "#6E4A3A",
+    "glow": "#FF7A3D"
+  },
+  "accessories": [
+    {
+      "part": "PlatedHelmet",
+      "colour": null
+    },
+    {
+      "part": "ChestPlate",
+      "colour": null
+    },
+    {
+      "part": "ShoulderPads",
+      "colour": null
+    },
+    {
+      "part": "ForearmGuards",
+      "colour": null
+    }
+  ]
+}

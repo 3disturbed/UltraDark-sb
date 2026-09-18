@@ -96,6 +96,9 @@ export function startDarkShapes(engine) {
   net.onSnapshot = netSnapshot;
   net.onClose = netClose;
   net.onEvent = netEvent;
+  // UltraDark-sb: ?solo=1 presses SOLO RUN as the page opens, for a screenshot or a check that wants
+  // a wave without a hand on the mouse; ?wave=N is read by the entry once that run is up.
+  if (launchParam("solo") === "1" && !joinCode) onAction({ t: "ui_solo" });
 }
 
 /** DarkShapes: the script is going: its room goes with it, as a closed tab's socket did. */
@@ -556,6 +559,7 @@ function onPhaseChange(from, to) {
 
 function netEvent(ev) {
   handleEvent(ev); // world-model side effects first (patterns, mods, …)
+  R.stageEvent(ev); // UltraDark-sb: the stage's reactions, after the model has taken it
   switch (ev.t) {
     case "kill": {
       const def = ENEMIES[ev.kind];

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "AMBER",
+  "seed": 0,
+  "proportions": {
+    "height": 1.05,
+    "headSize": 1,
+    "bodyWidth": 0.92,
+    "limbThickness": 1,
+    "legLength": 1,
+    "armLength": 1
+  },
+  "style": {
+    "head": "Oval",
+    "hair": "Long",
+    "eyes": "Happy",
+    "body": "Jacket",
+    "legs": "Trousers",
+    "feet": "Boots"
+  },
+  "colours": {
+    "skin": "#F2D2B8",
+    "hair": "#E8FFB0",
+    "eyes": "#B8FF5E",
+    "top": "#243A1E",
+    "bottom": "#141E10",
+    "shoes": "#0B0D12",
+    "accent": "#B8FF5E",
+    "undersuit": "#0B0D12",
+    "armour": "#243A1E",
+    "trim": "#B8FF5E",
+    "straps": "#2B3242",
+    "metal": "#5A7A4A",
+    "glow": "#B8FF5E"
+  },
+  "accessories": [
+    {
+      "part": "Halo",
+      "colour": null
+    },
+    {
+      "part": "UtilityBelt",
+      "colour": null
+    },
+    {
+      "part": "PowerPack",
+      "colour": null
+    }
+  ]
+}

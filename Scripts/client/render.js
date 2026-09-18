@@ -26,6 +26,8 @@ import { world, myHpMax, serverTickNow } from "./game.js";
 import { net } from "./net.js";
 import { mulberry32 } from "../shared/rng.js";
 import { substitute } from "../engine/glyphs.js";
+// UltraDark-sb: the 3D stage over the same world model; `settings.view` decides which picture is drawn.
+import * as Stage from "../stage/stage.js";
 
 // player-tunable accessibility settings (SDD §2.11) — main.js loads/saves.
 // Themes are three INDEPENDENT cosmetic channels: mix a mech pilot with
@@ -34,6 +36,7 @@ import { substitute } from "../engine/glyphs.js";
 export const settings = {
   shake: 1, flash: true, floor: 0, volume: 0.25,
   themeWorld: "retro", themePlayers: "retro", themeEnemies: "retro",
+  view: "3d",   // UltraDark-sb: "3d" is the stage, "2d" the original's picture
 };
 export const THEME_OPTS = ["retro", "bots", "zombies", "geom"];
 
@@ -59,6 +62,7 @@ export function initRender({ draw, now, ratio }) {
   clockNow = now;
   pixelRatio = ratio;
   resize();
+  Stage.initStage();   // UltraDark-sb: the deck, the camera and the lights exist from the first frame
 }
 
 export function resize() {
@@ -73,6 +77,7 @@ export function resize() {
 }
 
 export function screenToWorld(sx, sy) {
+  if (Stage.stage.on) return Stage.screenToWorld(sx, sy, W, H);   // UltraDark-sb: a ray to the deck
   return { x: (sx - offX - shakeX) / scale, y: (sy - offY - shakeY) / scale };
 }
 
@@ -81,7 +86,7 @@ export function addTrauma(t) { trauma = Math.min(1, trauma + t); }
 export function hitstop(ms) { hitstopT = Math.max(hitstopT, ms / 1000); }
 export function isHitstopped() { return hitstopT > 0; }
 export function fxBomb() { bombFlashT = 0.25; addTrauma(0.5); }
-export function gridMilestone() { gridPulse = 1; }
+export function gridMilestone() { gridPulse = 1; Stage.flare(); }
 
 // GEOM world: kills send ripples through the grid, Geometry Wars style
 const geomRipples = [];
@@ -103,6 +108,7 @@ export function fxKill(x, y, color, big = false) {
 }
 
 export function fxMuzzle(x, y, angle, color) {
+  Stage.muzzle(world.myId);   // UltraDark-sb: the flash at the chibi's barrel
   for (let i = 0; i < 3 && particles.length < MAX_PARTICLES; i++) {
     const a = angle + (Math.random() - 0.5) * 0.6;
     particles.push({
@@ -143,6 +149,14 @@ export function draw(dt) {
   bombFlashT = Math.max(0, bombFlashT - (dt || 0.016));
 
   resize(); // DarkShapes: the canvas is measured each frame
+  // UltraDark-sb: on the stage the deck is the backdrop and the 2D layers are projected onto it.
+  Stage.setOn(settings.view !== "2d");
+  if (Stage.stage.on) {
+    const sh3 = trauma * trauma * 22 * settings.shake;
+    shakeX = (Math.random() - 0.5) * sh3; shakeY = (Math.random() - 0.5) * sh3;
+    drawStage(dt);
+    return;
+  }
   ctx = worldCtx;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = "#05020c";
@@ -168,7 +182,11 @@ export function draw(dt) {
   drawTheDark();
   drawPopups(dt);
   drawHUD();
+  drawScreenFlashes();
+}
 
+/** The bomb's white-out and the overdrive frame, on the HUD canvas in screen space. */
+function drawScreenFlashes() {
   if (bombFlashT > 0 && settings.flash) {
     ctx.fillStyle = `rgba(255,255,255,${bombFlashT * 1.6})`;
     ctx.fillRect(0, 0, W, H);
@@ -180,6 +198,37 @@ export function draw(dt) {
     ctx.strokeRect(5, 5, W - 10, H - 10);
   }
 }
+
+// ---------- UltraDark-sb: the same frame on the 3D stage ----------
+// The stage moves the chibis, the swarm, the floor and the camera to the world model, and hands
+// back a projection; the neon 2D layers -- bullets, the dark, the tags and popups -- are then
+// drawn through it on the same three canvases, and the HUD as it always was.
+function drawStage(dt) {
+  const dark = darknessLevel();
+  Stage.update(dt, { W, H, dark, shakeX, shakeY, clockNow, connected: net.connected, nameOf });
+  const args = { W, H, dpr, dt, dark, clockNow, settings, nameOf, substitute, particles, popups, cleaves };
+  ctx = worldCtx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  Stage.drawOverlay("world", ctx, args);
+  Stage.drawOverlay("dark", lightCtx, args);
+  ctx = hudCtx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  Stage.drawOverlay("tags", ctx, args);
+  drawHUD();
+  drawScreenFlashes();
+  if (stageDebug === null) stageDebug = typeof GameInstance !== "undefined" && GameInstance.launch.stagedebug === "1";
+  if (stageDebug) {
+    const s = Stage.stats();
+    ctx.font = "12px ui-monospace, monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#ffe45b";
+    ctx.fillText(`stage ${W}x${H} dpr ${dpr.toFixed(2)} frames ${s.frames} elapsed ${s.elapsed}s time ${Time.time.toFixed(1)} dt ${Time.unscaledDeltaTime.toFixed(4)} pitch ${s.camera.pitch.toFixed(1)} dist ${s.camera.dist.toFixed(1)} hangar ${s.hangar} fighters ${s.fighters}`, 14, H - 6);
+  }
+}
+let stageDebug = null;
+
+/** UltraDark-sb: a server event, for the stage's reactions; main.js hands every event over. */
+export function stageEvent(ev) { Stage.event(ev); }
 
 // ---------- the dark (SDD §2.4): light lives where your fire is ----------
 function darknessLevel() {
@@ -1061,6 +1110,7 @@ function drawPlayers() {
 
 const names = new Map();
 export function setNames(roster) {
+  Stage.setRoster(roster);   // UltraDark-sb: who stands in the hangar
   names.clear();
   for (const r of roster) names.set(r.id, r.name);
 }

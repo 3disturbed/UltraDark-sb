@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "SPARKS",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 1.05,
+    "bodyWidth": 1,
+    "limbThickness": 1,
+    "legLength": 1,
+    "armLength": 1
+  },
+  "style": {
+    "head": "Round",
+    "hair": "Spiky",
+    "eyes": "Star",
+    "body": "Vest",
+    "legs": "Striped",
+    "feet": "Shoes"
+  },
+  "colours": {
+    "skin": "#F2C6A0",
+    "hair": "#FFE45B",
+    "eyes": "#FFE45B",
+    "top": "#2A2A10",
+    "bottom": "#1A1A0A",
+    "shoes": "#0B0D12",
+    "accent": "#FFE45B",
+    "undersuit": "#0B0D12",
+    "armour": "#3A3410",
+    "trim": "#FFE45B",
+    "straps": "#2B3242",
+    "metal": "#8A8040",
+    "glow": "#FFE45B"
+  },
+  "accessories": [
+    {
+      "part": "Glasses",
+      "colour": null
+    },
+    {
+      "part": "PowerPack",
+      "colour": null
+    },
+    {
+      "part": "ForearmGuards",
+      "colour": null
+    }
+  ]
+}

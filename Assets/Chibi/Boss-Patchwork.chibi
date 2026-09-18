@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "THE PATCHWORK",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 0.9,
+    "bodyWidth": 1.6,
+    "limbThickness": 1.7,
+    "legLength": 0.9,
+    "armLength": 1.35
+  },
+  "style": {
+    "head": "Square",
+    "hair": "Mohawk",
+    "eyes": "Wide",
+    "body": "Overalls",
+    "legs": "Baggy",
+    "feet": "Barefoot"
+  },
+  "colours": {
+    "skin": "#6F9A5A",
+    "hair": "#2A3A20",
+    "eyes": "#7FE060",
+    "top": "#3A2A1A",
+    "bottom": "#2A1E14",
+    "shoes": "#2A1E14",
+    "accent": "#7FE060",
+    "undersuit": "#1E1A14",
+    "armour": "#4A3A2A",
+    "trim": "#7FE060",
+    "straps": "#3A2A1A",
+    "metal": "#8A8A7A",
+    "glow": "#7FE060"
+  },
+  "accessories": [
+    {
+      "part": "ForearmGuards",
+      "colour": null
+    },
+    {
+      "part": "ShoulderPads",
+      "colour": null
+    },
+    {
+      "part": "KneePads",
+      "colour": null
+    }
+  ]
+}

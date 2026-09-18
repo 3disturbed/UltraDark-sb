@@ -29,6 +29,8 @@
 /** Each character no shipped face draws, and what is drawn in its place. */
 export const STAND_INS = new Map([
     ["⌖", "⊕"],        // ⌖ HAWK's reticle → ⊕ circled plus, as UltraDarkNative drew it
+    ["➕", "+"],        // ➕ THADDIUS's positive charge, in the polarity toast
+    ["➖", "-"],        // ➖ and the negative
     ["⬡", "◊"],        // ⬡ a core, the shop's currency → ◊ lozenge
     ["Ⓐ", "(A)"],           // Ⓐ a pad's A button → (A)
     ["\u{1F4A3}", "✹"],     // 💣 a bomb → ✹ twelve-pointed star, a blast

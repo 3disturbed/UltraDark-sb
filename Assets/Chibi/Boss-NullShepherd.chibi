@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "NULL SHEPHERD",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 1.1,
+    "bodyWidth": 0.75,
+    "limbThickness": 1,
+    "legLength": 1.2,
+    "armLength": 1.25
+  },
+  "style": {
+    "head": "Tall",
+    "hair": "Bald",
+    "eyes": "Sleepy",
+    "body": "Robe",
+    "legs": "Trousers",
+    "feet": "Slippers"
+  },
+  "colours": {
+    "skin": "#1A1024",
+    "hair": "#000000",
+    "eyes": "#C26BFA",
+    "top": "#14081E",
+    "bottom": "#0C0614",
+    "shoes": "#0C0614",
+    "accent": "#C26BFA",
+    "undersuit": "#0C0614",
+    "armour": "#14081E",
+    "trim": "#C26BFA",
+    "straps": "#1A1024",
+    "metal": "#2A1A3A",
+    "glow": "#C26BFA"
+  },
+  "accessories": [
+    {
+      "part": "Halo",
+      "colour": null
+    },
+    {
+      "part": "Wand",
+      "colour": null
+    },
+    {
+      "part": "Cape",
+      "colour": null
+    }
+  ]
+}

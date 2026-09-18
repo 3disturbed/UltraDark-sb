@@ -1,0 +1,11 @@
+{
+  "name": "ultradark-sb",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "UltraDark on the SexyBiscuit engine: the original's co-op simulation under a 3D chibi stage.",
+  "scripts": {
+    "test": "node --test --test-concurrency=3 tests/*.test.mjs",
+    "validate": "node ../../engine/html5/tools/validate.js . --strict"
+  }
+}

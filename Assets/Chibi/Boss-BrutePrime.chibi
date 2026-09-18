@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "name": "BRUTE PRIME",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 0.85,
+    "bodyWidth": 1.8,
+    "limbThickness": 2,
+    "legLength": 1,
+    "armLength": 1.2
+  },
+  "style": {
+    "head": "Square",
+    "hair": "Bald",
+    "eyes": "Angry",
+    "body": "Armour",
+    "legs": "Undersuit",
+    "feet": "ArmouredBoots"
+  },
+  "colours": {
+    "skin": "#3A1010",
+    "hair": "#200808",
+    "eyes": "#FF4D4D",
+    "top": "#401010",
+    "bottom": "#200808",
+    "shoes": "#200808",
+    "accent": "#FF4D4D",
+    "undersuit": "#200808",
+    "armour": "#401010",
+    "trim": "#FF4D4D",
+    "straps": "#301010",
+    "metal": "#5A3030",
+    "glow": "#FF4D4D"
+  },
+  "accessories": [
+    {
+      "part": "PlatedHelmet",
+      "colour": null
+    },
+    {
+      "part": "ChestPlate",
+      "colour": null
+    },
+    {
+      "part": "ShoulderPads",
+      "colour": null
+    },
+    {
+      "part": "ForearmGuards",
+      "colour": null
+    },
+    {
+      "part": "KneePads",
+      "colour": null
+    }
+  ]
+}

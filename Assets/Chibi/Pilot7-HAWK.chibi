@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "HAWK",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 1,
+    "bodyWidth": 0.9,
+    "limbThickness": 1,
+    "legLength": 1.1,
+    "armLength": 1
+  },
+  "style": {
+    "head": "Oval",
+    "hair": "Ponytail",
+    "eyes": "Angry",
+    "body": "Undersuit",
+    "legs": "Undersuit",
+    "feet": "ArmouredBoots"
+  },
+  "colours": {
+    "skin": "#E0B8A8",
+    "hair": "#5A1030",
+    "eyes": "#FF5B8E",
+    "top": "#0B0D12",
+    "bottom": "#0B0D12",
+    "shoes": "#2A1420",
+    "accent": "#FF5B8E",
+    "undersuit": "#0B0D12",
+    "armour": "#2A1420",
+    "trim": "#FF5B8E",
+    "straps": "#2B3242",
+    "metal": "#6E3A50",
+    "glow": "#FF5B8E"
+  },
+  "accessories": [
+    {
+      "part": "PlatedHelmet",
+      "colour": null
+    },
+    {
+      "part": "Bracer",
+      "colour": null
+    },
+    {
+      "part": "ThighPouch",
+      "colour": null
+    }
+  ]
+}

@@ -52,8 +52,22 @@ function onUpdate(dt) {
         stopServing();
     }
     wire.pump();
-    if (authority !== null) authority.update(Time.unscaledDeltaTime);
+    if (authority !== null) { authority.update(Time.unscaledDeltaTime); jumpWave(); }
     updateDarkShapes(Time.unscaledDeltaTime);
+}
+
+// UltraDark-sb: `?wave=N` (a page's query, a native build's --param wave=N) jumps a solo run to wave N
+// the moment its first wave is up. Solo only: a room other pilots share is nobody's to skip through.
+let jumped = false;
+function jumpWave() {
+    if (jumped || Network.authority !== "solo") return;
+    const wave = Number(GameInstance.launch.wave);
+    if (!(wave >= 2 && wave <= 250)) { jumped = true; return; }
+    for (const room of authority.rooms.map.values()) {
+        if (room.sim.phase !== 1 || room.sim.wave !== 1) return;
+        room.sim.startWave(Math.floor(wave));
+        jumped = true;
+    }
 }
 
 /** Stops serving rooms: the session under them ended, or the client ended it to start another. */

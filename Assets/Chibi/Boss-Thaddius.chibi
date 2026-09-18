@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "THADDIUS PRIME",
+  "seed": 0,
+  "proportions": {
+    "height": 1,
+    "headSize": 0.8,
+    "bodyWidth": 1.7,
+    "limbThickness": 1.8,
+    "legLength": 1,
+    "armLength": 1.2
+  },
+  "style": {
+    "head": "Square",
+    "hair": "Crop",
+    "eyes": "Wide",
+    "body": "Armour",
+    "legs": "Undersuit",
+    "feet": "ArmouredBoots"
+  },
+  "colours": {
+    "skin": "#4A5A70",
+    "hair": "#203040",
+    "eyes": "#6BC6FF",
+    "top": "#1A2A40",
+    "bottom": "#0C1420",
+    "shoes": "#0C1420",
+    "accent": "#6BC6FF",
+    "undersuit": "#0C1420",
+    "armour": "#1A2A40",
+    "trim": "#6BC6FF",
+    "straps": "#142030",
+    "metal": "#7A8AA0",
+    "glow": "#6BC6FF"
+  },
+  "accessories": [
+    {
+      "part": "ChestPlate",
+      "colour": null
+    },
+    {
+      "part": "PowerPack",
+      "colour": null
+    },
+    {
+      "part": "ShoulderPads",
+      "colour": null
+    },
+    {
+      "part": "ForearmGuards",
+      "colour": null
+    }
+  ]
+}
