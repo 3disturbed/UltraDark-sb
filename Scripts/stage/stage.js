@@ -123,6 +123,7 @@ export function update(dt, f) {
   for (const fi of fighters.values()) fi.setDark(dark);
   arena.update(dt);
   rig.update(dt, f.shakeX * U * 2.5, f.shakeY * U * 2.5);
+  arena.setViewPitch(rig.pitch);   // after the rig has eased: the rim light follows the pitch it has now
 }
 
 function clearFighters() {
@@ -313,6 +314,7 @@ export function stats() {
     on: stage.on, built: stage.built, hangar: stage.hangar, frames, elapsed: Math.round(elapsed * 100) / 100,
     fighters: fighters.size, ready: 0, armed: 0, enemies: swarm ? swarm.count : 0, bosses: swarm ? swarm.bosses.size : 0,
     camera: rig ? { x: rig.px, y: rig.py, z: rig.pz, pitch: rig.pitch, dist: rig.dist, cx: rig.cx, cz: rig.cz } : null,
+    rim: arena ? arena.rim : null,
     clips: {}, faces: {},
   };
   for (const fi of fighters.values()) {
@@ -323,6 +325,9 @@ export function stats() {
   }
   return out;
 }
+
+/** The actor the rig's camera is on, for a check that it is the scene's own and not a second. */
+export function cameraActor() { return rig ? rig.actor : null; }
 
 /** The fighter actor for a player id, for a check to read its transform. */
 export function fighterActor(id) {

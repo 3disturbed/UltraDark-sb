@@ -55,6 +55,7 @@ function probeWorld() {
 }
 function probeStats() { return JSON.stringify(probeStage.stats()); }
 function probeFighterActorId(id) { const a = probeStage.fighterActor(id); return a ? a.id : -1; }
+function probeCameraActorId() { const a = probeStage.cameraActor(); return a ? a.id : -1; }
 function probeStartWave(n) {
   if (authority === null) return false;
   const rooms = [...authority.rooms.map.values()];

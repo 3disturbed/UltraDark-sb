@@ -51,11 +51,20 @@ export class Rig {
   }
 
   init() {
-    const a = Scene.createActor("StageCamera", 0, 0);
-    if (!a) return;
+    // Scenes/Main.scene authors this camera, and the night sky with it, so the frames drawn before
+    // this script has been fetched and run show that sky: with no camera in the scene the 3D pass
+    // draws nothing, and what shows is the engine's clear colour, cornflower blue -- UltraDark
+    // opened on a blue flash. The authored one is adopted; a scene without it still gets one made.
+    // It is authored AHEAD of this script's actor: natively a script starts while the scene is
+    // still loading, and an actor later in the file is not there to find (tests/smoke.test.mjs).
+    let a = Scene.find("StageCamera");
+    if (!a || !a.getComponent("Camera3D")) {
+      a = Scene.createActor("StageCamera", 0, 0);
+      if (!a) return;
+      Scene.addComponent(a, "Transform3D", {});
+      Scene.addComponent(a, "Camera3D", { fieldOfView: this.fov, nearClip: this.near, farClip: this.far });
+    }
     a.tag = "MainCamera3D";       // the native Camera3D.Main accepts that tag and no other
-    Scene.addComponent(a, "Transform3D", {});
-    Scene.addComponent(a, "Camera3D", { fieldOfView: this.fov, nearClip: this.near, farClip: this.far });
     this.actor = a;
     this.snap();
     this.place();

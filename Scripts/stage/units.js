@@ -42,8 +42,11 @@ export function ease(current, target, rate, dt) {
   return current + (target - current) * k;
 }
 
-/** The facing (degrees about Y) that turns a chibi's face, its local +Z, along a game aim angle. */
+/** The facing (degrees about Y) that turns a chibi's face along a game aim angle. */
 export function yawForAim(aim) {
-  // Local +Z turned by rotY t lands on (sin t, 0, cos t); the aim wants (cos a, 0, sin a).
-  return Math.atan2(Math.cos(aim), Math.sin(aim)) * 180 / Math.PI;
+  // A built chibi faces its actor's forward, -Z: the rig is laid out facing +Z and the builder
+  // hangs it on the actor under a half-turn (engine 7912b373). Local -Z turned by rotY t lands
+  // on (-sin t, 0, -cos t); the aim wants (cos a, 0, sin a). Written for a +Z face, this sent
+  // every pilot into the fight backwards, firing out of their own spine.
+  return Math.atan2(-Math.cos(aim), -Math.sin(aim)) * 180 / Math.PI;
 }

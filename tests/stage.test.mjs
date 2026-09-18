@@ -15,8 +15,8 @@ import assert from "node:assert/strict";
 import { boot } from "./helpers/boot.mjs";
 import { engineImport } from "./helpers/engine.mjs";
 
-const { Vector3 } = await engineImport("src/math/Vector3.js");
 const { Transform3D } = await engineImport("src/core/Transform3D.js");
+const { ChibiCharacter } = await engineImport("src/chibi/ChibiCharacter.js");
 
 const PHASE_LOBBY = 0, PHASE_WAVE = 1;
 const answers = (h) => () => { try { return h.invoke("probeStats") !== undefined; } catch { return false; } };
@@ -39,6 +39,19 @@ test("the hangar, the run, the swarm, the bosses and the dark, on one solo run",
   assert.equal(stats.armed, 1, "the pilot holds the class's weapon");
   assert.ok(h.find("Deck") && h.find("StageCamera") && h.find("Sun"), "the deck, the camera and the sun exist");
   const deck = h.find("Deck");
+  // The scene authors the camera and the sky so the first frames are dark; the stage adopts them.
+  assert.equal(h.findAll("StageCamera").length, 1, "the rig adopted the scene's camera rather than adding a second");
+  assert.equal(h.findAll("Skybox").length, 1, "and the arena the scene's sky");
+  assert.equal(h.find("StageCamera"), h.actors().find((a) => a.id === h.invoke("probeCameraActorId")), "the rig drives that camera");
+
+  // The hangar is seen from a shallow pitch, where the whole frame is floor at a grazing angle and
+  // the sky's rim light, (1 - N.V)^3, floods it: the live build opened on a pale blue room. The rim
+  // is down while the camera is low, on the light itself and not only in the stage's own record.
+  await h.stepUntil(() => h.json("probeStats").camera.pitch < 26, 600);
+  stats = h.json("probeStats");
+  const skyLight = h.find("Sky").getComponent("SkyLight");
+  assert.ok(stats.rim <= 0.2, `from the hangar's pitch the rim light is nearly out (${stats.rim} at ${stats.camera.pitch} degrees)`);
+  assert.equal(skyLight.rimIntensity, stats.rim, "and the sky light carries what the stage decided");
 
   // Choosing another class rebuilds the body in that class's kit.
   h.invoke("probeAction", JSON.stringify({ t: "ui_pilot", pilot: 7 }));
@@ -71,6 +84,9 @@ test("the hangar, the run, the swarm, the bosses and the dark, on one solo run",
   h.mouseDown(0); h.press("W"); h.press("D");
   await h.stepUntil(() => h.json("probeWorld").enemies >= 3, 900);
   await h.step(60);
+  // The pilot has been firing for those sixty frames and the run's seed is its own, so three may
+  // have become two: wait for three again, and read the model and the stage on that same frame.
+  assert.ok((await h.stepUntil(() => h.json("probeWorld").enemies >= 3, 900)) > 0, "the swarm never arrived");
   world = h.json("probeWorld");
   stats = h.json("probeStats");
   assert.equal(stats.hangar, false, "in a run the stage is the arena");
@@ -86,9 +102,15 @@ test("the hangar, the run, the swarm, the bosses and the dark, on one solo run",
   const cam = stats.camera;
   assert.ok(cam.y > 10 && cam.y < 60, `the camera is above the deck (${cam.y})`);
   assert.ok(cam.pitch > 45 && cam.pitch < 65, `the camera has settled to the arena's pitch (${cam.pitch})`);
+  assert.ok(stats.rim >= 1.2, `from the arena's pitch the rim light is back, so the fight keeps its edges (${stats.rim})`);
+  assert.equal(skyLight.rimIntensity, stats.rim, "on the sky light too");
   assert.ok(Math.abs(cam.cx - world.me.x / 32) < 6, `the camera's centre followed the pilot (${cam.cx} vs ${world.me.x / 32})`);
 
-  // ---- the body faces the aim: its local +Z lands along (cos aim, 0, sin aim) ----
+  // ---- the body faces the aim: its FACE is on the aim's side of its head, and so is its gun ----
+  // Measured on the rig, not on the actor's axes. This used to turn the actor's +Z by its rotation
+  // and compare that with the aim, which is yawForAim's own assumption read back: when the engine
+  // turned every rig round to face -Z (7912b373) the assertion still passed, and every pilot in
+  // the live build fought with their back to the enemy. Where the face is cannot be argued with.
   h.release("W"); h.release("D");
   h.mouseTo(1500, 450);
   await h.step(30);
@@ -96,11 +118,28 @@ test("the hangar, the run, the swarm, the bosses and the dark, on one solo run",
   const actorId = h.invoke("probeFighterActorId", world.myId);
   const body = h.actors().find((a) => a.id === actorId);
   assert.ok(body, "the local pilot's chibi actor is in the scene");
-  const rotation = body.getComponent(Transform3D).rotation;
-  const face = Vector3.transform(new Vector3(0, 0, 1), rotation);
   const aim = world.me.aim;
-  assert.ok(Math.abs(face.x - Math.cos(aim)) < 0.02 && Math.abs(face.z - Math.sin(aim)) < 0.02,
-    `the chibi faces the aim: face (${face.x.toFixed(3)}, ${face.z.toFixed(3)}) vs aim (${Math.cos(aim).toFixed(3)}, ${Math.sin(aim).toFixed(3)})`);
+  const flat = (from, to) => {
+    const dx = to.x - from.x, dz = to.z - from.z, len = Math.hypot(dx, dz);
+    return { x: dx / len, z: dz / len };
+  };
+  const along = (d) => d.x * Math.cos(aim) + d.z * Math.sin(aim);
+  const rig = body.getComponent(ChibiCharacter).chibi;
+  // The body's own front, from its anatomy: the hip line runs from its left to its right, and
+  // up x right is forward. The hips, because the head turns to the nearest threat and the arms
+  // swing with the clip; a little sway is allowed for, a half-turn is not.
+  const right = flat(rig.joints.get("ThighL").position, rig.joints.get("ThighR").position);
+  const front = { x: right.z, z: -right.x };
+  assert.ok(along(front) > 0.95,
+    `the chibi faces the aim: front (${front.x.toFixed(3)}, ${front.z.toFixed(3)}) vs aim (${Math.cos(aim).toFixed(3)}, ${Math.sin(aim).toFixed(3)})`);
+  // And its face is on that side of its head, wherever in its arc the head is looking.
+  const face = flat(rig.joints.get("Head").position, rig.sockets.get("Face").getComponent(Transform3D).position);
+  assert.ok(along(face) > 0.3, `the face is on the aim's side of the head (${along(face).toFixed(3)} along the aim)`);
+  // The muzzle hangs off the right hand, out along the barrel: ahead of the body, not behind it.
+  const muzzle = h.find("Muzzle");
+  assert.ok(muzzle, "the armed pilot has a muzzle");
+  const barrel = flat(body.getComponent(Transform3D).position, muzzle.getComponent(Transform3D).position);
+  assert.ok(along(barrel) > 0.5, `the gun points where the shots go (${along(barrel).toFixed(3)} along the aim)`);
 
   // ---- a boss that is a person, one that is a machine, and the raid bosses ----
   // A jumped wave keeps the last boss alive beside the new one, so what is asserted is the arrival:

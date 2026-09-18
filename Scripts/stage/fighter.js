@@ -68,6 +68,7 @@ class Character {
     this.dead = false;
     this.x = NaN; this.z = NaN;
     this.speed = 0;
+    this.aim = Math.PI / 2;  // the last aim faced, kept so a rebuilt body can face it again
     this.yaw = 0;
     this.lookTimer = 0;
     this.lookAtId = -1;
@@ -123,6 +124,7 @@ class Character {
 
   faceAim(aim) {
     if (!this.actor) return;
+    this.aim = aim;
     const yaw = yawForAim(aim);
     if (yaw !== this.yaw) { this.yaw = yaw; this.actor.transform3d.rotY = yaw; }
   }
@@ -228,7 +230,7 @@ export class Fighter extends Character {
     this.pilot = pilot;
     this.recipe = PILOT_RECIPES[pilot] || PILOT_RECIPES[0];
     this.colour = p.color;
-    const x = this.x, z = this.z, yaw = this.yaw;
+    const x = this.x, z = this.z, aim = this.aim;
     if (this.actor) this.actor.destroy();
     this.actor = null;
     this.armed = false;
@@ -239,8 +241,10 @@ export class Fighter extends Character {
     if (this.actor) {
       this.actor.tag = "Pilot";
       if (x === x) { this.actor.transform3d.x = x; this.actor.transform3d.z = z; }
+      // The aim itself, not the old yaw turned back into one: that inverse was a second copy of
+      // yawForAim's convention, and the two fell out of step the day the convention moved.
       this.yaw = NaN;
-      this.faceAim(Math.PI / 2 - yaw * Math.PI / 180);
+      this.faceAim(aim);
     }
     if (this.light) {
       const l = this.light.getComponent("Light3D");

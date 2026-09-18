@@ -20,6 +20,9 @@ const NEON = "#39F0FF";
 const SUN = 1.15;
 const FILL = 0.3;
 const SKY = 0.8;
+const RIM = 1.3;                      // the sky's rim light from the arena's pitch
+const RIM_GRAZING = 0.12;             // and from the hangar's: see setViewPitch
+const RIM_FROM = 30, RIM_FULL = 50;   // degrees below the horizon between which it comes up
 const GRID_GLOW = 0.55;
 const WALL_GLOW = 1.8;
 
@@ -32,6 +35,7 @@ export class Arena {
     this.blasts = [];
     this.dark = -1;
     this.pulse = 0;
+    this.rim = -1;
   }
 
   init() {
@@ -63,16 +67,19 @@ export class Arena {
     if (sky) {
       Scene.addComponent(sky, "Transform3D", {});
       this.sky = Scene.addComponent(sky, "SkyLight", {
-        skyColor: "#1C2438FF", groundColor: "#05070CFF", intensity: SKY, rimColor: "#8FB8FFFF", rimIntensity: 1.3,
+        skyColor: "#1C2438FF", groundColor: "#05070CFF", intensity: SKY, rimColor: "#8FB8FFFF", rimIntensity: RIM_GRAZING,
       });
+      this.rim = RIM_GRAZING;   // the stage opens on the hangar; setViewPitch brings it up for the fight
       this.parts.push(sky);
     }
-    // A night sky: a horizon sliver at a shallow hangar pitch is dark, not the engine's noon.
-    const skybox = Scene.createActor("Skybox", 0, 0);
-    if (skybox) {
-      Scene.addComponent(skybox, "Skybox", { gradientTop: "#03040AFF", gradientBottom: "#0E1626FF" });
-      this.parts.push(skybox);
+    // A night sky: a horizon sliver at a shallow hangar pitch is dark, not the engine's noon. The
+    // scene authors it (see camera.js), so it is there before this script is; adopted, or made.
+    let skybox = Scene.find("Skybox");
+    if (!skybox || !skybox.getComponent("Skybox")) {
+      skybox = Scene.createActor("Skybox", 0, 0);
+      if (skybox) Scene.addComponent(skybox, "Skybox", { gradientTop: "#03040AFF", gradientBottom: "#0E1626FF" });
     }
+    if (skybox) this.parts.push(skybox);
     const post = Scene.createActor("Post Process", 0, 0);
     if (post) {
       Scene.addComponent(post, "PostProcessVolume", { bloomIntensity: 0.8, bloomThreshold: 1.0, bloomRadius: 0.55, exposure: 1.05 });
@@ -132,6 +139,26 @@ export class Arena {
       const g = this.grid[i];
       if (g && g.glow !== gridGlow) { g.glow = gridGlow; g.mesh.emissiveIntensity = gridGlow; }
     }
+  }
+
+  /**
+   * The rim light for a camera pitched `pitch` degrees below the horizon.
+   *
+   * The rim is the sky wrapping round a silhouette, (1 - N.V)^3, and nothing in a material opts out
+   * of it -- so a floor takes it too, by how shallowly it is seen. From the arena's 54 degrees the
+   * deck meets the eye at N.V of 0.56 and up and takes next to none. From the hangar's 24 the whole
+   * frame is floor seen at 4 to 44 degrees, which took the rim's pale blue at up to four fifths
+   * strength: measured on the live build, the far deck was (104, 145, 187), the rim colour at 0.73,
+   * and UltraDark opened on a washed-out blue room. So the rim follows the pitch: the fight keeps
+   * its edges, and the hangar keeps the dark, where the sun, the fill and each pilot's own lamp
+   * already pick the row out.
+   */
+  setViewPitch(pitch) {
+    const k = Math.max(0, Math.min(1, (pitch - RIM_FROM) / (RIM_FULL - RIM_FROM)));
+    const rim = Math.round((RIM_GRAZING + (RIM - RIM_GRAZING) * k * k * (3 - 2 * k)) * 100) / 100;
+    if (rim === this.rim || !this.sky) return;
+    this.rim = rim;
+    this.sky.rimIntensity = rim;
   }
 
   /** A lamp on the floor where something exploded, for a third of a second. */

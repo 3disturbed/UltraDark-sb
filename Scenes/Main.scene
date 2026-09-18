@@ -5,6 +5,65 @@
       "name": "Default",
       "actors": [
         {
+          "name": "StageCamera",
+          "tag": "MainCamera3D",
+          "components": [
+            {
+              "type": "Camera3D",
+              "properties": {
+                "FieldOfView": 40.0,
+                "NearClip": 0.1,
+                "FarClip": 400.0
+              }
+            }
+          ],
+          "transform3d": {
+            "x": 32,
+            "y": 6,
+            "z": 29,
+            "rotX": -24,
+            "rotY": 0,
+            "rotZ": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "scaleZ": 1
+          }
+        },
+        {
+          "name": "Skybox",
+          "tag": "Skybox",
+          "components": [
+            {
+              "type": "Skybox",
+              "properties": {
+                "GradientTop": {
+                  "R": 3,
+                  "G": 4,
+                  "B": 10,
+                  "A": 255
+                },
+                "GradientBottom": {
+                  "R": 14,
+                  "G": 22,
+                  "B": 38,
+                  "A": 255
+                }
+              }
+            }
+          ],
+          "transform3d": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "rotX": 0,
+            "rotY": 0,
+            "rotZ": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "scaleZ": 1
+          }
+        },
+        {
           "name": "DarkShapes",
           "tag": "Manager",
           "components": [
