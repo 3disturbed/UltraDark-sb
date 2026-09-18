@@ -2,7 +2,7 @@
 // local prediction for the own ship, and locally-simulated pattern
 // bullets (SDD §3.3 — the server sends seeds, not bullets).
 //
-// DarkShapes: TwinStickTron's client/js/game.js at 46baa25, ported onto the engine. The
+// DarkShapes: TwinStickTron's client/js/game.js at 7eee633, ported onto the engine. The
 // world model is the original's, statement for statement: snapshot interpolation for
 // every remote entity, prediction and gentle reconciliation for the own ship and each
 // couch seat, locally simulated pattern bullets, lasers and the stats the mods make.
@@ -14,7 +14,7 @@
 // Each change is written down, with why, in html5/tests/fixtures/darkshapes-template/ports.json.
 
 import {
-  ARENA_W, ARENA_H, PHASE, PS, PILOTS, TICK_RATE, SNAPSHOT_EVERY, clamp,
+  ARENA_W, ARENA_H, PHASE, PS, PILOTS, PLAYER, TICK_RATE, SNAPSHOT_EVERY, clamp,
 } from "../shared/constants.js";
 import { stepPlayerMovement, startDash } from "../shared/movement.js";
 import { spawnPattern } from "../shared/patterns.js";
@@ -37,9 +37,12 @@ export const world = {
   mult: 1, unbanked: 0, banked: 0, enemiesLeft: 0,
   players: [], enemies: [], bullets: [], zones: [], // interpolated view
   eBullets: [],                                      // client-simmed pattern bullets
+  tracers: [],                                       // HAWK rails (event-spawned, client-integrated)
+  predRails: [],                                     // timestamps of own predicted rails awaiting their event
   lasers: [],                                        // sniper telegraphs & beams
   pickups: [], myCons: [], stasis: 0,                // consumables
-  myCores: 0, shopOffer: null, intermissionS: 20,    // the Core Shop
+  myCores: 0, shopOffer: null, shopDoneUi: false, intermissionS: 20,    // the Core Shop
+  charges: {}, myFlags: 0, // THADDIUS polarity marks / own snapshot flags
   locals: [],  // couch co-op seats beyond P1 (managed by main.js)
   challenge: null, // {n, s, w, seed} when playing someone's challenge link
   me: { x: ARENA_W / 2, y: ARENA_H / 2, vx: 0, vy: 0, dashT: 0, aim: 0, alive: true },
@@ -55,6 +58,37 @@ export function resetForRun() {
   world.myMods = [];
   world.myStats = computeStats(PILOTS[world.myPilot], []);
   world.eBullets.length = 0;
+  world.tracers.length = 0;
+  world.predRails.length = 0;
+}
+
+// Own-rail prediction: spawn the tracer the instant the trigger is pulled,
+// mirroring the server's fire() for the rail kind. The server's "rail" event
+// (~40-100ms later) is then consumed as this shot's confirmation instead of
+// spawning a duplicate. Damage stays fully server-side.
+export function predictRail() {
+  const w = PILOTS[world.myPilot].weapon, s = world.myStats;
+  const count = 1 + (s.split | 0);
+  const spread = count > 1 ? 0.14 : 0;
+  const speed = PLAYER.BULLET_SPEED * (w.speedMul ?? 1) * s.bulletSpeed;
+  const life = (w.life ?? PLAYER.BULLET_LIFE) * s.bulletLife;
+  for (let i = 0; i < count; i++) {
+    const a = world.me.aim + (count === 1 ? 0 : (i - (count - 1) / 2) * spread);
+    world.tracers.push({
+      x: world.me.x + Math.cos(a) * 20, y: world.me.y + Math.sin(a) * 20,
+      vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+      life, rc: s.ricochet | 0,
+    });
+  }
+  world.predRails.push(clockNow()); // DarkShapes: the client's clock
+}
+
+function consumePredRail() {
+  const cutoff = clockNow() - 400; // stale predictions never eat fresh events (DarkShapes: the client's clock)
+  while (world.predRails.length && world.predRails[0] < cutoff) world.predRails.shift();
+  if (!world.predRails.length) return false;
+  world.predRails.shift();
+  return true;
 }
 
 export function onSnapshot(s) {
@@ -77,6 +111,7 @@ export function onSnapshot(s) {
     world.myCons = (meS.cons ?? []).filter(Boolean);
     world.myCores = meS.cores ?? 0;
     world.overdrive = !!(meS.flags & PF.OVERDRIVE);
+    world.myFlags = meS.flags;
     // reconcile prediction: gentle blend, hard snap on big error
     const err = Math.hypot(meS.x - world.me.x, meS.y - world.me.y);
     if (err > 64 || world.myState !== PS.ALIVE) {
@@ -106,8 +141,8 @@ export function onSnapshot(s) {
 // Called every render frame: advance prediction + local bullets, produce
 // the interpolated view arrays.
 export function frame(dt, input) {
-  // --- own ship prediction ---
-  if (world.myState === PS.ALIVE && !uiBlocking()) {
+  // --- own ship prediction (skipped while cocooned: the server roots us) ---
+  if (world.myState === PS.ALIVE && !uiBlocking() && !(world.myFlags & PF.WRAPPED)) {
     if (Math.hypot(input.ax, input.ay) > 0.25) world.me.aim = Math.atan2(input.ay, input.ax);
     const dashPressed = !!(input.buttons & BTN.DASH);
     if (dashPressed && !world.dashPressedPrev && world.myDashCd <= 0.05 && world.me.dashT <= 0) {
@@ -143,6 +178,22 @@ export function frame(dt, input) {
     if (b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H) eb.splice(i, 1);
   }
 
+  // --- rail tracers: same wall/life rules the server applies to the real rail ---
+  const tr = world.tracers;
+  for (let i = tr.length - 1; i >= 0; i--) {
+    const b = tr[i];
+    b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+    if (b.life <= 0) { tr.splice(i, 1); continue; }
+    if (b.x < 4 || b.x > ARENA_W - 4) {
+      if (b.rc > 0) { b.rc--; b.vx = -b.vx; b.x = clamp(b.x, 4, ARENA_W - 4); }
+      else { tr.splice(i, 1); continue; }
+    }
+    if (b.y < 4 || b.y > ARENA_H - 4) {
+      if (b.rc > 0) { b.rc--; b.vy = -b.vy; b.y = clamp(b.y, 4, ARENA_H - 4); }
+      else tr.splice(i, 1);
+    }
+  }
+
   // --- interpolate remote entities ---
   const curr = world.currSnap;
   if (!curr) return;
@@ -176,6 +227,20 @@ export function handleEvent(ev) {
     const bullets = spawnPattern(ev.pid, ev.seed, ev.x, ev.y, ev.angle);
     for (const b of bullets) world.eBullets.push(b);
     if (world.eBullets.length > 1400) world.eBullets.splice(0, world.eBullets.length - 1400);
+  } else if (ev.t === "rail") {
+    // HAWK's shots can live and die between two snapshots — the spawn event,
+    // not the snapshot, is what guarantees every rail is seen. Own primary
+    // rails were already drawn at press time (predictRail); their event only
+    // confirms. Ability rails (ab) and remote rails spawn here.
+    if (ev.who === world.myId && !ev.ab && consumePredRail()) return;
+    for (const a of ev.a) {
+      world.tracers.push({
+        x: ev.x + Math.cos(a) * 20, y: ev.y + Math.sin(a) * 20,
+        vx: Math.cos(a) * ev.sp, vy: Math.sin(a) * ev.sp,
+        life: ev.tl, rc: ev.rc || 0,
+      });
+    }
+    if (world.tracers.length > 240) world.tracers.splice(0, world.tracers.length - 240);
   } else if (ev.t === "laser_warn") {
     world.lasers.push({
       id: ev.id, sx: ev.sx, sy: ev.sy, tx: ev.tx, ty: ev.ty,
@@ -199,6 +264,8 @@ export function handleEvent(ev) {
     world.lastGrant = ev;
   } else if (ev.t === "wave_start" || ev.t === "gameover" || ev.t === "victory") {
     world.eBullets.length = 0;
+    world.tracers.length = 0;
+    world.predRails.length = 0;
     world.lasers.length = 0;
   }
 }

@@ -1,19 +1,19 @@
 // -----------------------------------------------------------------------------
 // input — UltraDark's keyboard, mouse, pads and touch, read from the engine.
 //
-// TwinStickTron's client/js/input.js at 46baa25, ported onto the engine's Input.
+// TwinStickTron's client/js/input.js at 7eee633, ported onto the engine's Input.
 // It merges every device into one state, {mx, my, ax, ay, buttons} with the BTN
 // bits of shared/protocol.js; claims pads for couch co-op; reads a seat's whole
 // pad; gives a seat's d-pad and A as edges for the draft; and runs a phone's twin
-// sticks, flick dash and three buttons. The logic is the original's, statement for
+// sticks, flick dash and four buttons. The logic is the original's, statement for
 // statement. What moved is what it stood on:
 //
 //   - The page's events are polled. pollInput takes the frame's touches and mouse
 //     from Input before anything else, so it is called once a frame ahead of the
 //     rest of this module, as main.js's frame() called it. What the original
-//     latched as an event arrived and cleared in pollInput -- a right click, a tap
-//     on a button -- is the frame's pressed edge, or a touch listed for the first
-//     time, so each is seen exactly once.
+//     latched as an event arrived -- a right click, a tap on a button -- is latched
+//     from the frame's pressed edge, or a touch listed for the first time, so each
+//     is latched exactly once and held for its tap window, as the original held it.
 //   - navigator.getGamepads() is Input's pads 0 to 3, in the standard layout the
 //     Gamepad API gave; performance.now(), game.js's world.me, render.js's
 //     screenToWorld and the page's size (innerWidth, and the vw and vh of
@@ -56,7 +56,15 @@ export const STICK_KNOB_TRAVEL = 30;
 // and blur.
 const keys = { has: (code) => input.isKeyDown(code) };
 let mouseX = 0, mouseY = 0, mouseDown = false, rmbDown = false;
-let bombTap = false, abilTap = false, useTap = false;
+// A tap is held for a short window rather than for one frame. Input is polled
+// every animation frame but SENT at 30 Hz (main.js), so a press that lasted one
+// frame was overwritten before it went out about half the time at 60fps -- the
+// touch buttons and right-click bomb silently dropped taps. The server acts on
+// the rising edge, so holding the bit never repeats an action.
+const TAP_HOLD_MS = 100;
+const tapAt = { dash: -1e9, bomb: -1e9, abil: -1e9, use: -1e9 };
+const tap = (key) => { tapAt[key] = performance.now(); };
+const tapped = (key, now) => now - tapAt[key] < TAP_HOLD_MS;
 const touch = { l: null, r: null, lx: 0, ly: 0, rx: 0, ry: 0 };
 // DarkShapes: `export let touchActive` is refused in a module; it is exported below as a function
 // that reads it.
@@ -121,12 +129,13 @@ function endTouch(t) {
 
 // DarkShapes: the buttons' touchstart listeners. A touch that began on a button was the button's,
 // and the canvas never heard of it; the buttons could be touched once the canvas's first touch had
-// shown #touch-ui.
+// shown #touch-ui. Each button taps the key the original's [id, key] table gave it.
 function buttonTouchStart(t) {
   const button = touchActive ? touchButtonAt(t.clientX, t.clientY) : null;
-  if (button === "bomb") bombTap = true;
-  else if (button === "abil") abilTap = true;
-  else if (button === "use") useTap = true;
+  if (button === "dash") tap("dash");
+  else if (button === "bomb") tap("bomb");
+  else if (button === "abil") tap("abil");
+  else if (button === "use") tap("use");
   return button !== null;
 }
 
@@ -178,7 +187,7 @@ function readInput() {
   mouseX = input.mouseX; mouseY = input.mouseY;
   mouseDown = input.isMouseDown(0) && !input.isMouseTouch(0);
   rmbDown = input.isMouseDown(2);
-  if (input.isMousePressed(2)) bombTap = true;
+  if (input.isMousePressed(2)) tap("bomb");
 }
 
 // double-tap-ish dash on touch: quick full deflection after neutral
@@ -316,9 +325,11 @@ export function pollInput() {
     if (now - dashTapT < 120) buttons |= BTN.DASH;
     lastLMag = mag;
   }
-  if (bombTap) { buttons |= BTN.BOMB; bombTap = false; }
-  if (abilTap) { buttons |= BTN.ABILITY; abilTap = false; }
-  if (useTap) { buttons |= BTN.USE; useTap = false; }
+  const tapNow = performance.now();
+  if (tapped("dash", tapNow)) buttons |= BTN.DASH;
+  if (tapped("bomb", tapNow)) buttons |= BTN.BOMB;
+  if (tapped("abil", tapNow)) buttons |= BTN.ABILITY;
+  if (tapped("use", tapNow)) buttons |= BTN.USE;
 
   const l = Math.hypot(mx, my);
   if (l > 1) { mx /= l; my /= l; }
@@ -358,16 +369,20 @@ export function touchSticks() {
 }
 
 /**
- * The three buttons, in the page's order: each one's id, centre and radius. `.tbtn` is a 54px circle
- * with its bottom edge 26vh up; each button's own rule places its right edge, and two move it up.
+ * The four buttons, in the page's order: each one's id, centre and radius. `.tbtn` is a 54px circle
+ * with its bottom edge 26vh up; each button's own rule places its right edge, two move it up, and
+ * the dash button's moves it down.
  *
- * @returns {{ id: "bomb" | "abil" | "use", x: number, y: number, r: number }[]}
+ * @returns {{ id: "dash" | "bomb" | "abil" | "use", x: number, y: number, r: number }[]}
  */
 export function touchButtons() {
   const { width, height } = screen();
   const r = 54 / 2;
   const at = (id, right, bottom) => ({ id, x: width - right - r, y: height - bottom - r, r });
   return [
+    // Dash sits beside the aim stick, under the bomb: the right thumb taps it while
+    // the left thumb keeps steering, and a dash goes the way you are moving.
+    at("dash", percentOf(width, 6) + 130, percentOf(height, 12) - 10), // #tbtn-dash { right: calc(6vw + 130px); bottom: calc(12vh - 10px) }
     at("bomb", percentOf(width, 6) + 130, percentOf(height, 26)),     // #tbtn-bomb { right: calc(6vw + 130px) }
     at("abil", percentOf(width, 6) - 10, percentOf(height, 26) + 40), // #tbtn-abil { right: calc(6vw - 10px); bottom: calc(26vh + 40px) }
     at("use", percentOf(width, 6) + 130, percentOf(height, 26) + 70), // #tbtn-use { right: calc(6vw + 130px); bottom: calc(26vh + 70px) }

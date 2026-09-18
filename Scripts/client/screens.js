@@ -371,6 +371,7 @@ function buildOverlay() {
     // CORE SHOP (post-boss intermissions)
     h("section", { id: "screen-shop", class: "screen hidden" },
       h("h3", null, "⬡ CORE SHOP ", h("span", { id: "shop-cores", class: "code" })),
+      h("p", { class: "dim tiny" }, "No rush: the next wave waits until everyone has shopped and picked an upgrade. READY takes you to your draft."),
       h("div", { id: "shop-cards", class: "cards shopgrid" }),
       h("div", { class: "row buttons" },
         h("button", { id: "btn-tab-draft", class: "btn small" }, "← DRAFT"),
@@ -1690,7 +1691,10 @@ export async function invite(joinUrl, code) {
 }
 
 // ---------- draft ----------
-export function showDraft(offer, bankAmount, canBank, grant) {
+// `show` is false when the Core Shop is up: after a boss the shop comes first,
+// and the draft waits behind it until the player presses READY.
+export function showDraft(offer, bankAmount, canBank, grant, show = true) {
+  setDraftTitle("WAVE CLEAR — DRAFT AN UPGRADE");
   const g = byId("class-grant");
   if (grant) {
     // DarkShapes: the innerHTML template, as elements.
@@ -1718,8 +1722,9 @@ export function showDraft(offer, bankAmount, canBank, grant) {
   }
   cardsEl.setChildren(cards);
   updateBank(bankAmount, canBank);
-  showScreen("screen-draft");
+  if (show) showScreen("screen-draft");
 }
+export function setDraftTitle(text) { byId("draft-title").textContent = text; }
 
 /** DarkShapes: a mod card's innerHTML template, as elements. */
 function cardFace(m) {
@@ -1836,16 +1841,21 @@ function renderShopCards() {
     if (!it) continue;
     const stacks = shopState.ownedArr.filter(m => m === id).length;
     const owned = it.once && stacks > 0;
-    const poor = shopState.cores < it.price;
+    // rank economics: the next copy costs base × next-rank, and continuous
+    // effects arrive at 1/rank strength (flat consumables exempt)
+    const nextRank = it.once || it.flat ? 1 : stacks + 1;
+    const price = it.price * nextRank;
+    const poor = shopState.cores < price;
     const card = createElement("div");
     card.className = "card shopcard" + (owned ? " owned" : poor ? " poor" : "");
     // DarkShapes: the innerHTML template, as elements.
     const stackBadge = !it.once && stacks > 0 ? [" ", h("span", { class: "stacks" }, `×${stacks}`)] : [];
+    const rankNote = nextRank > 1 ? [" ", h("span", { class: "stacks" }, `R${nextRank}`)] : [];
     card.setChildren([
       h("div", { class: "fam" }, `${it.pilot === null ? "ANY CLASS" : PILOTS[it.pilot].symbol + " " + PILOTS[it.pilot].name}${it.once ? " · SIGNATURE" : ""}`),
       h("div", { class: "nm" }, ...[`${it.name}`].concat(stackBadge)),
       h("div", { class: "ds" }, `${it.desc}`),
-      h("div", { class: "price" }, `${owned ? "OWNED" : "⬡ " + it.price}`),
+      h("div", { class: "price" }, ...(owned ? ["OWNED"] : [`⬡ ${price}`].concat(rankNote))),
     ]);
     if (!owned && !poor) {
       card.onclick = () => ui.onAction?.({ t: "buy", id });
@@ -1962,8 +1972,8 @@ export function openSettings(s) {
   syncSettingLabels(s);
   showScreen("screen-settings");
 }
-const THEME_LABELS = { retro: "◆ RETRO", bots: "\u{1F916} BOTS", zombies: "\u{1F9DF} ZOMBIES" };
-const THEME_ORDER = ["retro", "bots", "zombies"];
+const THEME_LABELS = { retro: "◆ RETRO", bots: "\u{1F916} BOTS", zombies: "\u{1F9DF} ZOMBIES", geom: "△ GEO WARS" };
+const THEME_ORDER = ["retro", "bots", "zombies", "geom"];
 
 export function syncSettingLabels(s) {
   byId("v-shake").textContent = `${Math.round(s.shake * 100)}%`;

@@ -1,7 +1,7 @@
 // UltraDark client bootstrap: screens flow, the render loop, the 30 Hz
 // input pump, and the event → juice wiring.
 //
-// DarkShapes: TwinStickTron's client/js/main.js at 46baa25, ported onto the engine. The
+// DarkShapes: TwinStickTron's client/js/main.js at 7eee633, ported onto the engine. The
 // flow is the original's -- the same screens, rooms, couch seats, challenge links and
 // event-to-juice table -- and so is every handler; what moved is the page it ran on:
 //   - the page ran this module as it loaded and drew with requestAnimationFrame; the
@@ -25,7 +25,7 @@ import { ENEMIES } from "../shared/enemies.js";
 import { CONSUMABLES, CK } from "../shared/consumables.js";
 import { computeStats } from "../shared/mods.js";
 import { SHOP_ITEMS, shopItemById } from "../shared/shop.js";
-import { BTN, PROTO } from "../shared/protocol.js";
+import { BTN, PF, PROTO } from "../shared/protocol.js";
 import { net, createRoom, connect, disconnect, sendInput, sendAction, connectExtra, initNet, pumpNet, linkFor } from "./net.js";
 import { world, onSnapshot, handleEvent, resetForRun, inGame, initGame } from "./game.js";
 import * as game from "./game.js";
@@ -276,6 +276,7 @@ function leaveRoom() {
   world.resumeKey = "";
   world.myId = 0;
   world.shopOffer = null;
+  world.shopDoneUi = false;
   reconnects = 0;
   rosterCount = 0;
   resetForRun();
@@ -381,6 +382,10 @@ let pendingAutoStart = false;
 let prevPhase = PHASE.LOBBY;
 let seq = 0;
 let lastInput = { mx: 0, my: 0, ax: 1, ay: 0, buttons: 0 };
+// action buttons are edge-sent the moment they're pressed — waiting for the
+// 30Hz input timer alone costs up to 33ms before the server hears the trigger
+const EDGE_BTNS = BTN.FIRE | BTN.DASH | BTN.BOMB | BTN.ABILITY | BTN.USE;
+let prevPolled = 0;
 let reconnects = 0;
 
 function onAction(a) {
@@ -412,6 +417,7 @@ function onAction(a) {
     sendAction(a);
   } else if (a.t === "shop_done") {
     sendAction(a);
+    world.shopDoneUi = true;
     Screens.showScreen("screen-draft");
   } else if (a.t === "start" || a.t === "again" || a.t === "bank") {
     sendAction({ t: a.t });
@@ -574,8 +580,12 @@ function netEvent(ev) {
       if (ev.who === world.myId) R.fxPopup(world.me.x, world.me.y, "+♥", "#b8ff5e");
       break;
     case "shop_offer":
+      // Open the shop the moment the boss wave ends. It used to be a small tab
+      // on the draft screen, and players picked their card and never saw it.
       world.shopOffer = ev.items;
+      world.shopDoneUi = false;
       Screens.showShopTab(ev.cores);
+      Screens.showShop(ev.items, ev.cores, world.myMods);
       break;
     case "bought": {
       const it = shopItemById(ev.mod);
@@ -638,6 +648,8 @@ function netEvent(ev) {
       Screens.clearDraftLocals();
       Screens.hideShopTab();
       world.shopOffer = null;
+      world.shopDoneUi = false;
+      world.charges = {}; // boss mechanics never outlive their wave
       for (const seat of world.locals) {
         seat.offer = null; seat.grant = null; seat.pickedUi = false;
         seat.shopOffer = null; seat.shopEls = null; seat.shopDoneUi = false;
@@ -650,7 +662,38 @@ function netEvent(ev) {
     case "wave_end": Screens.banner("WAVE CLEAR", false, 1400); break;
     case "boss": Screens.banner(`⚠ ${ev.name}`, true, 2600); sfx.boss(); break;
     case "enrage": Screens.banner("ENRAGED", true, 1500); R.addTrauma(0.4); break;
-    case "boss_down": Screens.banner("BOSS DOWN — +1 BOMB", false, 2000); break;
+    case "boss_down": Screens.banner("BOSS DOWN — +1 BOMB", false, 2000); world.charges = {}; break;
+    // ---- raid mechanics (Naxx school) ----
+    case "berserk": Screens.banner("⚠ BERSERK — KILL IT NOW", true, 3000); sfx.boss(); R.addTrauma(0.5); break;
+    case "hateful":
+      Screens.banner(ev.who === world.myId ? "HATEFUL CHARGE — ON YOU" : "HATEFUL CHARGE", true, 1400);
+      // telegraph line from the boss to the locked point, drawn like a laser warn
+      // (DarkShapes: `until` is on the client clock, as game.js's lasers are)
+      world.lasers.push({ id: "hate" + ev.id, sx: ev.sx, sy: ev.sy, tx: ev.tx, ty: ev.ty, firing: false, until: clock.now() + 1500 });
+      sfx.down();
+      break;
+    case "charge": {
+      world.charges = ev.charges ?? {};
+      const mine = world.charges[world.myId];
+      if (mine) {
+        Screens.banner("POLARITY SHIFT", true, 1500);
+        Screens.toast(mine > 0 ? "You are ➕ POSITIVE — stand away from ➖" : "You are ➖ NEGATIVE — stand away from ➕", 3500);
+        sfx.freeze();
+      }
+      break;
+    }
+    case "shock":
+      if (ev.a === world.myId || ev.b === world.myId) { R.addTrauma(0.3); sfx.zap(); }
+      break;
+    case "wrapped":
+      Screens.banner(ev.who === world.myId ? "YOU'RE COCOONED" : `${nameOf(ev.who)} IS COCOONED — SHOOT THEM FREE`, true, 2600);
+      sfx.down();
+      break;
+    case "unwrapped":
+      if (ev.who === world.myId) Screens.toast("Cut free — move!", 1800);
+      sfx.revive();
+      break;
+    case "hole_burst": R.addTrauma(0.35); sfx.bomb(); break;
     case "class_grant":
       sfx.pick();
       break;
@@ -671,7 +714,7 @@ function netEvent(ev) {
       break;
     }
     case "draft_offer":
-      Screens.showDraft(ev.offer, world.unbanked, true, world.lastGrant);
+      Screens.showDraft(ev.offer, world.unbanked, true, world.lastGrant, !(world.shopOffer && !world.shopDoneUi));
       world.lastGrant = null;
       break;
     case "bank":
@@ -680,6 +723,11 @@ function netEvent(ev) {
       Screens.updateBank(0, false);
       break;
     case "picked": {
+      if (ev.who === world.myId) {
+        Screens.setDraftTitle(world.shopOffer && !world.shopDoneUi
+          ? "UPGRADE LOCKED IN — FINISH IN THE ⬡ SHOP, THEN READY"
+          : rosterCount > 1 ? "READY — WAITING FOR THE SQUAD" : "READY");
+      }
       // keep couch seats' prediction stats in sync with their drafts
       // (no dedupe — the same mod picked/bought twice legitimately stacks)
       const seat = world.locals.find(l => l.id === ev.who);
@@ -690,7 +738,10 @@ function netEvent(ev) {
       break;
     }
     case "intermission":
+      // Sent again with `ready` once the whole squad is done, so the bar shows
+      // the short countdown rather than a sliver of the long wait.
       world.intermissionS = ev.seconds || 20;
+      if (ev.ready) Screens.setDraftTitle(`ALL READY — NEXT WAVE IN ${Math.round(ev.seconds)}`);
       break;
     case "gameover":
       lastEnd = ev; challengeBeaten = false;
@@ -745,12 +796,26 @@ export function updateDarkShapes(seconds) {
   if (env.input.isMousePressed(0) || env.input.touchCount > 0) ensureAudio(); // pointerdown
   const dt = Math.min(0.05, seconds > 0 ? seconds : 0);
   lastInput = pollInput();
+  const rising = lastInput.buttons & ~prevPolled & EDGE_BTNS;
+  if (rising && net.connected && world.myId) {
+    seq = (seq + 1) % 65536;
+    sendInput(seq, lastInput);
+  }
+  prevPolled = lastInput.buttons;
   // couch co-op: unclaimed pad pressing START joins the room
   const joinPad = detectPadJoin();
   if (joinPad != null) addLocalPlayer(joinPad);
   // per-seat pad input + draft navigation
   for (const seat of world.locals) {
     seat.lastInput = pollPad(seat.padIndex);
+    if (seat.lastInput && seat.id && seat.conn.ws.readyState === 1) {
+      const sRise = seat.lastInput.buttons & ~(seat.prevPolled ?? 0) & EDGE_BTNS;
+      if (sRise) {
+        seat.seq = ((seat.seq ?? 0) + 1) % 65536;
+        seat.conn.sendInput(seat.seq, seat.lastInput);
+      }
+      seat.prevPolled = seat.lastInput.buttons;
+    }
     if (world.phase === PHASE.INTERMISSION && seat.offer && !seat.pickedUi) {
       const nav = pollPadNav(seat.padIndex);
       if (nav.left) Screens.seatDraftMove(seat, -1);
@@ -772,8 +837,10 @@ export function updateDarkShapes(seconds) {
     }
   }
   if (!R.isHitstopped()) game.frame(dt, lastInput);
-  // local muzzle feel: flash at predicted cadence while firing
-  if ((lastInput.buttons & BTN.FIRE) && world.myState === PS.ALIVE && world.phase === PHASE.WAVE) {
+  // local muzzle feel: flash at predicted cadence while firing (a webbed
+  // pilot is silenced server-side — no flash, no sound, no predicted rail)
+  if ((lastInput.buttons & BTN.FIRE) && world.myState === PS.ALIVE &&
+      world.phase === PHASE.WAVE && !(world.myFlags & PF.WRAPPED)) {
     fireAcc -= dt;
     if (fireAcc <= 0) {
       const wpn = PILOTS[world.myPilot].weapon;
@@ -782,11 +849,12 @@ export function updateDarkShapes(seconds) {
         R.fxCleave(world.me.x, world.me.y, world.me.aim, wpn.arcR, world.myStats.cleave360 > 0);
         sfx.swing();
       } else {
+        if (wpn.kind === "rail") game.predictRail(); // the projectile leaves WITH the flash
         R.fxMuzzle(world.me.x, world.me.y, world.me.aim, PILOTS[world.myPilot].color);
         ({ smg: sfx.smg, shotgun: sfx.boom, lance: sfx.lance, rail: sfx.rail, arc: sfx.arc }[wpn.kind] ?? sfx.shoot)();
       }
     }
-  } else fireAcc = 0;
+  } else fireAcc = Math.max(0, fireAcc - dt); // cd keeps draining like the server's
   // live challenge check: the moment the squad's total passes the target
   if (world.challenge && !challengeBeaten && inGame() &&
       world.banked + world.unbanked > world.challenge.s) {
@@ -798,7 +866,7 @@ export function updateDarkShapes(seconds) {
   R.draw(dt);
   // intermission UI ticks
   if (world.phase === PHASE.INTERMISSION) {
-    Screens.updateDraftTimer(world.phaseT / (world.intermissionS * 30)); // post-boss runs 40s
+    Screens.updateDraftTimer(world.phaseT / (world.intermissionS * 30)); // seconds from the latest intermission event
     Screens.updateBank(world.unbanked, true);
     Screens.updateShop(world.myCores, world.myMods);
   }

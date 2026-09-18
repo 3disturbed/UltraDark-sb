@@ -2,7 +2,7 @@
 // runtime shadowBlur), additive compositing, pooled particles, trauma
 // shake, hitstop. Whole arena fits on screen (letterboxed).
 //
-// DarkShapes: TwinStickTron's client/js/render.js at 46baa25, ported onto the engine's
+// DarkShapes: TwinStickTron's client/js/render.js at 7eee633, ported onto the engine's
 // Draw canvases, which speak Canvas 2D. Every draw is the original's, call for call;
 // what moved is what it drew on:
 //   - the page's one canvas is three: the arena, the dark's half-resolution lightmap,
@@ -35,7 +35,7 @@ export const settings = {
   shake: 1, flash: true, floor: 0, volume: 0.25,
   themeWorld: "retro", themePlayers: "retro", themeEnemies: "retro",
 };
-export const THEME_OPTS = ["retro", "bots", "zombies"];
+export const THEME_OPTS = ["retro", "bots", "zombies", "geom"];
 
 let ctx, W = 0, H = 0, dpr = 1; // DarkShapes: no canvas element; ctx is the Draw canvas being painted
 let scale = 1, offX = 0, offY = 0;
@@ -83,7 +83,13 @@ export function isHitstopped() { return hitstopT > 0; }
 export function fxBomb() { bombFlashT = 0.25; addTrauma(0.5); }
 export function gridMilestone() { gridPulse = 1; }
 
+// GEOM world: kills send ripples through the grid, Geometry Wars style
+const geomRipples = [];
+
 export function fxKill(x, y, color, big = false) {
+  if (settings.themeWorld === "geom" && geomRipples.length < 40) {
+    geomRipples.push({ x, y, t: 0, big });
+  }
   const n = big ? 46 : 14;
   for (let i = 0; i < n && particles.length < MAX_PARTICLES; i++) {
     const a = Math.random() * Math.PI * 2;
@@ -212,6 +218,7 @@ function drawTheDark() {
   }
   let lights = 0;
   for (const b of world.bullets) { punch(b.x, b.y, 90); if (++lights > 220) break; }
+  for (const b of world.tracers) { punch(b.x, b.y, 110); if (++lights > 260) break; }
   for (const b of world.eBullets) { punch(b.x, b.y, 55); if (++lights > 380) break; }
   for (const z of world.zones) {
     if (z.kind === ZK.BLAST || z.kind === ZK.FLAME || z.kind === ZK.WELL) punch(z.x, z.y, z.r * 1.7);
@@ -274,6 +281,7 @@ function drawLasers() {
 function drawGrid() {
   if (settings.themeWorld === "bots") return drawWorldBots();
   if (settings.themeWorld === "zombies") return drawWorldZombies();
+  if (settings.themeWorld === "geom") return drawWorldGeom();
   // retro — the original neon grid
   const bright = 0.10 + gridPulse * 0.22;
   ctx.strokeStyle = `rgba(57,240,255,${bright})`;
@@ -283,6 +291,38 @@ function drawGrid() {
   for (let y = 0; y <= ARENA_H; y += 128) { ctx.moveTo(0, y); ctx.lineTo(ARENA_W, y); }
   ctx.stroke();
   ctx.strokeStyle = `rgba(57,240,255,${0.5 + gridPulse * 0.5})`;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(0, 0, ARENA_W, ARENA_H);
+}
+
+// GEOM world — Geometry Wars: a fine electric-blue lattice that RIPPLES
+// outward from every kill. Pure vectors on black.
+function drawWorldGeom() {
+  const bright = 0.16 + gridPulse * 0.3;
+  ctx.strokeStyle = `rgba(45,70,220,${bright})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x <= ARENA_W; x += 64) { ctx.moveTo(x, 0); ctx.lineTo(x, ARENA_H); }
+  for (let y = 0; y <= ARENA_H; y += 64) { ctx.moveTo(0, y); ctx.lineTo(ARENA_W, y); }
+  ctx.stroke();
+  // kill ripples racing across the lattice
+  ctx.composite = "lighter";
+  for (let i = geomRipples.length - 1; i >= 0; i--) {
+    const rp = geomRipples[i];
+    rp.t += 0.016;
+    const life = rp.big ? 0.9 : 0.5;
+    if (rp.t >= life) { geomRipples.splice(i, 1); continue; }
+    const p = rp.t / life;
+    const r = (rp.big ? 420 : 200) * p;
+    ctx.strokeStyle = `rgba(90,140,255,${0.5 * (1 - p)})`;
+    ctx.lineWidth = 3 * (1 - p) + 0.5;
+    ctx.beginPath(); ctx.arc(rp.x, rp.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = `rgba(255,255,255,${0.25 * (1 - p)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(rp.x, rp.y, r * 0.8, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.composite = "source-over";
+  ctx.strokeStyle = `rgba(90,140,255,${0.7 + gridPulse * 0.3})`;
   ctx.lineWidth = 3;
   ctx.strokeRect(0, 0, ARENA_W, ARENA_H);
 }
@@ -439,6 +479,23 @@ function drawZones(dt) {
       ctx.fillStyle = "#ff9e2c";
       ctx.beginPath(); ctx.arc(z.x, z.y, 5, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
+    } else if (z.kind === ZK.VENOM) {
+      // BROODMOTHER's poison — a bubbling green pool
+      const grad = ctx.createRadialGradient(z.x, z.y, z.r * 0.2, z.x, z.y, z.r);
+      grad.addColorStop(0, "rgba(70,110,20,0.5)");
+      grad.addColorStop(1, "rgba(40,70,10,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(160,224,90,0.6)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 7]);
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      if (Math.random() < 0.3) { // lazy bubbles
+        ctx.fillStyle = "rgba(160,224,90,0.5)";
+        const a = Math.random() * Math.PI * 2, rr = Math.random() * z.r * 0.8;
+        ctx.beginPath(); ctx.arc(z.x + Math.cos(a) * rr, z.y + Math.sin(a) * rr, 2.5, 0, Math.PI * 2); ctx.fill();
+      }
     } else if (z.kind === ZK.DARK) {
       // the Shepherd's herding dark — get out before it bites
       const grad = ctx.createRadialGradient(z.x, z.y, z.r * 0.2, z.x, z.y, z.r);
@@ -457,11 +514,28 @@ function drawZones(dt) {
 
 function drawBullets() {
   ctx.composite = "lighter";
+  const pilotOf = new Map();
+  for (const p of world.players) pilotOf.set(p.id, p.pilot);
   for (const b of world.bullets) {
-    const color = PILOTS[world.players.find(p => p.id === b.owner)?.pilot ?? 0]?.color ?? "#39f0ff";
+    const pilot = pilotOf.get(b.owner) ?? 0;
+    // rails are drawn from their spawn events (world.tracers), not the 15Hz
+    // snapshot — drawing both would double every shot
+    if (PILOTS[pilot]?.weapon.kind === "rail") continue;
+    const color = PILOTS[pilot]?.color ?? "#39f0ff";
     blit(glow(color), b.x, b.y, 26);
     ctx.fillStyle = "#fff";
     ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+  }
+  for (const b of world.tracers) {
+    const l = Math.hypot(b.vx, b.vy) || 1;
+    const nx = b.vx / l, ny = b.vy / l;
+    blit(glow("#ff5b8e"), b.x, b.y, 30);
+    ctx.strokeStyle = "rgba(255,145,180,0.85)";
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(b.x - nx * 34, b.y - ny * 34); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(b.x - nx * 16, b.y - ny * 16); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
   for (const b of world.eBullets) {
     blit(glow("#ff5b8e"), b.x, b.y, b.r * 5.5);
@@ -503,6 +577,16 @@ function drawEnemies() {
       drawRobot(e, def, color);
     } else if (settings.themeEnemies === "zombies") {
       drawZombieEnemy(e, def, color);
+    } else if (settings.themeEnemies === "geom") {
+      // Geometry Wars: pure glowing wireframe, no fill, double-struck
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3.5;
+      shapePath(def.shape, e.x, e.y, def.radius, clockNow() / 1000 + e.id);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.75)";
+      ctx.lineWidth = 1.2;
+      shapePath(def.shape, e.x, e.y, def.radius, clockNow() / 1000 + e.id);
+      ctx.stroke();
     } else {
       ctx.strokeStyle = color;
       ctx.fillStyle = "#0a0416";
@@ -632,6 +716,7 @@ const SHAPE_TO_BOT = {
   diamond: "wing", tri: "wing", ghost: "wing",
   hex: "tank", square: "tank", block: "tank",
   gear: "saw", ring: "magnet", hexring: "magnet", pent: "shield",
+  pin: "compact", chevron: "wing", pinwheel: "saw", hole: "magnet", cocoon: "tank",
 };
 
 function drawRobot(e, def, color) {
@@ -790,6 +875,38 @@ function shapePath(shape, x, y, r, t) {
     ctx.lineTo(x - r * 0.5, y + r * 0.5);
     ctx.lineTo(x - r, y + r * 0.8);
     ctx.closePath();
+  } else if (shape === "pin") {
+    // Wanderer: a slowly twirling 4-spike pin
+    for (let i = 0; i < 8; i++) {
+      const a = t * 1.2 + (i / 8) * Math.PI * 2;
+      const rr = i % 2 ? r : r * 0.35;
+      const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath();
+  } else if (shape === "chevron") {
+    // Dodger: the classic nested green Vs
+    ctx.moveTo(x - r, y - r * 0.7); ctx.lineTo(x, y + r * 0.7); ctx.lineTo(x + r, y - r * 0.7);
+    ctx.lineTo(x + r * 0.55, y - r * 0.7); ctx.lineTo(x, y + r * 0.1); ctx.lineTo(x - r * 0.55, y - r * 0.7);
+    ctx.closePath();
+  } else if (shape === "pinwheel") {
+    // Pinwheel: four curved blades around a hub
+    for (let b = 0; b < 4; b++) {
+      const a = t * 2.4 + (b / 4) * Math.PI * 2;
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(
+        x + Math.cos(a) * r * 1.2, y + Math.sin(a) * r * 1.2,
+        x + Math.cos(a + 0.8) * r * 0.75, y + Math.sin(a + 0.8) * r * 0.75,
+      );
+    }
+  } else if (shape === "hole") {
+    // Black Hole: pulsing concentric rings
+    const pulse = 1 + 0.15 * Math.sin(t * 5);
+    ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
+    ctx.moveTo(x + r * 0.55 * pulse, y);
+    ctx.arc(x, y, r * 0.55 * pulse, 0, Math.PI * 2, true);
+  } else if (shape === "cocoon") {
+    ctx.ellipse(x, y, r * 0.75, r * 1.1, 0.3, 0, Math.PI * 2);
   }
 }
 
@@ -868,11 +985,25 @@ function drawPlayers() {
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(x, y, ORBITAL.R, 0, Math.PI * 2); ctx.stroke();
     }
-    // the ship — themed: retro arrow / 8-bit mech / soldier
+    // the ship — themed: retro arrow / 8-bit mech / soldier / GW claw
     if (settings.themePlayers === "bots") {
       drawMechPlayer(x, y, aim, pilot.color);
     } else if (settings.themePlayers === "zombies") {
       drawSoldierPlayer(x, y, aim, pilot.color);
+    } else if (settings.themePlayers === "geom") {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(aim);
+      ctx.strokeStyle = pilot.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); // the Geometry Wars claw — wireframe, finned
+      ctx.moveTo(18, 0); ctx.lineTo(-8, 9); ctx.lineTo(-3, 0); ctx.lineTo(-8, -9);
+      ctx.closePath(); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-3, 0); ctx.lineTo(-15, 6);
+      ctx.moveTo(-3, 0); ctx.lineTo(-15, -6);
+      ctx.stroke();
+      ctx.restore();
     } else {
       ctx.save();
       ctx.translate(x, y);
@@ -885,6 +1016,33 @@ function drawPlayers() {
       ctx.closePath();
       ctx.fill(); ctx.stroke();
       ctx.restore();
+    }
+    // THADDIUS polarity marker: ± ring — opposite signs must NOT stand together
+    const myCharge = world.charges?.[p.id];
+    if (myCharge) {
+      const cc = myCharge > 0 ? "#ff5b5b" : "#5b8fff";
+      ctx.strokeStyle = cc;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath(); ctx.arc(x, y, 24, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = "bold 16px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = cc;
+      ctx.fillText(myCharge > 0 ? "+" : "−", x, y - 30);
+    }
+    // BROODMOTHER web wrap: cocooned pilots read as tangled, not gone
+    if (p.flags & PF.WRAPPED) {
+      ctx.strokeStyle = "rgba(216,216,168,0.85)";
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI + clockNow() / 900;
+        ctx.beginPath();
+        ctx.moveTo(x - Math.cos(a) * 22, y - Math.sin(a) * 22);
+        ctx.lineTo(x + Math.cos(a) * 22, y + Math.sin(a) * 22);
+        ctx.stroke();
+      }
+      ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.stroke();
     }
     // class symbol at the centre — upright regardless of aim or theme
     ctx.font = "bold 11px ui-monospace, monospace";
