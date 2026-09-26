@@ -1518,11 +1518,58 @@ function render() {
  * the engine's UI global, or anything with its members; `clock` has now(), setTimeout(fn, ms) and
  * clearTimeout(id), as engine/clock.js's Clock does, and runs the toast's and the banner's timers.
  */
-export function initScreens({ ui: engine, clock: timers }) {
+export function initScreens({ ui: engine, clock: timers, input = null }) {
   engineUi = engine;
   clock = timers;
+  engineInput = input; // UltraDark-sb: the engine's Input, for a finger scrolling a screen
   render();
 }
+
+// ---- UltraDark-sb: a finger scrolls a screen (Dark Bloom 0.4.1) --------------------------------
+
+/** Canvas units a touch travels before it is a scroll rather than a tap. */
+const DRAG_SLOP = 10;
+let engineInput = null;
+const drag = { id: null, lastY: 0, moved: 0, idle: 0 };
+
+/**
+ * `overflow-y: auto` on a phone. The engine's UI scrolls on the wheel and on nothing else, and a
+ * phone has no wheel, so the first finger's travel goes straight into the screen's offset (every
+ * screen's node scrolls vertically -- computeLook -- and the layout clamps the offset to what there is
+ * to scroll). Touches are in UI.width's pixels, the units the nodes are laid out in. A press that
+ * travelled further than the slop is a scroll, not a tap: the click the engine reports at its release
+ * is dropped (poll).
+ */
+function pollTouchScroll(front) {
+  if (!engineInput) return;
+  const count = Number(engineInput.touchCount) || 0;
+  const touch = count > 0 ? engineInput.getTouch(0) : null;
+  if (!touch || touch.phase === "Ended" || touch.phase === "Cancelled") {
+    // `moved` stays for the release's click, and is forgotten a few frames on, so a mouse click after a
+    // scroll (a laptop with a touch screen) is a click again.
+    drag.id = null;
+    if (++drag.idle > 3) drag.moved = 0;
+    return;
+  }
+  drag.idle = 0;
+  if (drag.id !== touch.id) { drag.id = touch.id; drag.lastY = Number(touch.y); drag.moved = 0; return; }
+  const dy = Number(touch.y) - drag.lastY;
+  if (dy === 0) return;
+  drag.lastY = Number(touch.y);
+  drag.moved += Math.abs(dy);
+  if (drag.moved < DRAG_SLOP) return;
+  const node = handleOf(byId(front));
+  node.scrollOffset = { x: 0, y: Math.max(0, scrollY(node.scrollOffset) - dy) };
+}
+
+/** The vertical offset a handle reports: a pair as [x, y], or {x, y}. */
+function scrollY(offset) {
+  const y = Array.isArray(offset) ? offset[1] : offset && offset.y;
+  return Number(y) || 0;
+}
+
+/** Whether the press being released was a scroll: its click is not a click. */
+function dragged() { return drag.moved >= DRAG_SLOP; }
 
 /**
  * DarkShapes: once a frame. The engine reports clicks, hovering, slider drags and typing as node
@@ -1536,6 +1583,7 @@ export function poll() {
   // Every control is on a screen, and at most one screen is up: its controls are the ones to read.
   const front = screens.find((s) => !byId(s).classList.contains("hidden"));
   if (front === undefined) return;
+  pollTouchScroll(front);
   for (const element of controls.slice()) {
     if (!element.live) {
       controls.splice(controls.indexOf(element), 1);
@@ -1557,7 +1605,7 @@ export function poll() {
         lookChanged(element, false);
       }
     }
-    if (element.onclick && element.live && handle.clicked) element.onclick({ type: "click", target: element, currentTarget: element });
+    if (element.onclick && element.live && handle.clicked && !dragged()) element.onclick({ type: "click", target: element, currentTarget: element });
   }
 }
 

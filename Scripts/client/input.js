@@ -371,14 +371,16 @@ export function touchSticks() {
 /**
  * The four buttons, in the page's order: each one's id, centre and radius. `.tbtn` is a 54px circle
  * with its bottom edge 26vh up; each button's own rule places its right edge, two move it up, and
- * the dash button's moves it down.
+ * the dash button's moves it down. UltraDark-sb: `held` is whether its tap is still being held
+ * (TAP_HOLD_MS), so the painter can light it -- the page's :active did.
  *
- * @returns {{ id: "dash" | "bomb" | "abil" | "use", x: number, y: number, r: number }[]}
+ * @returns {{ id: "dash" | "bomb" | "abil" | "use", x: number, y: number, r: number, held: boolean }[]}
  */
 export function touchButtons() {
   const { width, height } = screen();
   const r = 54 / 2;
-  const at = (id, right, bottom) => ({ id, x: width - right - r, y: height - bottom - r, r });
+  const now = performance.now();
+  const at = (id, right, bottom) => ({ id, x: width - right - r, y: height - bottom - r, r, held: tapped(id, now) });
   return [
     // Dash sits beside the aim stick, under the bomb: the right thumb taps it while
     // the left thumb keeps steering, and a dash goes the way you are moving.

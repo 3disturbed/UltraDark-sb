@@ -29,7 +29,7 @@ import { BTN, PF, PROTO } from "../shared/protocol.js";
 import { net, createRoom, connect, disconnect, sendInput, sendAction, connectExtra, initNet, pumpNet, linkFor } from "./net.js";
 import { world, onSnapshot, handleEvent, resetForRun, inGame, initGame } from "./game.js";
 import * as game from "./game.js";
-import { initInput, pollInput, detectPadJoin, pollPad, pollPadNav, claimPad, releasePad } from "./input.js";
+import { initInput, pollInput, detectPadJoin, pollPad, pollPadNav, claimPad, releasePad, touchActive } from "./input.js";
 import * as R from "./render.js";
 import { settings } from "./render.js";
 import * as Screens from "./screens.js";
@@ -53,7 +53,7 @@ let inputAcc = 0;
  */
 export function startDarkShapes(engine) {
   env = engine;
-  Screens.initScreens({ ui: env.ui, clock }); // first: a toast or a banner needs its clock
+  Screens.initScreens({ ui: env.ui, clock, input: env.input }); // first: a toast or a banner needs its clock
   initGame({ now: () => clock.now() });
   initNet({ wire: env.wire, network: env.network, clock, server: launchParam("server"), onEnd: env.onSessionEnd });
   R.initRender({ draw: env.draw, now: () => clock.now(), ratio: pixelRatio });
@@ -870,6 +870,15 @@ export function updateDarkShapes(seconds) {
     R.gridMilestone();
   }
   R.draw(dt);
+  // UltraDark-sb: the phone's own sticks and buttons (the engine's generic overlay is off --
+  // ProjectSettings.json TouchControls). They show in a match with no screen up, from the first touch,
+  // or as soon as the screens were driven by touch, so a phone player sees where the thumbs go.
+  if ((touchActive() || env.ui.inputMode === "touch") && inGame() && !Screens.screenShown()) {
+    R.drawTouch({
+      bombs: world.myBombs, abilReady: world.myAbilCd <= 0, dashReady: world.myDashCd <= 0.05,
+      cons: (world.myCons ?? []).length,
+    });
+  }
   // intermission UI ticks
   if (world.phase === PHASE.INTERMISSION) {
     Screens.updateDraftTimer(world.phaseT / (world.intermissionS * 30)); // seconds from the latest intermission event

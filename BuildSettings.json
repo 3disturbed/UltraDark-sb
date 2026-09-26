@@ -1,6 +1,6 @@
 {
   "appName": "UltraDark",
-  "version": "2.0.1",
+  "version": "2.0.3",
   "startScene": "Scenes/Main",
   "configuration": "Release",
   "darksGamesSlug": "ultradark-sb",

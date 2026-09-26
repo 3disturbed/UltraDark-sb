@@ -28,6 +28,8 @@ import { mulberry32 } from "../shared/rng.js";
 import { substitute } from "../engine/glyphs.js";
 // UltraDark-sb: the 3D stage over the same world model; `settings.view` decides which picture is drawn.
 import * as Stage from "../stage/stage.js";
+// UltraDark-sb: the phone's sticks and buttons, which input.js hit-tests and this draws (drawTouch).
+import { touchSticks, touchButtons, STICK_BASE_SIZE, STICK_KNOB_SIZE, STICK_KNOB_TRAVEL } from "./input.js";
 
 // player-tunable accessibility settings (SDD §2.11) — main.js loads/saves.
 // Themes are three INDEPENDENT cosmetic channels: mix a mech pilot with
@@ -1282,6 +1284,56 @@ function drawHUD() {
   ctx.fillText("DASH", W - pad, H - 66);
   ctx.fillStyle = world.myAbilCd <= 0 ? "#c26bfa" : "rgba(255,255,255,0.25)";
   ctx.fillText(world.myAbilCd <= 0 ? "✦ READY" : `✦ ${world.myAbilCd}s`, W - pad, H - 88);
+}
+
+// ---------- UltraDark-sb: the touch controls ----------
+// The page drew #touch-ui -- two .stick bases with their knobs and four .tbtn circles -- over the
+// canvas from the first touch on. The engine has no page, and its own generic overlay (a stick and
+// two round buttons) is switched off in ProjectSettings.json's TouchControls, so they are drawn here
+// on the HUD canvas, in styles.css's colours, from exactly the geometry input.js hit-tests: a button
+// is drawn where a tap on it registers. main.js calls this after draw(), in a match with no screen up.
+
+/** Each button's face, as index.html labelled it, in a symbol the mono faces draw (engine/glyphs.js). */
+const TOUCH_GLYPHS = { dash: "»", bomb: "\u{1F4A3}", abil: "✦", use: "✚" };
+
+/**
+ * Draws the phone's controls on the HUD canvas. `state` dims a button with nothing to give: no bombs,
+ * the ability or the dash cooling down, no consumable held.
+ *
+ * @param {{ bombs?: number, abilReady?: boolean, dashReady?: boolean, cons?: number }} [state]
+ */
+export function drawTouch(state = {}) {
+  ctx = hudCtx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.globalAlpha = 1;
+  const sticks = touchSticks();
+  const base = STICK_BASE_SIZE / 2, knob = STICK_KNOB_SIZE / 2;
+  ctx.lineWidth = 1;
+  for (const side of ["l", "r"]) {
+    const st = sticks[side];
+    // .stick: a faint ring where the thumb landed (or its resting place); .stick i: the cyan knob.
+    ctx.fillStyle = st.active ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.04)";
+    ctx.strokeStyle = st.active ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.18)";
+    ctx.beginPath(); ctx.arc(st.ox, st.oy, base, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "rgba(57,240,255,0.35)";
+    ctx.strokeStyle = "#39f0ff";
+    ctx.beginPath(); ctx.arc(st.ox + st.dx * STICK_KNOB_TRAVEL, st.oy + st.dy * STICK_KNOB_TRAVEL, knob, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+  const lit = {
+    dash: state.dashReady !== false, bomb: (state.bombs ?? 1) > 0,
+    abil: state.abilReady !== false, use: (state.cons ?? 1) > 0,
+  };
+  ctx.textAlign = "center";
+  ctx.font = "bold 20px ui-monospace, monospace"; // .tbtn { font-size: 1.3rem }
+  for (const b of touchButtons()) {
+    ctx.globalAlpha = lit[b.id] || b.held ? 1 : 0.4;
+    ctx.fillStyle = b.held ? "rgba(57,240,255,0.45)" : "rgba(16,8,42,0.7)";
+    ctx.strokeStyle = b.held ? "#39f0ff" : "rgba(57,240,255,0.33)";
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.fillText(substitute(TOUCH_GLYPHS[b.id]), b.x, b.y + 7);
+  }
+  ctx.globalAlpha = 1;
 }
 
 function fmt(n) { return n.toLocaleString("en-US"); }
