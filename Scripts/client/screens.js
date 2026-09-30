@@ -341,6 +341,11 @@ function buildOverlay() {
     h("section", { id: "screen-lobby", class: "screen hidden" },
       h("h2", null, "LOBBY ", h("span", { id: "lobby-code", class: "code" })),
       h("div", { id: "roster", class: "roster" }),
+      // UltraDark-sb: a link drops a friend straight into the lobby, past the menu where the class
+      // is chosen, so they fought as whatever they last were. The class is chosen here too.
+      h("p", { class: "pick-label" }, "YOUR CLASS"),
+      h("div", { id: "lobby-pilots", class: "pilots mini" }),
+      h("p", { id: "lobby-pilot-info", class: "pick-info" }),
       h("div", { class: "row buttons" },
         h("button", { id: "btn-invite", class: "btn big invite" }, "\u{1F517} INVITE — SEND THE LINK")),
       h("div", { class: "row buttons" },
@@ -627,6 +632,15 @@ function computeStyle(element, parent) {
         }
         if (has("card")) { rule(20, 139); set("outline", [2, "#ffe45b"]); set("lift", -3); set("shadow", ["#ffe45b66", 18]); }   // .card.sel
         break;
+      // UltraDark-sb: the lobby's class picker: eight chips in a row, and a line about the one chosen.
+      case "mini":
+        if (has("pilots")) { rule(20, 61.5); set("gap", 4); set("mt", 4); set("mb", 4); }   // .pilots.mini
+        if (has("pilot")) { rule(20, 62.5); set("width", 57); padding(6, 2, 6, 2); set("radius", 8); }   // .pilot.mini
+        break;
+      case "sym": if (within(element, "mini")) { rule(30, 66.2); set("fontSize", 15); set("weight", 700); } break;   // .mini .sym
+      case "nm2": if (within(element, "mini")) { rule(30, 66.4); set("fontSize", 9.4); set("weight", 700); set("spacingEm", 0.06); set("mt", 2); } break;   // .mini .nm2
+      case "pick-label": rule(10, 69.2); set("color", "#66779c"); set("fontSize", 10.4); set("spacingEm", 0.22); set("mt", 2); break;
+      case "pick-info": rule(10, 69.4); set("color", "#8fa3c8"); set("fontSize", 11.52); set("mt", 2); set("mb", 10); break;
       case "roster": rule(10, 70); set("display", "grid"); set("columns", 2); set("gap", 6); set("mt", 10); set("mb", 16); break;
       case "grant":
         rule(10, 71); set("bw", 1); set("bc", "#7a5cff88"); set("radius", 8); set("background", "#7a5cff14");
@@ -1716,7 +1730,49 @@ export function showLobby(code, roster, myId) {
   updateRoster(roster, myId);
   showScreen("screen-lobby");
 }
+// UltraDark-sb: the lobby's class picker. Built once; `lobbyPilot` is the class it shows chosen.
+let lobbyPilot = -1;
+function buildLobbyPilots() {
+  const box = byId("lobby-pilots");
+  if (box.childNodes.length > 0) return;
+  for (const p of PILOTS) {
+    const el = createElement("div");
+    el.className = "pilot mini";
+    el.id = `lobby-pilot-${p.id}`;   // the node's name, for a pad's focus and a check's pointer
+    el.style.setProperty("--c", p.color);
+    el.setChildren([
+      h("div", { class: "sym", style: { color: p.color } }, p.symbol),
+      h("div", { class: "nm2", style: { color: p.color } }, p.name),
+    ]);
+    el.onclick = () => {
+      setLobbyPilot(p.id);
+      // The same action the menu's cards send: main.js keeps it, and tells the room while in one.
+      ui.onAction?.({ t: "ui_pilot", pilot: p.id });
+    };
+    box.appendChild(el);
+  }
+}
+function setLobbyPilot(pilot) {
+  buildLobbyPilots();
+  if (pilot === lobbyPilot) return;
+  lobbyPilot = pilot;
+  const chips = byId("lobby-pilots").querySelectorAll(".pilot");
+  chips.forEach((chip, i) => chip.classList.toggle("sel", i === pilot));
+  const p = PILOTS[pilot] ?? PILOTS[0];
+  byId("lobby-pilot-info").textContent = `${p.name} — ${p.lean} · ▸ ${p.weapon.label} · ✦ ${p.ability}`;
+  // The menu's cards too, so going back to it shows the same class chosen.
+  byId("pilots").querySelectorAll(".pilot").forEach((card, i) => card.classList.toggle("sel", i === pilot));
+}
+
+/** UltraDark-sb: what the lobby's picker shows, for a check to read: the class chosen and the line under it. */
+export function lobbyPilotShown() {
+  return { pilot: lobbyPilot, info: String(byId("lobby-pilot-info").textContent ?? "") };
+}
+
 export function updateRoster(roster, myId) {
+  // UltraDark-sb: the room is the truth about this pilot's class, so the picker follows the roster.
+  const mine = roster.find((r) => r && r.id === myId);
+  if (mine) setLobbyPilot(mine.pilot | 0); else buildLobbyPilots();
   const el = byId("roster");
   // DarkShapes: innerHTML = "" and one appendChild a slot, as one set of children drawn once.
   const slots = [];

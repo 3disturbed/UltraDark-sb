@@ -56,6 +56,8 @@ function probeWorld() {
 function probeStats() { return JSON.stringify(probeStage.stats()); }
 function probeFighterActorId(id) { const a = probeStage.fighterActor(id); return a ? a.id : -1; }
 function probeCameraActorId() { const a = probeStage.cameraActor(); return a ? a.id : -1; }
+function probeLobbyPilot() { return JSON.stringify(probeScreens.lobbyPilotShown()); }
+function probeShowLobby(json) { const l = JSON.parse(json); probeScreens.showLobby(l.code, l.roster, l.myId); return true; }
 function probeStartWave(n) {
   if (authority === null) return false;
   const rooms = [...authority.rooms.map.values()];
@@ -156,8 +158,10 @@ export async function boot({ launch = [], probe = PROBE } = {}) {
     isKeyDown: (k) => held.has(spell(k)),
     isKeyPressed: (k) => pressed.has(spell(k)),
     isKeyReleased: () => false,
-    isMouseButtonDown: (b) => mouse.down.has(Number(b)),
-    isMouseButtonPressed: (b) => mouse.pressed.has(Number(b)),
+    // No argument is the left button, as the InputManager has it -- and as the host's UI frame asks
+    // (`isMouseButtonDown()`); read as NaN here, no screen ever saw a press and no check could click.
+    isMouseButtonDown: (b = 0) => mouse.down.has(Number(b)),
+    isMouseButtonPressed: (b = 0) => mouse.pressed.has(Number(b)),
     isMouseButtonReleased: () => false,
     isMouseButtonTouch: () => false,
     get mousePosition() { return { x: mouse.x, y: mouse.y }; },
@@ -223,6 +227,8 @@ export async function boot({ launch = [], probe = PROBE } = {}) {
 
   return {
     engine, opened, errors, warnings, logs, step, stepUntil, invoke, json, stop, entry,
+    /** A node of the script's UI by name -- a screen element's id -- or null: its `rect` is where it was laid out. */
+    ui: (name) => { for (const canvas of UiCanvas.all) { const node = canvas.find(name); if (node) return node; } return null; },
     press: (k) => { held.add(spell(k)); pressed.add(spell(k)); },
     release: (k) => held.delete(spell(k)),
     mouseDown: (b = 0) => { mouse.down.add(b); mouse.pressed.add(b); },
