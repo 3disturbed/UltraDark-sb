@@ -164,6 +164,8 @@ export async function boot({ launch = [], probe = PROBE } = {}) {
     isMouseButtonPressed: (b = 0) => mouse.pressed.has(Number(b)),
     isMouseButtonReleased: () => false,
     isMouseButtonTouch: () => false,
+    // The UI's pointer since engine 1.9.0 (EngineHost reads it in place of isMouseButtonDown()).
+    isPointerDown: () => mouse.down.has(0),
     get mousePosition() { return { x: mouse.x, y: mouse.y }; },
   };
   const real = engine.input;
